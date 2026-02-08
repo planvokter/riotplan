@@ -185,7 +185,7 @@ export async function generateHeartbeat(planDirectory: string): Promise<string |
         lines.push('---');
         
         return '\n\n' + lines.join('\n');
-    } catch (error) {
+    } catch {
         // If anything fails, return a generic reminder
         return '\n\n---\n📋 RiotPlan Active\n⚠️ Stay in plan mode. Capture insights with RiotPlan tools. Do not implement.\n---';
     }

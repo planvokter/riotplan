@@ -65,7 +65,7 @@ async function main() {
     // For now, we create a placeholder that assumes STDIO transport
     // The McpServer API doesn't expose initialization hooks, so we'll
     // create the session with default capabilities and update if needed
-    let currentSession = sessionManager.createSession(
+    const currentSession = sessionManager.createSession(
         sessionId,
         'stdio',
         {
