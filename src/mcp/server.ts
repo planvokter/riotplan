@@ -19,6 +19,8 @@ import { executeTool } from './tools/index.js';
 import { getResources, readResource } from './resources/index.js';
 import { getPrompts, getPrompt } from './prompts/index.js';
 import { resolvePlanDirectory } from '../config/index.js';
+import { createSessionManager, generateSessionId } from './session/index.js';
+import { generateHeartbeat } from './heartbeat.js';
 
 /**
  * Recursively remove undefined values from an object to prevent JSON serialization issues
@@ -50,11 +52,47 @@ function removeUndefinedValues(obj: any): any {
 async function main() {
     // Mark that we're running as MCP server
     process.env.RIOTPLAN_MCP_SERVER = 'true';
+    
+    // Initialize session manager for tracking client capabilities
+    // Enable debug logging to show provider mode detection
+    const sessionManager = createSessionManager({ debug: true });
+    
+    // For STDIO transport, we have a single session
+    // Generate session ID that will be used for the connection
+    const sessionId = generateSessionId();
+    
+    // Create initial session context (will be populated during initialization)
+    // For now, we create a placeholder that assumes STDIO transport
+    // The McpServer API doesn't expose initialization hooks, so we'll
+    // create the session with default capabilities and update if needed
+    let currentSession = sessionManager.createSession(
+        sessionId,
+        'stdio',
+        {
+            params: {
+                protocolVersion: '2025-11-25',
+                capabilities: {},
+                clientInfo: undefined,
+            }
+        }
+    );
 
     // Suppress stdout to prevent pollution of MCP JSON-RPC stream
     // MCP uses stdio for communication, so any stdout output will corrupt the protocol
-    // We don't redirect stdout because the StdioServerTransport needs to control it
-    // Instead, we rely on RIOTPLAN_MCP_SERVER env var to suppress logging in tools
+    // We capture ALL stdout writes and redirect non-JSON-RPC messages to stderr
+    // This is critical because dependencies (like CardiganTime) may output to stdout
+    const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+    
+    process.stdout.write = (chunk: any, encoding?: any, callback?: any): boolean => {
+        const str = typeof chunk === 'string' ? chunk : chunk.toString();
+        // Allow JSON-RPC messages through (they start with { and contain "jsonrpc")
+        // This preserves the MCP protocol while filtering out spurious stdout output
+        if (str.trimStart().startsWith('{') && str.includes('"jsonrpc"')) {
+            return originalStdoutWrite(chunk, encoding, callback);
+        }
+        // Redirect everything else to stderr to prevent protocol corruption
+        return process.stderr.write(chunk, encoding, callback);
+    };
 
     // Set up error logging for MCP server
     const logError = (context: string, error: unknown) => {
@@ -109,6 +147,9 @@ async function main() {
             inputSchema,
             async (args, { sendNotification, _meta }) => {
                 try {
+                    // Update session activity
+                    sessionManager.updateActivity(sessionId);
+                    
                     // Resolve plan directory using four-tier strategy
                     const planDirectory = await resolvePlanDirectory();
                     
@@ -116,6 +157,7 @@ async function main() {
                         workingDirectory: planDirectory,
                         config: undefined,
                         logger: undefined,
+                        session: currentSession,  // Add session context for provider loading
                         sendNotification: async (notification: {
                             method: string;
                             params: {
@@ -166,6 +208,19 @@ async function main() {
                             type: 'text' as const,
                             text: textContent,
                         });
+
+                        // Append heartbeat footer with plan context
+                        try {
+                            const heartbeat = await generateHeartbeat(planDirectory);
+                            if (heartbeat) {
+                                content.push({
+                                    type: 'text' as const,
+                                    text: heartbeat,
+                                });
+                            }
+                        } catch {
+                            // Heartbeat failure should never break tool response
+                        }
 
                         return { content };
                     } else {
@@ -234,7 +289,7 @@ async function main() {
     // Register all tools
     registerTool(
         'riotplan_create',
-        'Create a new plan with AI generation. Generates detailed, actionable plans from descriptions.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Create a new plan with AI generation. Generates detailed, actionable plans from descriptions.',
         {
             code: z.string(),
             name: z.string().optional(),
@@ -250,7 +305,7 @@ async function main() {
 
     registerTool(
         'riotplan_status',
-        'Show current plan status including progress, current step, blockers, and issues.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Show current plan status including progress, current step, blockers, and issues.',
         {
             path: z.string().optional(),
             verbose: z.boolean().optional(),
@@ -259,7 +314,7 @@ async function main() {
 
     registerTool(
         'riotplan_step_list',
-        'List all steps in a plan with their status. Can filter to show only pending or all steps.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. List all steps in a plan with their status. Can filter to show only pending or all steps.',
         {
             path: z.string().optional(),
             pending: z.boolean().optional(),
@@ -269,7 +324,7 @@ async function main() {
 
     registerTool(
         'riotplan_step_start',
-        'Mark a step as started. Updates STATUS.md to reflect the step is in progress.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Mark a step as started. Updates STATUS.md to reflect the step is in progress.',
         {
             path: z.string().optional(),
             step: z.number(),
@@ -278,7 +333,7 @@ async function main() {
 
     registerTool(
         'riotplan_step_complete',
-        'Mark a step as completed. Updates STATUS.md to reflect the step is done.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Mark a step as completed. Updates STATUS.md to reflect the step is done.',
         {
             path: z.string().optional(),
             step: z.number(),
@@ -287,7 +342,7 @@ async function main() {
 
     registerTool(
         'riotplan_step_add',
-        'Add a new step to the plan. Can specify position or add after a specific step.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add a new step to the plan. Can specify position or add after a specific step.',
         {
             path: z.string().optional(),
             title: z.string(),
@@ -298,7 +353,7 @@ async function main() {
 
     registerTool(
         'riotplan_validate',
-        'Validate plan structure and files. Checks for required files, valid STATUS.md, step numbering, and dependencies.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Validate plan structure and files. Checks for required files, valid STATUS.md, step numbering, and dependencies.',
         {
             path: z.string().optional(),
             fix: z.boolean().optional(),
@@ -307,7 +362,7 @@ async function main() {
 
     registerTool(
         'riotplan_generate',
-        'Generate plan content from an existing prompt file. Useful for regenerating plan files.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Generate plan content from an existing prompt file. Useful for regenerating plan files.',
         {
             path: z.string().optional(),
             steps: z.number().optional(),
@@ -319,7 +374,7 @@ async function main() {
     // Idea stage tools
     registerTool(
         'riotplan_idea_create',
-        'Create a new idea without commitment. Start exploring a concept in the Idea stage.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Create a new idea without commitment. Start exploring a concept in the Idea stage.',
         {
             code: z.string(),
             description: z.string(),
@@ -329,7 +384,7 @@ async function main() {
 
     registerTool(
         'riotplan_idea_add_note',
-        'Add a note to an idea. Capture thoughts and observations during exploration.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add a note to an idea. Capture thoughts and observations during exploration.',
         {
             note: z.string(),
             path: z.string().optional(),
@@ -338,7 +393,7 @@ async function main() {
 
     registerTool(
         'riotplan_idea_add_constraint',
-        'Add a constraint to an idea. Document limitations and requirements.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add a constraint to an idea. Document limitations and requirements.',
         {
             constraint: z.string(),
             path: z.string().optional(),
@@ -347,7 +402,7 @@ async function main() {
 
     registerTool(
         'riotplan_idea_add_question',
-        'Add a question to an idea. Raise uncertainties that need resolution.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add a question to an idea. Raise uncertainties that need resolution.',
         {
             question: z.string(),
             path: z.string().optional(),
@@ -356,7 +411,7 @@ async function main() {
 
     registerTool(
         'riotplan_idea_add_evidence',
-        'Add evidence to an idea. Attach supporting materials like diagrams, documents, or examples.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add evidence to an idea. Attach supporting materials like diagrams, documents, or examples.',
         {
             evidencePath: z.string(),
             description: z.string(),
@@ -366,7 +421,7 @@ async function main() {
 
     registerTool(
         'riotplan_idea_add_narrative',
-        'Add raw narrative content to the timeline. Use this to capture conversational context, thinking-out-loud, or any free-form input that doesn\'t fit structured categories. Narrative chunks preserve full-fidelity context.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add raw narrative content to the timeline. Use this to capture conversational context, thinking-out-loud, or any free-form input that doesn\'t fit structured categories. Narrative chunks preserve full-fidelity context.',
         {
             content: z.string(),
             path: z.string().optional(),
@@ -378,7 +433,7 @@ async function main() {
 
     registerTool(
         'riotplan_idea_kill',
-        'Kill an idea. Abandon the idea with a reason, preserving the learning.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Kill an idea. Abandon the idea with a reason, preserving the learning.',
         {
             reason: z.string(),
             path: z.string().optional(),
@@ -388,7 +443,7 @@ async function main() {
     // Shaping stage tools
     registerTool(
         'riotplan_shaping_start',
-        'Start shaping an idea. Move from Idea to Shaping stage to explore approaches.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Start shaping an idea. Move from Idea to Shaping stage to explore approaches.',
         {
             path: z.string().optional(),
         }
@@ -396,7 +451,7 @@ async function main() {
 
     registerTool(
         'riotplan_shaping_add_approach',
-        'Add an approach to consider. Propose a way to solve the problem with explicit tradeoffs.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add an approach to consider. Propose a way to solve the problem with explicit tradeoffs.',
         {
             name: z.string(),
             description: z.string(),
@@ -408,7 +463,7 @@ async function main() {
 
     registerTool(
         'riotplan_shaping_add_feedback',
-        'Add feedback on an approach. Provide observations, concerns, or suggestions.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add feedback on an approach. Provide observations, concerns, or suggestions.',
         {
             approach: z.string(),
             feedback: z.string(),
@@ -418,7 +473,7 @@ async function main() {
 
     registerTool(
         'riotplan_shaping_add_evidence',
-        'Add evidence for an approach. Attach supporting materials that inform the decision.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add evidence for an approach. Attach supporting materials that inform the decision.',
         {
             approach: z.string(),
             evidencePath: z.string(),
@@ -429,7 +484,7 @@ async function main() {
 
     registerTool(
         'riotplan_shaping_compare',
-        'Compare all approaches. Generate a side-by-side comparison of tradeoffs.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Compare all approaches. Generate a side-by-side comparison of tradeoffs.',
         {
             path: z.string().optional(),
         }
@@ -437,7 +492,7 @@ async function main() {
 
     registerTool(
         'riotplan_shaping_select',
-        'Select an approach. Choose the best approach and move to Built stage.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Select an approach. Choose the best approach and move to Built stage.',
         {
             approach: z.string(),
             reason: z.string(),
@@ -448,7 +503,7 @@ async function main() {
     // History and checkpoint tools
     registerTool(
         'riotplan_checkpoint_create',
-        'Create a checkpoint. Save a snapshot of the current state with prompt context.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Create a checkpoint. Save a snapshot of the current state with prompt context.',
         {
             name: z.string(),
             message: z.string(),
@@ -458,7 +513,7 @@ async function main() {
 
     registerTool(
         'riotplan_checkpoint_list',
-        'List all checkpoints. Show all saved checkpoints with timestamps.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. List all checkpoints. Show all saved checkpoints with timestamps.',
         {
             path: z.string().optional(),
         }
@@ -466,7 +521,7 @@ async function main() {
 
     registerTool(
         'riotplan_checkpoint_show',
-        'Show checkpoint details. Display the full checkpoint snapshot and prompt context.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Show checkpoint details. Display the full checkpoint snapshot and prompt context.',
         {
             checkpoint: z.string(),
             path: z.string().optional(),
@@ -475,7 +530,7 @@ async function main() {
 
     registerTool(
         'riotplan_checkpoint_restore',
-        'Restore a checkpoint. Revert to a previous state.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Restore a checkpoint. Revert to a previous state.',
         {
             checkpoint: z.string(),
             path: z.string().optional(),
@@ -484,11 +539,20 @@ async function main() {
 
     registerTool(
         'riotplan_history_show',
-        'Show ideation history. Display the complete timeline of events.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Show ideation history. Display the complete timeline of events.',
         {
             path: z.string().optional(),
             limit: z.number().optional(),
             sinceCheckpoint: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_generate_rule',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Generate a Cursor rule file that configures the IDE to defer to RiotPlan for planning. Creates .cursor/rules/riotplan.md in the target project.',
+        {
+            projectPath: z.string().optional(),
+            force: z.boolean().optional(),
         }
     );
 
