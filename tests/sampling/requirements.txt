@@ -1,0 +1,13 @@
+# FastMCP Test Suite Requirements
+# Python 3.11+ required
+
+# FastMCP with sampling handlers
+fastmcp[openai]>=0.3.0
+fastmcp[anthropic]>=0.3.0
+
+# Testing framework
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# Environment management
+python-dotenv>=1.0.0

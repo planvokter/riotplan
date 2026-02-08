@@ -122,6 +122,7 @@ export interface ToolExecutionContext {
     workingDirectory: string;
     config?: any;
     logger?: any;
+    session?: any; // SessionContext from session module
     progressCallback?: ProgressCallback;
     sendNotification?: (notification: {
         method: string;

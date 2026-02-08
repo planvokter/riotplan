@@ -3,15 +3,16 @@
  */
 
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess } from './shared.js';
+import { resolveDirectory, formatError, createSuccess, isIdeaOrShapingDirectory } from './shared.js';
 import { createPlan } from '../../plan/creator.js';
+import { join } from 'node:path';
 
 export const createTool: McpTool = {
     name: 'riotplan_create',
     description:
-        'Create a new plan with AI generation. ' +
+        'Create a new plan directory with AI generation. ' +
         'Generates detailed, actionable plans from descriptions. ' +
-        'Can optionally analyze first or generate directly.',
+        'Warns if target directory is already an idea/shaping directory (use riotplan_build instead).',
     inputSchema: {
         type: 'object',
         properties: {
@@ -62,6 +63,19 @@ export async function executeCreate(
 ): Promise<ToolResult> {
     try {
         const parentDir = args.directory ? args.directory : resolveDirectory(args, context);
+        const targetPath = join(parentDir, args.code);
+        
+        // Check if target directory is already an idea/shaping directory
+        const detection = await isIdeaOrShapingDirectory(targetPath);
+        
+        let warningMessage = '';
+        if (detection.isIdeaOrShaping) {
+            const detectedFiles = detection.detected.join(', ');
+            const stageInfo = detection.stage ? ` (stage: ${detection.stage})` : '';
+            warningMessage = `\n\n⚠️  WARNING: Target directory appears to be an existing ${detection.stage || 'idea/shaping'} directory${stageInfo}.\n` +
+                `Detected: ${detectedFiles}\n` +
+                `Consider using 'riotplan_build' to create plan files in the existing directory instead of creating a new nested directory.`;
+        }
         
         // Build step configs if AI generation is requested
         let steps: Array<{ title: string; description?: string }> | undefined;
@@ -84,8 +98,9 @@ export async function executeCreate(
                 code: args.code,
                 stepsCreated: result.plan.steps?.length || 0,
                 filesCreated: result.filesCreated || [],
+                warning: detection.isIdeaOrShaping ? 'Existing idea/shaping directory detected' : undefined,
             },
-            `Plan "${args.code}" created successfully at ${result.path}`
+            `Plan "${args.code}" created successfully at ${result.path}${warningMessage}`
         );
     } catch (error) {
         return formatError(error);

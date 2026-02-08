@@ -50,6 +50,7 @@ async function buildMcpServer() {
     console.log('MCP server built successfully');
 }
 
+
 function copyPrompts() {
     console.log('Copying prompt files...');
     

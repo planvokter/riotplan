@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
-import { formatTimestamp } from "./shared.js";
+import { formatTimestamp, resolveDirectory } from "./shared.js";
 import { logEvent } from "./history.js";
 
 // Tool schemas
@@ -406,70 +406,85 @@ export async function ideaKill(args: z.infer<typeof IdeaKillSchema>): Promise<st
 // Tool executors for MCP
 import type { ToolResult, ToolExecutionContext } from '../types.js';
 
-export async function executeIdeaCreate(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeIdeaCreate(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaCreateSchema.parse(args);
-        const result = await ideaCreate(validated);
+        // Use directory resolution logic when no explicit directory is provided
+        // This matches the behavior of executeCreate and uses the four-tier resolution strategy
+        const resolvedDirectory = validated.directory || resolveDirectory(args, context);
+        const result = await ideaCreate({ ...validated, directory: resolvedDirectory });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeIdeaAddNote(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeIdeaAddNote(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddNoteSchema.parse(args);
-        const result = await ideaAddNote(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await ideaAddNote({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeIdeaAddConstraint(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeIdeaAddConstraint(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddConstraintSchema.parse(args);
-        const result = await ideaAddConstraint(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await ideaAddConstraint({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeIdeaAddQuestion(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeIdeaAddQuestion(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddQuestionSchema.parse(args);
-        const result = await ideaAddQuestion(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await ideaAddQuestion({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeIdeaAddEvidence(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeIdeaAddEvidence(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddEvidenceSchema.parse(args);
-        const result = await ideaAddEvidence(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await ideaAddEvidence({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeIdeaAddNarrative(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeIdeaAddNarrative(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddNarrativeSchema.parse(args);
-        const result = await ideaAddNarrative(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await ideaAddNarrative({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeIdeaKill(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeIdeaKill(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaKillSchema.parse(args);
-        const result = await ideaKill(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await ideaKill({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };

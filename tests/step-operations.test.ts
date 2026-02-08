@@ -444,5 +444,63 @@ describe("Step Operations", () => {
             expect(reloaded2.steps[0].title).toContain("New First");
         });
     });
+
+    describe("plan/ subdirectory creation", () => {
+        it("should create plan/ subdirectory if it doesn't exist", async () => {
+            // Create a plan directory without plan/ subdirectory
+            const emptyPlanDir = join(tmpdir(), `riotplan-empty-test-${Date.now()}`);
+            const { mkdir, writeFile } = await import("node:fs/promises");
+            await mkdir(emptyPlanDir, { recursive: true });
+            
+            // Create minimal SUMMARY.md
+            await writeFile(
+                join(emptyPlanDir, "SUMMARY.md"),
+                "# Test Plan\n\nTest plan without plan/ subdirectory",
+                "utf-8"
+            );
+
+            // Load the plan (should have no steps initially)
+            const emptyPlan = await loadPlan(emptyPlanDir);
+            expect(emptyPlan.steps.length).toBe(0);
+
+            // Insert a step - should create plan/ subdirectory
+            const result = await insertStep(emptyPlan, {
+                title: "First Step",
+            });
+
+            // Verify file was created in plan/ subdirectory
+            expect(result.createdFile).toContain(join("plan", "01-first-step.md"));
+            
+            // Verify the file exists at the correct location
+            const planSubdir = join(emptyPlanDir, "plan");
+            const files = await readdir(planSubdir);
+            expect(files).toContain("01-first-step.md");
+
+            // Cleanup
+            await rm(emptyPlanDir, { recursive: true });
+        });
+
+        it("should use existing plan/ subdirectory if present", async () => {
+            // This is the normal case - plan/ already exists
+            const planDir = join(planPath, "plan");
+            const files = await readdir(planDir);
+            
+            // Verify initial steps are in plan/ subdirectory
+            expect(files).toContain("01-first-step.md");
+            expect(files).toContain("02-second-step.md");
+            expect(files).toContain("03-third-step.md");
+
+            // Add a new step
+            const result = await insertStep(plan, {
+                title: "Fourth Step",
+            });
+
+            // Verify new step is also in plan/ subdirectory
+            expect(result.createdFile).toContain(join("plan", "04-fourth-step.md"));
+            
+            const updatedFiles = await readdir(planDir);
+            expect(updatedFiles).toContain("04-fourth-step.md");
+        });
+    });
 });
 

@@ -275,7 +275,8 @@ export type TimelineEventType =
     | "approach_selected"
     | "narrative_chunk"
     | "checkpoint_created"
-    | "checkpoint_restored";
+    | "checkpoint_restored"
+    | "stage_transition";
 
 /**
  * Base timeline event structure

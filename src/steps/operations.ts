@@ -6,7 +6,7 @@
  * - Status changes (start, complete, block, unblock)
  */
 
-import { readdir, rename, readFile, writeFile, rm } from "node:fs/promises";
+import { readdir, rename, readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Plan, PlanStep, TaskStatus } from "../types.js";
 import { PLAN_CONVENTIONS } from "../types.js";
@@ -108,7 +108,7 @@ async function getStepFiles(planPath: string): Promise<StepFile[]> {
 }
 
 /**
- * Get the plan directory (either plan/ subdirectory or root)
+ * Get the plan directory (creates plan/ subdirectory if it doesn't exist)
  */
 async function getPlanDir(planPath: string): Promise<string> {
     const standardDir = join(planPath, PLAN_CONVENTIONS.standardDirs.plan);
@@ -116,7 +116,9 @@ async function getPlanDir(planPath: string): Promise<string> {
         await readdir(standardDir);
         return standardDir;
     } catch {
-        return planPath;
+        // Create plan/ subdirectory if it doesn't exist
+        await mkdir(standardDir, { recursive: true });
+        return standardDir;
     }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@kjerneverk/riotplan",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Framework for long-lived, stateful AI workflows (plans)",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,8 +23,10 @@
     "build": "vite build && node scripts/build-mcp.js && chmod 755 ./dist/mcp-server.js 2>/dev/null || true",
     "test": "vitest run --coverage",
     "test:coverage": "vitest run --coverage",
+    "test:sampling": "bash scripts/run-sampling-tests.sh",
+    "test:sampling:check": "bash scripts/check-python-env.sh",
     "lint": "eslint src",
-    "precommit": "npm run build && npm run lint && npm run test",
+    "precommit": "npm run build && npm run lint && npm run test && npm run test:sampling",
     "prepublishOnly": "npm run clean && npm run build",
     "mcp:build": "vite build && chmod 755 ./dist/mcp-server.js 2>/dev/null || true",
     "mcp:inspect": "mcp-inspector npx -y @kjerneverk/riotplan",
@@ -50,8 +52,9 @@
     "url": "https://github.com/kjerneverk/riotplan"
   },
   "dependencies": {
+    "@kjerneverk/execution-sampling": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.25.3",
-    "@utilarium/cardigantime": "^0.0.24",
+    "@utilarium/cardigantime": "^0.0.25",
     "@types/inquirer": "^9.0.9",
     "chalk": "^5.4.1",
     "commander": "^14.0.2",
@@ -63,7 +66,7 @@
   "peerDependencies": {
     "@kjerneverk/agentic": "^1.0.5",
     "@kjerneverk/execution": "^1.0.4",
-    "@kjerneverk/riotprompt": "^1.0.7"
+    "@kjerneverk/riotprompt": "^1.0.8"
   },
   "peerDependenciesMeta": {
     "@kjerneverk/agentic": {

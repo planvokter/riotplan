@@ -8,6 +8,8 @@ Part of [Kjerneverk](https://kjerneverk.github.io) - structured formats for work
 
 **Now available as an MCP server!** Integrate with Cursor and other AI assistants - see [MCP Integration](#mcp-integration) below.
 
+**✨ MCP Sampling Support** - No duplicate API keys needed when using RiotPlan via MCP! [Learn more →](docs/SAMPLING.md)
+
 ## Why RiotPlan?
 
 ### Before: Inadequate Planning
@@ -434,16 +436,45 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
 
 **Zero-Config Experience:** If you don't set `RIOTPLAN_PLAN_DIRECTORY`, RiotPlan will automatically find your `plans/` directory by walking up from your workspace root. No configuration needed!
 
+The MCP server includes enhanced error handling and logging for better reliability and debugging.
+
 ### MCP Tools
 
-- **`riotplan_create`** - Create new plans with AI-generated steps
+**Lifecycle Management:**
+- **`riotplan_idea_create`** - Start exploring an idea (Idea stage)
+- **`riotplan_shaping_start`** - Begin shaping approaches (Shaping stage)
+- **`riotplan_build`** - Build plan from idea/shaping with AI generation (→ Built stage)
+- **`riotplan_transition`** - Move between lifecycle stages manually
+
+**Plan Management:**
+- **`riotplan_create`** - Create new plan directory with AI-generated steps
 - **`riotplan_status`** - Show plan status and progress
+- **`riotplan_validate`** - Validate plan structure
+- **`riotplan_generate`** - Generate plan content with AI
+
+**Step Management:**
 - **`riotplan_step_list`** - List all steps
 - **`riotplan_step_start`** - Mark step as started
 - **`riotplan_step_complete`** - Mark step as completed
 - **`riotplan_step_add`** - Add new steps dynamically
-- **`riotplan_validate`** - Validate plan structure
-- **`riotplan_generate`** - Generate plan content with AI
+
+**Idea Stage:**
+- **`riotplan_idea_add_note`** - Add notes during exploration
+- **`riotplan_idea_add_constraint`** - Document constraints
+- **`riotplan_idea_add_question`** - Raise questions
+- **`riotplan_idea_add_evidence`** - Attach supporting materials
+- **`riotplan_idea_kill`** - Abandon idea with reason
+
+**Shaping Stage:**
+- **`riotplan_shaping_add_approach`** - Propose solution approaches
+- **`riotplan_shaping_add_feedback`** - Add feedback on approaches
+- **`riotplan_shaping_compare`** - Compare all approaches
+- **`riotplan_shaping_select`** - Select best approach
+
+**History & Checkpoints:**
+- **`riotplan_checkpoint_create`** - Save state snapshots
+- **`riotplan_checkpoint_restore`** - Restore previous state
+- **`riotplan_history_show`** - View timeline of events
 
 ### MCP Resources
 

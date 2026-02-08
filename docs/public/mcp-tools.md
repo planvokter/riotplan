@@ -280,6 +280,69 @@ riotplan_idea_kill({
 })
 ```
 
+## Lifecycle Tools
+
+### riotplan_transition
+
+Move between lifecycle stages (forward or backward). Updates LIFECYCLE.md and logs transition to timeline.
+
+**Parameters:**
+- `stage` (required) - Target stage (idea, shaping, built, executing, completed, cancelled)
+- `reason` (required) - Reason for transitioning
+- `path` (optional) - Plan directory (default: current)
+
+**Example:**
+
+```typescript
+riotplan_transition({
+  stage: "executing",
+  reason: "Plan approved, starting implementation"
+})
+```
+
+**Notes:**
+- Allows any transitions without validation
+- Use `riotplan_build` instead to transition from idea/shaping to built with plan generation
+
+### riotplan_build
+
+Build plan files in existing idea/shaping directory, transitioning to built stage. Uses AI generation to create detailed plan from idea and shaping content.
+
+**Parameters:**
+- `path` (optional) - Idea/shaping directory (default: current)
+- `description` (optional) - Plan description (defaults to IDEA.md content)
+- `steps` (optional) - Number of steps to generate
+- `provider` (optional) - AI provider (anthropic, openai, gemini)
+- `model` (optional) - Specific model
+
+**Creates:**
+- SUMMARY.md - Plan overview
+- EXECUTION_PLAN.md - Detailed execution strategy
+- STATUS.md - Progress tracking
+- plan/ directory - Step files
+
+**Preserves:**
+- IDEA.md - Original idea content
+- SHAPING.md - Approach exploration
+- .history/ - Timeline and prompts
+- .evidence/ - Supporting materials
+
+**Example:**
+
+```typescript
+riotplan_build({
+  path: "./my-idea",
+  steps: 6,
+  provider: "anthropic"
+})
+```
+
+**Notes:**
+- Only works from idea or shaping stages
+- Automatically transitions to "built" stage
+- Requires AI provider to be installed and configured
+- This is the recommended way to create plans from ideas/shaping
+
 ## Shaping Stage Tools
 
 ### riotplan_shaping_start
