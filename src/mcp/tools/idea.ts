@@ -7,6 +7,75 @@ import { join } from "node:path";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { formatTimestamp, resolveDirectory } from "./shared.js";
 import { logEvent } from "./history.js";
+import type { EvidenceType } from "../../types.js";
+
+/**
+ * Generate a descriptive filename for evidence based on description and type
+ * @param description - Evidence description
+ * @param type - Evidence type (optional)
+ * @returns Filename without extension
+ */
+function generateEvidenceFilename(description: string, type?: EvidenceType): string {
+    // Convert description to kebab-case slug
+    let slug = description
+        .toLowerCase()
+        .trim()
+        // Replace spaces and underscores with hyphens
+        .replace(/[\s_]+/g, '-')
+        // Remove special characters except hyphens
+        .replace(/[^a-z0-9-]/g, '')
+        // Remove multiple consecutive hyphens
+        .replace(/-+/g, '-')
+        // Remove leading/trailing hyphens
+        .replace(/^-+|-+$/g, '');
+    
+    // Truncate to reasonable length (50 chars max)
+    if (slug.length > 50) {
+        slug = slug.substring(0, 50).replace(/-+$/, '');
+    }
+    
+    // Add type prefix based on evidence type
+    const typePrefix: Record<EvidenceType, string> = {
+        'case-study': 'what-happened-in-',
+        'research': 'research-',
+        'analysis': 'analysis-',
+        'example': 'example-',
+        'external-review': 'review-',
+        'reference': 'reference-'
+    };
+    
+    const prefix = type ? typePrefix[type] : '';
+    return `${prefix}${slug}`;
+}
+
+/**
+ * Check for filename collisions and generate unique filename
+ * @param evidenceDir - Evidence directory path
+ * @param baseFilename - Base filename without extension
+ * @returns Unique filename without extension
+ */
+async function getUniqueEvidenceFilename(evidenceDir: string, baseFilename: string): Promise<string> {
+    try {
+        const existingFiles = await readdir(evidenceDir);
+        const existingNames = new Set(existingFiles.map(f => f.replace(/\.md$/, '')));
+        
+        // If no collision, return base filename
+        if (!existingNames.has(baseFilename)) {
+            return baseFilename;
+        }
+        
+        // Find next available number suffix
+        let counter = 2;
+        while (existingNames.has(`${baseFilename}-${counter}`)) {
+            counter++;
+        }
+        
+        return `${baseFilename}-${counter}`;
+    } catch (error) {
+        // If directory doesn't exist yet, no collision possible
+        return baseFilename;
+    }
+}
 
 // Tool schemas
 export const IdeaCreateSchema = z.object({
@@ -36,6 +105,8 @@ export const IdeaAddEvidenceSchema = z.object({
     description: z.string().describe("Description of the evidence and its relevance"),
     content: z.string().optional().describe("Inline content if evidencePath is 'inline' (for pasted text/transcripts)"),
     source: z.string().optional().describe("Where evidence came from (e.g., 'web search', 'user paste', 'file analysis')"),
+    sourceUrl: z.string().optional().describe("URL where evidence was retrieved from (if applicable)"),
+    originalQuery: z.string().optional().describe("Original question or search query that prompted gathering this evidence"),
     gatheringMethod: z.enum(["manual", "model-assisted"]).optional().describe("How evidence was gathered"),
     relevanceScore: z.number().min(0).max(1).optional().describe("Relevance score (0-1) from model if model-assisted"),
     summary: z.string().optional().describe("Model-generated summary of the evidence"),
@@ -257,13 +328,16 @@ export async function ideaAddEvidence(args: z.infer<typeof IdeaAddEvidenceSchema
         const evidenceDir = join(ideaPath, "evidence");
         await mkdir(evidenceDir, { recursive: true });
     
-        // Generate unique ID for evidence
-        evidenceId = `evidence-${Date.now()}`;
+        // Generate descriptive filename from description
+        const baseFilename = generateEvidenceFilename(args.description);
+        evidenceId = await getUniqueEvidenceFilename(evidenceDir, baseFilename);
         const evidenceFilePath = join(evidenceDir, `${evidenceId}.md`);
     
         // Write evidence content
         const evidenceContent = `# Evidence: ${args.description}\n\n` +
             `**Source**: ${args.source || 'user paste'}\n` +
+            (args.sourceUrl ? `**Source URL**: ${args.sourceUrl}\n` : '') +
+            (args.originalQuery ? `**Original Query**: ${args.originalQuery}\n` : '') +
             `**Added**: ${formatTimestamp()}\n` +
             (args.gatheringMethod ? `**Gathering Method**: ${args.gatheringMethod}\n` : '') +
             (args.relevanceScore !== undefined ? `**Relevance Score**: ${args.relevanceScore}\n` : '') +
@@ -299,6 +373,8 @@ export async function ideaAddEvidence(args: z.infer<typeof IdeaAddEvidenceSchema
             evidencePath: evidencePath,
             description: args.description,
             source: args.source,
+            sourceUrl: args.sourceUrl,
+            originalQuery: args.originalQuery,
             gatheringMethod: args.gatheringMethod,
             relevanceScore: args.relevanceScore,
             summary: args.summary,

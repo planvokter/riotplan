@@ -75,6 +75,10 @@ import {
     generateRuleTool,
     executeGenerateRule,
 } from './generate-rule.js';
+import {
+    readContextTool,
+    executeReadContext,
+} from './context.js';
 
 /**
  * Base tool executor - wraps command logic
@@ -151,6 +155,9 @@ export async function executeTool(
             // Generate rule tool
             case 'riotplan_generate_rule':
                 return await executeGenerateRule(args, context);
+            // Context tool
+            case 'riotplan_read_context':
+                return await executeReadContext(args, context);
             default:
                 return {
                     success: false,
@@ -207,4 +214,6 @@ export const tools: McpTool[] = [
     buildTool,
     // Generate rule tool
     generateRuleTool,
+    // Context tool
+    readContextTool,
 ];

@@ -334,6 +334,110 @@ async function validateStepContent(step: PlanStep): Promise<{
     return { errors, warnings };
 }
 
+// ===== EVIDENCE USAGE VALIDATION =====
+
+/**
+ * Validate that evidence files are referenced in step files
+ */
+async function validateEvidenceUsage(planPath: string): Promise<{
+    warnings: ValidationWarning[];
+}> {
+    const warnings: ValidationWarning[] = [];
+
+    // Check for evidence directories (both evidence/ and .evidence/)
+    const evidenceDir = join(planPath, 'evidence');
+    const dotEvidenceDir = join(planPath, '.evidence');
+    
+    let evidenceFiles: string[] = [];
+    let actualEvidenceDir: string | null = null;
+    
+    // Try evidence/ first
+    try {
+        const files = await readdir(evidenceDir);
+        evidenceFiles = files.filter(f => f.endsWith('.md'));
+        actualEvidenceDir = evidenceDir;
+    } catch {
+        // Try .evidence/
+        try {
+            const files = await readdir(dotEvidenceDir);
+            evidenceFiles = files.filter(f => f.endsWith('.md'));
+            actualEvidenceDir = dotEvidenceDir;
+        } catch {
+            // No evidence directory exists - no warning needed
+            return { warnings };
+        }
+    }
+    
+    // If no evidence files, no warning needed
+    if (evidenceFiles.length === 0) {
+        return { warnings };
+    }
+    
+    // Get step files
+    const planDir = join(planPath, PLAN_CONVENTIONS.standardDirs.plan);
+    let stepFiles: string[] = [];
+    let stepDir = planDir;
+    
+    try {
+        const files = await readdir(planDir);
+        stepFiles = files.filter(f => PLAN_CONVENTIONS.stepPattern.test(f));
+    } catch {
+        // Plan dir doesn't exist; check root
+        try {
+            const files = await readdir(planPath);
+            stepFiles = files.filter(f => PLAN_CONVENTIONS.stepPattern.test(f));
+            stepDir = planPath;
+        } catch {
+            // Can't read step files - skip validation
+            return { warnings };
+        }
+    }
+    
+    // If no step files, no warning needed (already caught by other validation)
+    if (stepFiles.length === 0) {
+        return { warnings };
+    }
+    
+    // Read all step file contents
+    let anyStepReferencesEvidence = false;
+    
+    for (const stepFile of stepFiles) {
+        try {
+            const stepPath = join(stepDir, stepFile);
+            const content = await readFile(stepPath, 'utf-8');
+            
+            // Check if step mentions evidence directory or any evidence filename
+            if (content.includes('evidence/') || content.includes('.evidence/')) {
+                anyStepReferencesEvidence = true;
+                break;
+            }
+            
+            // Check if any evidence filename is mentioned
+            for (const evidenceFile of evidenceFiles) {
+                if (content.includes(evidenceFile)) {
+                    anyStepReferencesEvidence = true;
+                    break;
+                }
+            }
+            
+            if (anyStepReferencesEvidence) break;
+        } catch {
+            // Skip unreadable step files
+        }
+    }
+    
+    // If evidence exists but no steps reference it, warn
+    if (!anyStepReferencesEvidence) {
+        const evidenceDirName = actualEvidenceDir === evidenceDir ? 'evidence/' : '.evidence/';
+        warnings.push({
+            code: 'EVIDENCE_NOT_REFERENCED',
+            message: `Found ${evidenceFiles.length} evidence file(s) in ${evidenceDirName} but no step files reference them. Consider reviewing evidence and incorporating findings into relevant steps.`,
+        });
+    }
+    
+    return { warnings };
+}
+
 // ===== DEPENDENCY VALIDATION =====
 
 /**
@@ -476,6 +580,10 @@ export async function validatePlan(
     result.errors.push(...numbering.errors);
     result.warnings.push(...numbering.warnings);
     result.fixable.push(...numbering.fixable);
+
+    // Evidence usage validation
+    const evidenceUsage = await validateEvidenceUsage(planPath);
+    result.warnings.push(...evidenceUsage.warnings);
 
     // Try to load plan for further validation
     try {

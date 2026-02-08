@@ -168,6 +168,83 @@ riotplan_idea_add_evidence({
 - Structured data makes information actionable
 - Timeline shows both the conversation and the decisions
 
+### 4a. Proactive Evidence Capture
+
+**CRITICAL**: When the user asks you to research, investigate, or look up information, you MUST capture your findings as evidence immediately. Don't wait for the user to ask "where is that thing you found?"
+
+#### Detecting Research Requests
+
+Watch for these trigger phrases that indicate the user wants you to gather information:
+- "Go look up..."
+- "Find out about..."
+- "How does X work?"
+- "What's the standard for..."
+- "Can you check..."
+- "Research..."
+- "Investigate..."
+- "What does the documentation say about..."
+
+When you see these, the user is asking for research. Your findings MUST be captured as evidence.
+
+#### Capturing Research Findings
+
+After you investigate and find information, immediately capture it using `riotplan_idea_add_evidence` with **full metadata**:
+
+```
+riotplan_idea_add_evidence({
+  description: "Clear description of what was found",
+  content: "The actual findings - code snippets, documentation text, analysis, etc.",
+  source: "Where it came from (e.g., 'codebase analysis', 'web search', 'documentation')",
+  sourceUrl: "URL if applicable (e.g., 'https://docs.example.com/api')",
+  originalQuery: "The user's original question/request",
+  gatheringMethod: "model-assisted"
+})
+```
+
+**All fields matter:**
+- `description`: What you found (becomes the filename)
+- `content`: The actual findings (inline evidence)
+- `source`: General source type
+- `sourceUrl`: Specific URL if applicable
+- `originalQuery`: What the user asked for (chain of evidence)
+- `gatheringMethod`: Always "model-assisted" when you gather it
+
+#### Example Flow
+
+**User**: "Can you go find the standard for voice and tone in technical writing?"
+
+**You**: *Searches and finds information*
+
+**You**: *Immediately captures evidence:*
+```
+riotplan_idea_add_evidence({
+  description: "Microsoft Writing Style Guide - Voice and Tone",
+  content: "Key principles from Microsoft Writing Style Guide:\n\n- Use conversational, natural language\n- Be warm and relaxed without being frivolous\n- Use contractions (it's, you're, we're)\n- Address the reader directly (you, your)\n- Avoid jargon and overly technical terms\n- Be brief and get to the point\n\nSource: https://learn.microsoft.com/en-us/style-guide/brand-voice-above-all-simple-human",
+  source: "web search",
+  sourceUrl: "https://learn.microsoft.com/en-us/style-guide/brand-voice-above-all-simple-human",
+  originalQuery: "Can you go find the standard for voice and tone in technical writing?",
+  gatheringMethod: "model-assisted"
+})
+```
+
+**You**: "I found the Microsoft Writing Style Guide's recommendations on voice and tone. I've captured the key principles as evidence. The main themes are conversational language, warmth, and brevity."
+
+#### Anti-Patterns
+
+❌ **Don't investigate without capturing** - If the user asks you to research something, the findings MUST go into evidence/
+
+❌ **Don't wait for the user to ask** - Capture evidence immediately after finding information, not after the user says "where is that thing you found?"
+
+❌ **Don't skip metadata** - Always include `sourceUrl` and `originalQuery` when capturing evidence. This makes evidence useful beyond the plan lifetime.
+
+❌ **Don't use vague descriptions** - The description becomes the filename. Use clear, specific descriptions like "API authentication flow analysis" not "findings"
+
+✅ **Do capture proactively** - Research request → Investigate → Capture evidence → Tell user what you found
+
+✅ **Do include full metadata** - Every field (description, content, source, sourceUrl, originalQuery, gatheringMethod) has value
+
+✅ **Do use descriptive names** - Evidence files should be browsable. "research-voice-tone-standards.md" is better than "evidence-1234567890.md"
+
 ### 5. Decide Next Steps
 
 After exploration, ask:
@@ -278,6 +355,9 @@ riotplan_idea_add_note({
 ❌ Don't create detailed plans yet
 ❌ Don't pressure for commitment
 ❌ Don't skip evidence gathering
+❌ Don't investigate without capturing evidence
+❌ Don't wait for user to ask "where is that thing you found?"
+❌ Don't skip metadata when capturing evidence (sourceUrl, originalQuery matter)
 ❌ Don't stop after creating the idea—begin exploration immediately
 ❌ Don't create a new idea when an existing plan is detected at the provided path
 
@@ -285,7 +365,9 @@ riotplan_idea_add_note({
 ✅ Do ask open questions
 ✅ Do capture all thinking
 ✅ Do surface constraints early
-✅ Do gather supporting materials
+✅ Do gather supporting materials proactively
+✅ Do capture research findings immediately with full metadata
+✅ Do use descriptive evidence filenames
 ✅ Do start the conversation immediately after creating the idea
 ✅ Do detect existing plans when a path is provided
 ✅ Do summarize existing plan state before continuing exploration

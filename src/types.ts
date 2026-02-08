@@ -230,6 +230,12 @@ export interface EvidenceRecord {
     /** Source of evidence */
     source?: string;
 
+    /** Source URL if evidence came from web or external resource */
+    sourceUrl?: string;
+
+    /** Original question or query that prompted gathering this evidence */
+    originalQuery?: string;
+
     /** Filename */
     filename: string;
 
