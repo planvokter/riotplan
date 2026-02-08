@@ -1,6 +1,6 @@
 {
   "name": "@kjerneverk/riotplan",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Framework for long-lived, stateful AI workflows (plans)",
   "type": "module",
   "main": "./dist/index.js",
@@ -52,10 +52,10 @@
     "url": "https://github.com/kjerneverk/riotplan"
   },
   "dependencies": {
-    "@kjerneverk/execution-sampling": "^1.0.2-dev.0",
+    "@kjerneverk/execution-sampling": "^1.0.2",
     "@modelcontextprotocol/sdk": "^1.25.3",
-    "@utilarium/cardigantime": "^0.0.25",
     "@types/inquirer": "^9.0.9",
+    "@utilarium/cardigantime": "^0.0.25",
     "chalk": "^5.4.1",
     "commander": "^14.0.2",
     "inquirer": "^13.2.1",

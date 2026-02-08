@@ -9,6 +9,9 @@ import { resolveDirectory, formatError, createSuccess, formatDate } from "./shar
 import { transitionStage } from "./transition.js";
 import { generatePlan } from "../../ai/generator.js";
 import { loadProvider } from "../../ai/provider-loader.js";
+import { loadArtifacts } from "../../ai/artifacts.js";
+import { validatePlan } from "../../ai/validation.js";
+import { generateProvenanceMarkdown } from "../../ai/provenance.js";
 import type { McpTool, ToolResult, ToolExecutionContext } from "../types.js";
 
 // Tool schema
@@ -50,41 +53,37 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
         );
     }
     
-    // Read IDEA.md to get description
-    let ideaContent = "";
+    // Load all plan artifacts using the shared artifact loader
+    let artifacts;
     try {
-        ideaContent = await readFile(join(planPath, "IDEA.md"), "utf-8");
-    } catch {
-        // IDEA.md might not exist
-    }
-    
-    // Read SHAPING.md if it exists
-    let shapingContent = "";
-    try {
-        shapingContent = await readFile(join(planPath, "SHAPING.md"), "utf-8");
-    } catch {
-        // SHAPING.md might not exist
+        artifacts = await loadArtifacts(planPath);
+    } catch (error) {
+        throw new Error(`Failed to load plan artifacts: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
     
     // Prepare description for AI generation
     let description = args.description;
     if (!description) {
         // Extract core concept from IDEA.md
-        const conceptMatch = ideaContent.match(/## Core Concept\s+([\s\S]+?)(?=\n## |$)/);
-        if (conceptMatch) {
-            description = conceptMatch[1].trim();
+        if (artifacts.ideaContent) {
+            const conceptMatch = artifacts.ideaContent.match(/## Core Concept\s+([\s\S]+?)(?=\n## |$)/);
+            if (conceptMatch) {
+                description = conceptMatch[1].trim();
+            } else {
+                throw new Error("Could not extract description from IDEA.md and no description provided");
+            }
         } else {
-            throw new Error("Could not extract description from IDEA.md and no description provided");
+            throw new Error("IDEA.md not found and no description provided");
         }
     }
     
-    // Add context from idea and shaping
+    // Build fallback context string (for backward compatibility and as fallback)
     let fullContext = description;
-    if (ideaContent) {
-        fullContext += "\n\n--- IDEA CONTEXT ---\n" + ideaContent;
+    if (artifacts.ideaContent) {
+        fullContext += "\n\n--- IDEA CONTEXT ---\n" + artifacts.ideaContent;
     }
-    if (shapingContent) {
-        fullContext += "\n\n--- SHAPING CONTEXT ---\n" + shapingContent;
+    if (artifacts.shapingContent) {
+        fullContext += "\n\n--- SHAPING CONTEXT ---\n" + artifacts.shapingContent;
     }
     
     // Generate plan using AI
@@ -109,11 +108,42 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
         planName: planPath.split('/').pop() || 'Plan',
         description: fullContext,
         stepCount: args.steps,
+        // Structured artifact fields for artifact-aware generation
+        constraints: artifacts.constraints,
+        questions: artifacts.questions,
+        selectedApproach: artifacts.selectedApproach || undefined,
+        evidence: artifacts.evidence,
+        historyContext: artifacts.historyContext,
+        ideaContent: artifacts.ideaContent || undefined,
+        shapingContent: artifacts.shapingContent || undefined,
     };
     
-    const result = await generatePlan(generationContext, provider, {
+    const generationResult = await generatePlan(generationContext, provider, {
         model: args.model,
     });
+    
+    const { plan: result, tiering } = generationResult;
+    
+    // Run validation
+    const validation = validatePlan(result, generationContext);
+    
+    // Build tiering summary for return message
+    const tieringSummary: string[] = [];
+    if (tiering) {
+        tieringSummary.push(`Token budget: ${tiering.totalEstimatedTokens} estimated${tiering.budgetExceeded ? ' (exceeded)' : ''}`);
+        if (tiering.evidenceTiered.full.length > 0) {
+            tieringSummary.push(`Evidence (full): ${tiering.evidenceTiered.full.join(', ')}`);
+        }
+        if (tiering.evidenceTiered.summarized.length > 0) {
+            tieringSummary.push(`Evidence (summarized): ${tiering.evidenceTiered.summarized.join(', ')}`);
+        }
+        if (tiering.evidenceTiered.listOnly.length > 0) {
+            tieringSummary.push(`Evidence (preview only): ${tiering.evidenceTiered.listOnly.join(', ')}`);
+        }
+        if (tiering.historyAbbreviated) {
+            tieringSummary.push(`History: abbreviated`);
+        }
+    }
     
     // Create plan files in existing directory
     
@@ -161,7 +191,7 @@ ${result.approach}
 ## Prerequisites
 
 - [ ] Understanding of requirements from IDEA.md
-${shapingContent ? '- [ ] Review selected approach from SHAPING.md\n' : ''}
+${artifacts.shapingContent ? '- [ ] Review selected approach from SHAPING.md\n' : ''}
 ## Steps
 
 | Step | Name | Description |
@@ -281,19 +311,38 @@ ${step.notes || '_Add any additional notes..._'}
         await writeFile(stepFile, stepContent, "utf-8");
     }
     
-    // 5. Transition to "built" stage
+    // 5. Create PROVENANCE.md
+    const provenanceContent = generateProvenanceMarkdown({
+        plan: result,
+        context: generationContext,
+        validation,
+        tiering,
+        generatedAt: new Date(),
+    });
+    await writeFile(join(planPath, "PROVENANCE.md"), provenanceContent, "utf-8");
+    
+    // 6. Transition to "built" stage
     await transitionStage({
         path: planPath,
         stage: "built",
         reason: `Plan built from ${currentStage} stage with ${result.steps.length} steps`,
     }, context);
     
+    const validationSummary = validation.allWarnings.length > 0 
+        ? `⚠️  Validation warnings: ${validation.allWarnings.length} (see PROVENANCE.md)`
+        : `✅ Validation: all checks passed`;
+    
+    const tieringInfo = tieringSummary.length > 0 
+        ? `\n\nToken Budget:\n${tieringSummary.map(s => `  - ${s}`).join('\n')}`
+        : '';
+    
     return `✅ Plan built successfully!\n\n` +
         `- Generated ${result.steps.length} steps\n` +
-        `- Created SUMMARY.md, EXECUTION_PLAN.md, STATUS.md\n` +
+        `- Created SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md\n` +
         `- Created plan/ directory with step files\n` +
         `- Transitioned to 'built' stage\n` +
-        `- Preserved existing IDEA.md, SHAPING.md, and history\n\n` +
+        `- Preserved existing IDEA.md, SHAPING.md, and history\n` +
+        `- ${validationSummary}${tieringInfo}\n\n` +
         `Next: Use 'riotplan_step_start' to begin execution`;
 }
 
@@ -301,10 +350,12 @@ ${step.notes || '_Add any additional notes..._'}
 export const buildTool: McpTool = {
     name: 'riotplan_build',
     description:
-        'Build plan files in existing idea/shaping directory, transitioning to built stage. ' +
-        'Uses AI generation to create detailed plan from idea and shaping content. ' +
-        'Creates SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, and plan/ directory with steps. ' +
-        'Preserves existing IDEA.md, SHAPING.md, and history.',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. ' +
+        'Build a detailed plan from idea/shaping artifacts using AI generation. ' +
+        'Reads ALL plan artifacts (IDEA.md, SHAPING.md, evidence, history, constraints) ' +
+        'and generates steps grounded in the artifacts. Produces PROVENANCE.md showing ' +
+        'how artifacts shaped the plan. Uses smart tiering for large artifact sets. ' +
+        'Creates SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md, and plan/ directory with steps.',
     inputSchema: {
         type: 'object',
         properties: {

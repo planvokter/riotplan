@@ -71,7 +71,7 @@ async function getUniqueEvidenceFilename(evidenceDir: string, baseFilename: stri
         }
         
         return `${baseFilename}-${counter}`;
-    } catch (error) {
+    } catch {
         // If directory doesn't exist yet, no collision possible
         return baseFilename;
     }

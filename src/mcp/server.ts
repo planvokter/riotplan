@@ -430,6 +430,23 @@ async function main() {
         }
     );
 
+    registerTool(
+        'riotplan_build',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. ' +
+        'Build a detailed plan from idea/shaping artifacts using AI generation. ' +
+        'Reads ALL plan artifacts (IDEA.md, SHAPING.md, evidence, history, constraints) ' +
+        'and generates steps grounded in the artifacts. Produces PROVENANCE.md showing ' +
+        'how artifacts shaped the plan. Uses smart tiering for large artifact sets. ' +
+        'Creates SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md, and plan/ directory with steps.',
+        {
+            path: z.string().optional(),
+            description: z.string().optional(),
+            steps: z.number().optional(),
+            provider: z.string().optional(),
+            model: z.string().optional(),
+        }
+    );
+
     // Idea stage tools
     registerTool(
         'riotplan_idea_create',
