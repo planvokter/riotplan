@@ -29,7 +29,7 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
     let lifecycle: string;
     try {
         lifecycle = await readFile(lifecycleFile, "utf-8");
-    } catch (error) {
+    } catch {
         throw new Error(
             `Could not read LIFECYCLE.md at ${lifecycleFile}. ` +
             `This doesn't appear to be a valid idea/shaping directory. ` +
@@ -97,7 +97,7 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
             apiKey: process.env[`${providerName.toUpperCase()}_API_KEY`],
             session: context.session, // Pass session context for sampling detection
         });
-    } catch (_error) {
+    } catch {
         throw new Error(
             `AI provider not available. ` +
             `Install @kjerneverk/execution-${providerName} and set ${providerName.toUpperCase()}_API_KEY environment variable. ` +

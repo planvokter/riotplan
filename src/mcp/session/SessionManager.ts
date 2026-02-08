@@ -263,6 +263,7 @@ export class SessionManager {
      */
     private log(...messages: string[]): void {
         if (this.options.debug) {
+            // eslint-disable-next-line no-console
             console.log('[SessionManager]', ...messages);
         }
     }
