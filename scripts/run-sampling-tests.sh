@@ -41,57 +41,70 @@ echo ""
 # Change to tests/sampling directory
 cd tests/sampling
 
-# Check if fastmcp.sampling is available
-if ! python3 -c "from fastmcp.sampling import OpenAISamplingHandler" 2>/dev/null; then
+# Determine which Python to use
+if [ -f "venv/bin/python" ]; then
+    PYTHON="venv/bin/python"
+else
+    PYTHON="python3"
+fi
+
+# Check if fastmcp.client.sampling.handlers is available
+if ! $PYTHON -c "from fastmcp.client.sampling.handlers.openai import OpenAISamplingHandler" 2>/dev/null; then
     echo ""
-    echo -e "${YELLOW}⚠️  fastmcp.sampling module not available${NC}"
+    echo -e "${YELLOW}⚠️  fastmcp.client.sampling.handlers module not available${NC}"
     echo ""
-    echo "Note: fastmcp.sampling is a beta feature and may not be in all versions."
+    echo "Note: FastMCP sampling handlers require fastmcp>=2.11.0 with [openai] or [anthropic] extras."
+    echo "Install with: pip install 'fastmcp[openai]>=2.11.0' 'fastmcp[anthropic]>=2.14.1'"
     echo "Skipping sampling tests for now."
     echo ""
     cd ../..
     exit 0
 fi
 
-# Run pytest with verbose output
-# Use venv if available, otherwise use system python3
+# Run pytest with mock handler (fast, no API calls)
+# Use -m integration to run real API tests
 if [ -f "venv/bin/python" ]; then
-    if venv/bin/python -m pytest test_sampling.py -v -s; then
-        echo ""
-        echo -e "${GREEN}✅ All sampling tests passed!${NC}"
-        echo ""
-        cd ../..
-        exit 0
+    PYTEST_CMD="venv/bin/python -m pytest"
+else
+    PYTEST_CMD="python3 -m pytest"
+fi
+
+# Check for --integration flag
+if [[ "$*" == *"--integration"* ]]; then
+    echo -e "${YELLOW}Running integration tests (real API calls)...${NC}"
+    if $PYTEST_CMD test_sampling.py -v -s; then
+        TEST_RESULT=0
     else
-        echo ""
-        echo -e "${RED}❌ Sampling tests failed${NC}"
-        echo ""
-        echo "Check the output above for details."
-        echo "To debug:"
-        echo "  cd tests/sampling"
-        echo "  source venv/bin/activate"
-        echo "  python -m pytest test_sampling.py -v -s"
-        echo ""
-        cd ../..
-        exit 1
+        TEST_RESULT=1
     fi
 else
-    if python3 -m pytest test_sampling.py -v -s; then
-        echo ""
-        echo -e "${GREEN}✅ All sampling tests passed!${NC}"
-        echo ""
-        cd ../..
-        exit 0
+    echo "Running mock tests (no API calls)..."
+    if $PYTEST_CMD test_sampling.py -v -s -m "not integration"; then
+        TEST_RESULT=0
     else
-        echo ""
-        echo -e "${RED}❌ Sampling tests failed${NC}"
-        echo ""
-        echo "Check the output above for details."
-        echo "To debug:"
-        echo "  cd tests/sampling"
-        echo "  python3 -m pytest test_sampling.py -v -s"
-        echo ""
-        cd ../..
-        exit 1
+        TEST_RESULT=1
     fi
+fi
+
+if [ $TEST_RESULT -eq 0 ]; then
+    echo ""
+    echo -e "${GREEN}✅ All sampling tests passed!${NC}"
+    echo ""
+    cd ../..
+    exit 0
+else
+    echo ""
+    echo -e "${RED}❌ Sampling tests failed${NC}"
+    echo ""
+    echo "Check the output above for details."
+    echo "To debug:"
+    echo "  cd tests/sampling"
+    echo "  source venv/bin/activate"
+    echo "  $PYTEST_CMD $PYTEST_ARGS"
+    echo ""
+    echo "To run integration tests with real APIs:"
+    echo "  ./scripts/run-sampling-tests.sh --integration"
+    echo ""
+    cd ../..
+    exit 1
 fi
