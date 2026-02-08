@@ -71,6 +71,10 @@ import {
     buildTool,
     executeBuild,
 } from './build.js';
+import {
+    generateRuleTool,
+    executeGenerateRule,
+} from './generate-rule.js';
 
 /**
  * Base tool executor - wraps command logic
@@ -144,6 +148,9 @@ export async function executeTool(
             // Build tool
             case 'riotplan_build':
                 return await executeBuild(args, context);
+            // Generate rule tool
+            case 'riotplan_generate_rule':
+                return await executeGenerateRule(args, context);
             default:
                 return {
                     success: false,
@@ -198,4 +205,6 @@ export const tools: McpTool[] = [
     transitionTool,
     // Build tool
     buildTool,
+    // Generate rule tool
+    generateRuleTool,
 ];
