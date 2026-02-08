@@ -1,23 +1,108 @@
 /**
  * Provider Loader
  * 
- * Dynamically loads LLM providers based on availability
+ * Dynamically loads LLM providers based on availability and session context.
+ * Supports both MCP sampling (when available) and direct API providers.
  */
 
 import type { Provider } from '../types.js';
+import type { SessionContext } from '../mcp/session/index.js';
 
 export interface ProviderConfig {
     name: string;
     apiKey?: string;
     model?: string;
+    session?: SessionContext;
 }
 
 /**
- * Load a provider by name
+ * Load a provider based on session context and configuration
+ * 
+ * Priority:
+ * 1. If session has sampling available → use SamplingProvider
+ * 2. If explicit provider name given → use that provider
+ * 3. If API keys available → use default provider
+ * 4. Otherwise → error with helpful message
  */
 export async function loadProvider(config: ProviderConfig): Promise<Provider> {
-    const { name, apiKey } = config;
+    const { name, apiKey, session } = config;
     
+    // Priority 1: Check if session supports sampling
+    if (session && session.providerMode === 'sampling') {
+        return await loadSamplingProvider(session);
+    }
+    
+    // Priority 2: Explicit provider name
+    if (name) {
+        return await loadDirectProvider(name, apiKey);
+    }
+    
+    // Priority 3: Default provider from environment
+    const defaultProvider = getDefaultProvider();
+    if (defaultProvider) {
+        return await loadDirectProvider(defaultProvider, apiKey);
+    }
+    
+    // Priority 4: No provider available
+    const clientName = session?.clientInfo?.name ?? 'your client';
+    const errorMessage = [
+        '❌ No AI provider available for RiotPlan.',
+        '',
+        `Your client (${clientName}) does not support MCP sampling, and no API keys are configured.`,
+        '',
+        'To use RiotPlan\'s AI generation features, either:',
+        '',
+        '1. Use a client that supports MCP sampling:',
+        '   - GitHub Copilot (supports sampling)',
+        '   - FastMCP (Python framework for testing)',
+        '',
+        '2. Set up an API key:',
+        '   - ANTHROPIC_API_KEY for Claude models (recommended)',
+        '   - OPENAI_API_KEY for GPT models',
+        '   - GOOGLE_API_KEY for Gemini models',
+        '',
+        '3. Create plan steps manually:',
+        '   - Use riotplan_step_add to add steps without AI',
+        '',
+        'For more information: https://github.com/kjerneverk/riotplan#ai-providers',
+    ].join('\n');
+    
+    throw new Error(errorMessage);
+}
+
+/**
+ * Load a sampling provider for MCP
+ */
+async function loadSamplingProvider(session: SessionContext): Promise<Provider> {
+    try {
+        const { createSamplingProvider } = await import('@kjerneverk/execution-sampling');
+        
+        const provider = createSamplingProvider({
+            sessionId: session.sessionId,
+            clientName: session.clientInfo?.name,
+            supportsTools: false, // RiotPlan doesn't use tools in generation
+            debug: false,
+        });
+        
+        // TODO: Wire up MCP client for sending sampling requests
+        // This will be done in Step 8
+        
+        return provider;
+    } catch (error) {
+        if (error instanceof Error && (error.message.includes('Cannot find package') || error.message.includes('Cannot find module'))) {
+            throw new Error(
+                'Sampling provider (@kjerneverk/execution-sampling) is not installed.\n' +
+                'This is a development error - the package should be installed as a dependency.'
+            );
+        }
+        throw error;
+    }
+}
+
+/**
+ * Load a direct API provider by name
+ */
+async function loadDirectProvider(name: string, apiKey?: string): Promise<Provider> {
     try {
         switch (name.toLowerCase()) {
             case 'anthropic':
@@ -37,12 +122,21 @@ export async function loadProvider(config: ProviderConfig): Promise<Provider> {
         }
     } catch (error) {
         if (error instanceof Error && (error.message.includes('Cannot find package') || error.message.includes('Cannot find module'))) {
-            throw new Error(
-                `Provider '${name}' is not installed. Install it with:\n` +
-                `  npm install @kjerneverk/execution-${name}\n\n` +
-                `Note: If you're using RiotPlan via MCP (e.g., in Cursor), consider using manual step creation ` +
-                `with riotplan_step_add instead of riotplan_generate to avoid needing separate AI providers.`
-            );
+            const errorMessage = [
+                `❌ Provider '${name}' is not installed.`,
+                '',
+                'To use this provider, install it:',
+                `  npm install @kjerneverk/execution-${name}`,
+                '',
+                'Then set the appropriate API key:',
+                `  export ${name.toUpperCase()}_API_KEY="your-key-here"`,
+                '',
+                'Alternative options:',
+                '  1. Use a different provider (anthropic, openai, gemini)',
+                '  2. Use RiotPlan via MCP with a sampling-enabled client',
+                '  3. Create plan steps manually with riotplan_step_add',
+            ].join('\n');
+            throw new Error(errorMessage);
         }
         throw error;
     }

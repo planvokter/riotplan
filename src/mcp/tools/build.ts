@@ -88,12 +88,14 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
     }
     
     // Generate plan using AI
+    // Session-aware provider loading: will use sampling if available, otherwise direct API
     const providerName = args.provider || 'anthropic';
     let provider;
     try {
         provider = await loadProvider({
             name: providerName,
             apiKey: process.env[`${providerName.toUpperCase()}_API_KEY`],
+            session: context.session, // Pass session context for sampling detection
         });
     } catch (_error) {
         throw new Error(
