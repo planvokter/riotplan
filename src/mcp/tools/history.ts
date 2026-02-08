@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir, appendFile, readdir } from "node:fs/promises";
-import { formatTimestamp } from "./shared.js";
+import { formatTimestamp, resolveDirectory } from "./shared.js";
 import type { ToolResult, ToolExecutionContext } from '../types.js';
 import type { TimelineEvent, CheckpointMetadata } from '../../types.js';
 
@@ -434,50 +434,60 @@ export async function historyShow(args: z.infer<typeof HistoryShowSchema>): Prom
 
 // Tool executors for MCP
 
-export async function executeCheckpointCreate(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeCheckpointCreate(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = CheckpointCreateSchema.parse(args);
-        const result = await checkpointCreate(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await checkpointCreate({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeCheckpointList(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeCheckpointList(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = CheckpointListSchema.parse(args);
-        const result = await checkpointList(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await checkpointList({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeCheckpointShow(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeCheckpointShow(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = CheckpointShowSchema.parse(args);
-        const result = await checkpointShow(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await checkpointShow({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeCheckpointRestore(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeCheckpointRestore(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = CheckpointRestoreSchema.parse(args);
-        const result = await checkpointRestore(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await checkpointRestore({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeHistoryShow(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeHistoryShow(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = HistoryShowSchema.parse(args);
-        const result = await historyShow(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await historyShow({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };

@@ -10,10 +10,27 @@ Guide collaborative exploration of a new idea without premature commitment. This
 - Starting to think about a problem
 - Not ready to commit to a full plan yet
 - Want to capture thoughts and gather evidence
+- User wants to resume exploring an existing plan
 
 ## Workflow
 
-### 1. Extract or Gather Idea Details
+### 1. Detect Existing Plan or Create New
+
+**FIRST: Check if the user provided a path to an existing plan.**
+
+Look for:
+- A file path or directory path in the user's message
+- Plan files: IDEA.md, SHAPING.md, STATUS.md, or LIFECYCLE.md
+
+**If user provides a path:**
+- Check if IDEA.md, SHAPING.md, STATUS.md, or LIFECYCLE.md exists at that path
+- If YES → this is an EXISTING plan, go to step 1b (Resume Existing Plan)
+- If NO → this is a new plan, continue to step 1a (Extract or Gather Idea Details)
+
+**If user doesn't provide a path:**
+- Continue to step 1a (Extract or Gather Idea Details) to create a new idea
+
+### 1a. Extract or Gather Idea Details (New Plans Only)
 
 **FIRST: Check if the user already provided details in their message.**
 
@@ -42,7 +59,41 @@ User says: "explore_idea real-time notifications for users"
 User says: "explore_idea"
 → Ask: "What idea would you like to explore? Give me a short name and brief description."
 
-### 2. Create the Idea
+### 1b. Resume Existing Plan (Existing Plans Only)
+
+**If an existing plan is detected:**
+
+1. **Read the current state:**
+   ```
+   riotplan_status({ path: "/path/to/plan" })
+   riotplan_history_show({ path: "/path/to/plan", limit: 10 })
+   ```
+
+2. **Summarize what exists:**
+   - "I see an existing plan: [name]"
+   - "Current stage: [idea/shaping/built/executing]"
+   - "The plan has [N] notes, [N] constraints, [N] questions"
+   - "Last activity: [last action from history]"
+
+3. **Ask where to pick up:**
+   - "Where would you like to pick up?"
+   - "Want to continue exploring, or are you ready to move to the next stage?"
+
+4. **Continue exploration:**
+   - Use the same exploration workflow as new ideas (steps 3-5)
+   - Add new notes, constraints, questions, evidence as the conversation continues
+   - Do NOT create a new idea - the plan already exists
+
+**Example:**
+
+**User**: "explore_idea /Users/me/plans/user-notifications"
+
+**AI**: *Checks for plan files, finds IDEA.md*
+*Calls riotplan_status and riotplan_history_show*
+
+**AI**: "I see an existing plan: user-notifications. Current stage: idea. The plan has 3 notes, 2 constraints, and 4 questions. Last activity: Added constraint about mobile support. Where would you like to pick up?"
+
+### 2. Create the Idea (New Plans Only)
 
 Once you have both code and description, create the idea immediately:
 
@@ -206,6 +257,20 @@ riotplan_idea_add_note({
 
 **AI**: *Captures narrative and extracts constraints*
 
+### Example 5: Resuming an Existing Plan
+
+**User**: "explore_idea /Users/me/plans/riotplan-losing-focus"
+
+**AI**: *Checks path, finds IDEA.md, SHAPING.md, LIFECYCLE.md*
+*Calls riotplan_status and riotplan_history_show*
+
+**AI**: "I see an existing plan: riotplan-losing-focus. Current stage: shaping. The plan has 8 notes, 4 constraints, and 6 questions. Two approaches have been added: 'Embedded Behavioral Layer' and 'Session-Based State Machine'. The 'Embedded Behavioral Layer' approach was selected. Where would you like to pick up?"
+
+**User**: "I want to add more notes about the heartbeat design"
+
+**AI**: "Great, let's capture those thoughts."
+*Uses riotplan_idea_add_note to add new notes as the user discusses*
+
 ## Anti-Patterns
 
 ❌ Don't ask for information the user already provided
@@ -214,6 +279,7 @@ riotplan_idea_add_note({
 ❌ Don't pressure for commitment
 ❌ Don't skip evidence gathering
 ❌ Don't stop after creating the idea—begin exploration immediately
+❌ Don't create a new idea when an existing plan is detected at the provided path
 
 ✅ Do extract information from the user's message
 ✅ Do ask open questions
@@ -221,6 +287,8 @@ riotplan_idea_add_note({
 ✅ Do surface constraints early
 ✅ Do gather supporting materials
 ✅ Do start the conversation immediately after creating the idea
+✅ Do detect existing plans when a path is provided
+✅ Do summarize existing plan state before continuing exploration
 
 ## Transition Criteria
 

@@ -96,17 +96,30 @@ riotplan_shaping_select({
 })
 ```
 
-### 7. Transition to Built
+### 7. Build Plan
 
-After selection, transition to build detailed plan:
+After selection, build the detailed plan:
+```
+riotplan_build({
+  description: "Optional: Override description from IDEA.md",
+  steps: 5  // Optional: Specify number of steps
+})
+```
+
+This will:
+- Use AI to generate detailed plan from IDEA.md and SHAPING.md content
+- Create SUMMARY.md, EXECUTION_PLAN.md, STATUS.md
+- Create plan/ directory with step files
+- Transition to "built" stage automatically
+- Preserve all existing idea and shaping content
+
+Alternatively, if you just want to transition stages without generating plan files:
 ```
 riotplan_transition({
   stage: "built",
   reason: "Approach selected and validated"
 })
 ```
-
-Now generate the detailed plan based on the shaped approach.
 
 ## Key Principles
 

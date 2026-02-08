@@ -2,7 +2,8 @@
  * Shared utilities for MCP tools
  */
 
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { access } from 'node:fs/promises';
 import type { ToolResult, ToolExecutionContext } from '../types.js';
 
 export function formatTimestamp(): string {
@@ -61,5 +62,62 @@ export function createSuccess(data: any, message?: string): ToolResult {
         success: true,
         data,
         message,
+    };
+}
+
+/**
+ * Check if a directory is an idea or shaping directory
+ * 
+ * @param path - Path to check
+ * @returns Object with detection result and details
+ */
+export async function isIdeaOrShapingDirectory(path: string): Promise<{
+    isIdeaOrShaping: boolean;
+    detected: string[];
+    stage?: string;
+}> {
+    const detected: string[] = [];
+    let stage: string | undefined;
+
+    // Check for IDEA.md
+    try {
+        await access(join(path, 'IDEA.md'));
+        detected.push('IDEA.md');
+    } catch {
+        // File doesn't exist
+    }
+
+    // Check for SHAPING.md
+    try {
+        await access(join(path, 'SHAPING.md'));
+        detected.push('SHAPING.md');
+    } catch {
+        // File doesn't exist
+    }
+
+    // Check for LIFECYCLE.md and extract stage
+    try {
+        await access(join(path, 'LIFECYCLE.md'));
+        detected.push('LIFECYCLE.md');
+        
+        // Try to read and extract stage
+        try {
+            const { readFile } = await import('node:fs/promises');
+            const content = await readFile(join(path, 'LIFECYCLE.md'), 'utf-8');
+            const stageMatch = content.match(/\*\*Stage\*\*: `(\w+)`/);
+            if (stageMatch) {
+                stage = stageMatch[1];
+            }
+        } catch {
+            // Couldn't read file
+        }
+    } catch {
+        // File doesn't exist
+    }
+
+    return {
+        isIdeaOrShaping: detected.length > 0 && (stage === 'idea' || stage === 'shaping' || !stage),
+        detected,
+        stage,
     };
 }

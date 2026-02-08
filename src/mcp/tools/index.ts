@@ -63,6 +63,18 @@ import {
     executeCheckpointRestore,
     executeHistoryShow,
 } from './history.js';
+import {
+    transitionTool,
+    executeTransition,
+} from './transition.js';
+import {
+    buildTool,
+    executeBuild,
+} from './build.js';
+import {
+    generateRuleTool,
+    executeGenerateRule,
+} from './generate-rule.js';
 
 /**
  * Base tool executor - wraps command logic
@@ -130,6 +142,15 @@ export async function executeTool(
                 return await executeCheckpointRestore(args, context);
             case 'riotplan_history_show':
                 return await executeHistoryShow(args, context);
+            // Transition tool
+            case 'riotplan_transition':
+                return await executeTransition(args, context);
+            // Build tool
+            case 'riotplan_build':
+                return await executeBuild(args, context);
+            // Generate rule tool
+            case 'riotplan_generate_rule':
+                return await executeGenerateRule(args, context);
             default:
                 return {
                     success: false,
@@ -180,4 +201,10 @@ export const tools: McpTool[] = [
     checkpointShowTool,
     checkpointRestoreTool,
     historyShowTool,
+    // Transition tool
+    transitionTool,
+    // Build tool
+    buildTool,
+    // Generate rule tool
+    generateRuleTool,
 ];

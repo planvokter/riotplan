@@ -29,6 +29,9 @@ const cardigantime = create({
     defaults: {
         configDirectory: process.cwd(),
         isRequired: false, // Config file is optional
+        pathResolution: {
+            pathFields: ['planDirectory', 'templateDirectory'],
+        },
     },
     configShape: RiotPlanConfigSchema.shape,
     features: ['config'],
@@ -86,8 +89,39 @@ export async function loadConfig(): Promise<RiotPlanConfig | null> {
             return null;
         }
 
-        // Re-throw validation errors
-        throw error;
+        // Enhance error message for better debugging
+        if (error instanceof Error) {
+            // Check if it's a JSON parsing error
+            if (error.message.includes('JSON') || error.message.includes('parse')) {
+                throw new Error(
+                    `Failed to parse RiotPlan configuration file: ${error.message}\n\n` +
+                    `Please check that your config file (riotplan.config.* or .riotplan/config.*) contains valid JSON/YAML/JS.\n` +
+                    `Common issues:\n` +
+                    `- Missing quotes around strings\n` +
+                    `- Trailing commas in JSON\n` +
+                    `- Invalid YAML indentation\n\n` +
+                    `Original error: ${error.message}`
+                );
+            }
+            
+            // Check if it's a validation error
+            if (error.message.includes('validation') || error.message.includes('schema')) {
+                throw new Error(
+                    `RiotPlan configuration validation failed: ${error.message}\n\n` +
+                    `Valid configuration options:\n` +
+                    `- planDirectory: string (path to plans directory)\n` +
+                    `- defaultProvider: 'anthropic' | 'openai' | 'gemini'\n` +
+                    `- defaultModel: string\n` +
+                    `- templateDirectory: string (path to custom templates)\n\n` +
+                    `Original error: ${error.message}`
+                );
+            }
+        }
+
+        // Re-throw other errors with context
+        throw new Error(
+            `Failed to load RiotPlan configuration: ${error instanceof Error ? error.message : String(error)}`
+        );
     }
 }
 

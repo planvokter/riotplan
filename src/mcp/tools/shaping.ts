@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
-import { formatTimestamp } from "./shared.js";
+import { formatTimestamp, resolveDirectory } from "./shared.js";
 import { logEvent } from "./history.js";
 
 // Tool schemas
@@ -332,60 +332,72 @@ export async function shapingSelect(args: z.infer<typeof ShapingSelectSchema>): 
 // Tool executors for MCP
 import type { ToolResult, ToolExecutionContext } from '../types.js';
 
-export async function executeShapingStart(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeShapingStart(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingStartSchema.parse(args);
-        const result = await shapingStart(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await shapingStart({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeShapingAddApproach(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeShapingAddApproach(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingAddApproachSchema.parse(args);
-        const result = await shapingAddApproach(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await shapingAddApproach({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeShapingAddFeedback(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeShapingAddFeedback(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingAddFeedbackSchema.parse(args);
-        const result = await shapingAddFeedback(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await shapingAddFeedback({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeShapingAddEvidence(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeShapingAddEvidence(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingAddEvidenceSchema.parse(args);
-        const result = await shapingAddEvidence(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await shapingAddEvidence({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeShapingCompare(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeShapingCompare(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingCompareSchema.parse(args);
-        const result = await shapingCompare(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await shapingCompare({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-export async function executeShapingSelect(args: any, _context: ToolExecutionContext): Promise<ToolResult> {
+export async function executeShapingSelect(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingSelectSchema.parse(args);
-        const result = await shapingSelect(validated);
+        // Use directory resolution logic when no explicit path is provided
+        const resolvedPath = validated.path || resolveDirectory(args, context);
+        const result = await shapingSelect({ ...validated, path: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
