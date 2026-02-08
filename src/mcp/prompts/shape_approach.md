@@ -11,6 +11,43 @@ Collaboratively explore and compare different approaches to solving a problem be
 - Significant tradeoffs to consider
 - Need to align on direction before building
 
+## Critical Context Sources
+
+**Before proposing approaches, you MUST read the plan artifacts to understand what you're shaping:**
+
+### 1. The Idea File (`IDEA.md`)
+
+Read this completely to understand:
+- **Core Concept**: What problem are we solving?
+- **Constraints**: Requirements that must be honored in any approach
+- **Questions**: Uncertainties that need addressing
+- **Evidence**: Research and materials gathered during exploration
+
+**Action**: Read `IDEA.md` completely. Every approach must honor the constraints and address the core concept.
+
+### 2. Evidence Files (`evidence/` directory)
+
+Review supporting materials that inform approach decisions:
+- Research findings
+- Example implementations
+- Reference documents
+- Analysis and case studies
+
+**Action**: List and read evidence files. Approaches should be informed by evidence, not just conversation memory.
+
+### 3. Timeline (`.history/timeline.jsonl`)
+
+Understand the evolution of thinking:
+- Notes and observations from exploration
+- Questions that were raised and answered
+- Constraints discovered during exploration
+
+**Action**: Read recent timeline events to understand the full context.
+
+**DO NOT SKIP THIS STEP**. Approaches proposed without reading the plan artifacts will be superficial and may violate constraints or ignore evidence.
+
+**Anti-Pattern**: Do NOT rely on conversation memory alone — the plan files are the source of truth.
+
 ## Workflow
 
 ### 1. Start Shaping

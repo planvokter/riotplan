@@ -11,6 +11,50 @@ Guide intelligent, high-level plan execution with automatic state management. Th
 - Resuming after a break
 - Need guided, conversational execution experience
 
+## Critical Context Sources
+
+**Before beginning execution, you MUST read all plan artifacts to understand what you're implementing:**
+
+### 1. The Idea File (`IDEA.md`)
+
+Read this to understand:
+- **Core Concept**: What are we building and why?
+- **Constraints**: Requirements that must be honored during execution
+- **Questions**: Uncertainties that were raised and resolved
+
+**Action**: Read `IDEA.md` completely.
+
+### 2. Shaping Artifacts (`SHAPING.md`)
+
+If the plan went through shaping, read:
+- **Selected Approach**: Which strategy was chosen and why
+- **Tradeoffs**: What was gained and sacrificed with this choice
+- **Assumptions**: Conditions that must hold true
+
+**Action**: Read `SHAPING.md` to understand the approach being implemented.
+
+### 3. Evidence Files (`evidence/` directory)
+
+Review supporting materials:
+- Research findings
+- Example implementations
+- Reference documents
+
+**Action**: List and review evidence files. Implementation should incorporate evidence findings.
+
+### 4. Step Files (`plan/` directory)
+
+Read the step files to understand the execution plan:
+- What each step accomplishes
+- Dependencies between steps
+- Acceptance criteria
+
+**Action**: Review step files to understand the full plan.
+
+**DO NOT SKIP THIS STEP**. Execution without reading plan artifacts will result in implementation that doesn't match the plan or violates constraints.
+
+**Anti-Pattern**: Do NOT rely on conversation memory alone — the plan files are the source of truth.
+
 ## Workflow
 
 ### 0. Verify Plan Structure and Step Files

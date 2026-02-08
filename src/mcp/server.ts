@@ -413,9 +413,16 @@ async function main() {
         'riotplan_idea_add_evidence',
         '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add evidence to an idea. Attach supporting materials like diagrams, documents, or examples.',
         {
-            evidencePath: z.string(),
+            evidencePath: z.string().optional(),
             description: z.string(),
             path: z.string().optional(),
+            content: z.string().optional(),
+            source: z.string().optional(),
+            sourceUrl: z.string().optional(),
+            originalQuery: z.string().optional(),
+            gatheringMethod: z.enum(["manual", "model-assisted"]).optional(),
+            relevanceScore: z.number().min(0).max(1).optional(),
+            summary: z.string().optional(),
         }
     );
 
@@ -476,9 +483,16 @@ async function main() {
         '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add evidence for an approach. Attach supporting materials that inform the decision.',
         {
             approach: z.string(),
-            evidencePath: z.string(),
+            evidencePath: z.string().optional(),
             description: z.string(),
             path: z.string().optional(),
+            content: z.string().optional(),
+            source: z.string().optional(),
+            sourceUrl: z.string().optional(),
+            originalQuery: z.string().optional(),
+            gatheringMethod: z.enum(["manual", "model-assisted"]).optional(),
+            relevanceScore: z.number().min(0).max(1).optional(),
+            summary: z.string().optional(),
         }
     );
 
@@ -553,6 +567,19 @@ async function main() {
         {
             projectPath: z.string().optional(),
             force: z.boolean().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_read_context',
+        '[RiotPlan] Load all plan artifacts in a single call for stage transitions. ' +
+            'Returns IDEA.md content, SHAPING.md content (if exists), evidence file list with previews, ' +
+            'recent history events, and extracted constraints/questions. ' +
+            'Use this at stage transitions to ensure you have full context before proceeding. ' +
+            'The plan files are the source of truth - do not rely on conversation memory alone.',
+        {
+            path: z.string().optional(),
+            depth: z.enum(['summary', 'full']).optional(),
         }
     );
 

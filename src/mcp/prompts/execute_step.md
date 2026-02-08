@@ -27,7 +27,11 @@ This will show you:
 
 Verify that prerequisites are met and identify which step to execute.
 
-## Step 2: Read Step Details
+## Step 2: Read Step Details and Evidence
+
+**CRITICAL**: Before implementing, you MUST read the step file AND any relevant evidence.
+
+### 2a. Read the Step File
 
 Fetch the step resource to get full content and acceptance criteria:
 
@@ -49,6 +53,19 @@ Review the step content to understand:
 - Acceptance criteria
 - Dependencies and context
 - Testing requirements
+
+### 2b. Check for Relevant Evidence
+
+**Before implementing, check if evidence exists that informs this step:**
+
+1. List files in the `evidence/` directory
+2. Read any evidence files that are relevant to this step
+3. Look for evidence referenced in the step file
+4. Check if the step mentions specific research, examples, or documentation
+
+**Action**: If evidence exists, read it. Implementation should incorporate evidence findings, not just conversation memory.
+
+**Anti-Pattern**: Do NOT implement from memory alone — if evidence files exist, they contain important details that should be incorporated.
 
 ## Step 3: Mark Step as Started
 
