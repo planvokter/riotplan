@@ -61,26 +61,46 @@ fi
 
 # Check if FastMCP is installed
 if ! python3 -c "import fastmcp" 2>/dev/null; then
-    echo -e "${YELLOW}⚠️  FastMCP not installed${NC}"
+    echo -e "${YELLOW}⚠️  FastMCP not installed, setting up Python environment...${NC}"
     echo ""
-    echo "Install dependencies:"
-    echo "  cd tests/sampling"
-    echo "  python3 -m venv venv"
-    echo "  source venv/bin/activate"
-    echo "  pip install -r requirements.txt"
-    echo ""
-    exit 1
+    
+    # Create and activate venv
+    echo "Creating Python virtual environment..."
+    cd tests/sampling
+    
+    if [ ! -d "venv" ]; then
+        python3 -m venv venv
+    fi
+    
+    # Activate venv and install requirements
+    echo "Installing dependencies..."
+    if [ -f "venv/bin/activate" ]; then
+        # Source venv and install
+        bash -c "source venv/bin/activate && pip install -r requirements.txt"
+    else
+        echo -e "${RED}❌ Failed to create virtual environment${NC}"
+        exit 1
+    fi
+    
+    cd ../..
 fi
 
 # Check if pytest is installed
 if ! python3 -c "import pytest" 2>/dev/null; then
-    echo -e "${YELLOW}⚠️  pytest not installed${NC}"
+    echo -e "${YELLOW}⚠️  pytest not installed, installing dependencies...${NC}"
     echo ""
-    echo "Install dependencies:"
-    echo "  cd tests/sampling"
-    echo "  pip install -r requirements.txt"
-    echo ""
-    exit 1
+    
+    cd tests/sampling
+    
+    if [ -f "venv/bin/activate" ]; then
+        bash -c "source venv/bin/activate && pip install -r requirements.txt"
+    else
+        # Create venv if it doesn't exist
+        python3 -m venv venv
+        bash -c "source venv/bin/activate && pip install -r requirements.txt"
+    fi
+    
+    cd ../..
 fi
 
 # Check for API keys (optional - tests will skip if not set)

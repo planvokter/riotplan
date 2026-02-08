@@ -52,6 +52,7 @@
     "url": "https://github.com/kjerneverk/riotplan"
   },
   "dependencies": {
+    "@kjerneverk/execution-sampling": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@utilarium/cardigantime": "^0.0.25",
     "@types/inquirer": "^9.0.9",
