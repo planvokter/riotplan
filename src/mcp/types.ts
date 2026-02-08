@@ -123,6 +123,7 @@ export interface ToolExecutionContext {
     config?: any;
     logger?: any;
     session?: any; // SessionContext from session module
+    mcpServer?: any; // MCP server instance for sampling requests
     progressCallback?: ProgressCallback;
     sendNotification?: (notification: {
         method: string;

@@ -54,8 +54,7 @@ async function main() {
     process.env.RIOTPLAN_MCP_SERVER = 'true';
     
     // Initialize session manager for tracking client capabilities
-    // Enable debug logging to show provider mode detection
-    const sessionManager = createSessionManager({ debug: true });
+    const sessionManager = createSessionManager({ debug: false });
     
     // For STDIO transport, we have a single session
     // Generate session ID that will be used for the connection
@@ -65,14 +64,23 @@ async function main() {
     // For now, we create a placeholder that assumes STDIO transport
     // The McpServer API doesn't expose initialization hooks, so we'll
     // create the session with default capabilities and update if needed
+    // 
+    // WORKAROUND: Assume sampling capability is available when running via MCP
+    // This allows FastMCP tests to work. In the future, we should switch to
+    // the lower-level Server API to properly intercept the initialize request.
     const currentSession = sessionManager.createSession(
         sessionId,
         'stdio',
         {
             params: {
                 protocolVersion: '2025-11-25',
-                capabilities: {},
-                clientInfo: undefined,
+                capabilities: {
+                    sampling: {}, // Assume sampling is available
+                },
+                clientInfo: {
+                    name: 'unknown',
+                    version: '0.0.0',
+                },
             }
         }
     );
@@ -130,6 +138,56 @@ async function main() {
     );
 
     // ========================================================================
+    // Sampling Support: Wire up client capabilities and sampling client
+    // ========================================================================
+
+    // Create sampling client wrapper that provides the sendRequest() interface
+    // expected by SamplingProvider. Delegates to the Server's createMessage()
+    // method which sends sampling/createMessage requests back to the MCP client.
+    const samplingClient = {
+        sendRequest: async (method: string, params: any) => {
+            if (method === 'sampling/createMessage') {
+                return await server.server.createMessage(params);
+            }
+            throw new Error(`Unsupported sampling method: ${method}`);
+        }
+    };
+
+    // After MCP initialization handshake completes, update session with real
+    // client capabilities (replacing the placeholder defaults set above).
+    // The initialize request contains the client's actual capability declarations.
+    server.server.oninitialized = () => {
+        const clientCapabilities = server.server.getClientCapabilities();
+        const clientVersion = server.server.getClientVersion();
+
+        if (clientCapabilities) {
+            currentSession.capabilities = clientCapabilities as any;
+            currentSession.samplingAvailable = clientCapabilities.sampling !== undefined;
+        }
+        if (clientVersion) {
+            currentSession.clientInfo = clientVersion as any;
+        }
+
+        // Re-determine provider mode based on actual client capabilities
+        if (currentSession.samplingAvailable) {
+            currentSession.providerMode = 'sampling';
+        } else if (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_API_KEY) {
+            currentSession.providerMode = 'direct';
+        } else {
+            currentSession.providerMode = 'none';
+        }
+
+        // eslint-disable-next-line no-console
+        console.error(
+            `[RiotPlan] Session initialized:`,
+            `client=${currentSession.clientInfo?.name ?? 'unknown'}`,
+            `v${currentSession.clientInfo?.version ?? 'unknown'},`,
+            `sampling=${currentSession.samplingAvailable},`,
+            `mode=${currentSession.providerMode}`
+        );
+    };
+
+    // ========================================================================
     // Tools Handlers
     // ========================================================================
 
@@ -158,6 +216,7 @@ async function main() {
                         config: undefined,
                         logger: undefined,
                         session: currentSession,  // Add session context for provider loading
+                        mcpServer: samplingClient,  // Sampling client wrapper with sendRequest()
                         sendNotification: async (notification: {
                             method: string;
                             params: {

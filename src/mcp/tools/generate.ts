@@ -40,13 +40,15 @@ export const generateTool: McpTool = {
 
 export async function executeGenerate(
     args: any,
-    _context: ToolExecutionContext
+    context: ToolExecutionContext
 ): Promise<ToolResult> {
     const providerName = args.provider || 'anthropic';
     try {
         const provider = await loadProvider({
             name: providerName,
             apiKey: process.env[`${providerName.toUpperCase()}_API_KEY`],
+            session: context.session,
+            mcpServer: context.mcpServer,
         });
         
         const generationContext = {

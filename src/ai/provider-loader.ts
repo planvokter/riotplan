@@ -13,6 +13,7 @@ export interface ProviderConfig {
     apiKey?: string;
     model?: string;
     session?: SessionContext;
+    mcpServer?: any; // MCP server instance for sampling
 }
 
 /**
@@ -25,11 +26,11 @@ export interface ProviderConfig {
  * 4. Otherwise → error with helpful message
  */
 export async function loadProvider(config: ProviderConfig): Promise<Provider> {
-    const { name, apiKey, session } = config;
+    const { name, apiKey, session, mcpServer } = config;
     
     // Priority 1: Check if session supports sampling
     if (session && session.providerMode === 'sampling') {
-        return await loadSamplingProvider(session);
+        return await loadSamplingProvider(session, mcpServer);
     }
     
     // Priority 2: Explicit provider name
@@ -73,7 +74,7 @@ export async function loadProvider(config: ProviderConfig): Promise<Provider> {
 /**
  * Load a sampling provider for MCP
  */
-async function loadSamplingProvider(session: SessionContext): Promise<Provider> {
+async function loadSamplingProvider(session: SessionContext, mcpServer?: any): Promise<Provider> {
     try {
         const { createSamplingProvider } = await import('@kjerneverk/execution-sampling');
         
@@ -84,8 +85,10 @@ async function loadSamplingProvider(session: SessionContext): Promise<Provider> 
             debug: false,
         });
         
-        // TODO: Wire up MCP client for sending sampling requests
-        // This will be done in Step 8
+        // Wire up MCP server for sending sampling requests
+        if (mcpServer) {
+            provider.setSamplingClient(mcpServer);
+        }
         
         return provider;
     } catch (error) {
