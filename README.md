@@ -8,6 +8,8 @@ Part of [Kjerneverk](https://kjerneverk.github.io) - structured formats for work
 
 **Now available as an MCP server!** Integrate with Cursor and other AI assistants - see [MCP Integration](#mcp-integration) below.
 
+**✨ MCP Sampling Support** - No duplicate API keys needed when using RiotPlan via MCP! [Learn more →](docs/SAMPLING.md)
+
 ## Why RiotPlan?
 
 ### Before: Inadequate Planning
