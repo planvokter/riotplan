@@ -57,9 +57,11 @@ export async function executeGenerate(
             stepCount: args.steps,
         };
         
-        const result = await generatePlan(generationContext, provider, {
+        const generationResult = await generatePlan(generationContext, provider, {
             model: args.model,
         });
+        
+        const { plan: result } = generationResult;
 
         return createSuccess(
             {
