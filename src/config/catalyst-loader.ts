@@ -6,15 +6,13 @@
  * and uses the @kjerneverk/riotplan-catalyst package to load and merge them.
  */
 
-import { resolve, dirname, isAbsolute } from 'node:path';
+import { resolve, isAbsolute } from 'node:path';
 import { existsSync } from 'node:fs';
 import {
-  loadCatalyst,
-  loadCatalystSafe,
-  resolveCatalysts,
-  mergeCatalysts,
-  type Catalyst,
-  type MergedCatalyst,
+    loadCatalystSafe,
+    mergeCatalysts,
+    type Catalyst,
+    type MergedCatalyst,
 } from '@kjerneverk/riotplan-catalyst';
 import type { RiotPlanConfig } from './schema.js';
 
@@ -28,13 +26,13 @@ let catalystCacheKey: string | null = null;
  * Generate a cache key from config to detect when catalysts have changed
  */
 function generateCacheKey(config: RiotPlanConfig | null): string {
-  if (!config?.catalysts || config.catalysts.length === 0) {
-    return 'no-catalysts';
-  }
-  return JSON.stringify({
-    catalysts: config.catalysts,
-    catalystDirectory: config.catalystDirectory,
-  });
+    if (!config?.catalysts || config.catalysts.length === 0) {
+        return 'no-catalysts';
+    }
+    return JSON.stringify({
+        catalysts: config.catalysts,
+        catalystDirectory: config.catalystDirectory,
+    });
 }
 
 /**
@@ -52,41 +50,41 @@ function generateCacheKey(config: RiotPlanConfig | null): string {
  * @throws Error if catalyst cannot be resolved
  */
 function resolveCatalystPath(
-  identifier: string,
-  configFileDir: string,
-  catalystDirectory?: string
+    identifier: string,
+    configFileDir: string,
+    catalystDirectory?: string
 ): string {
-  // If it's an absolute path, use it directly
-  if (isAbsolute(identifier)) {
-    if (!existsSync(identifier)) {
-      throw new Error(`Catalyst not found at absolute path: ${identifier}`);
+    // If it's an absolute path, use it directly
+    if (isAbsolute(identifier)) {
+        if (!existsSync(identifier)) {
+            throw new Error(`Catalyst not found at absolute path: ${identifier}`);
+        }
+        return identifier;
     }
-    return identifier;
-  }
 
-  // If catalystDirectory is specified, try there first
-  if (catalystDirectory) {
-    const catalystPath = resolve(catalystDirectory, identifier);
-    if (existsSync(catalystPath)) {
-      return catalystPath;
+    // If catalystDirectory is specified, try there first
+    if (catalystDirectory) {
+        const catalystPath = resolve(catalystDirectory, identifier);
+        if (existsSync(catalystPath)) {
+            return catalystPath;
+        }
     }
-  }
 
-  // Try relative to config file location
-  const relativePath = resolve(configFileDir, identifier);
-  if (existsSync(relativePath)) {
-    return relativePath;
-  }
+    // Try relative to config file location
+    const relativePath = resolve(configFileDir, identifier);
+    if (existsSync(relativePath)) {
+        return relativePath;
+    }
 
-  // Phase 2: Try to resolve from node_modules
-  // For now, we'll throw an error if not found locally
-  throw new Error(
-    `Catalyst not found: ${identifier}\n` +
+    // Phase 2: Try to resolve from node_modules
+    // For now, we'll throw an error if not found locally
+    throw new Error(
+        `Catalyst not found: ${identifier}\n` +
     `Searched in:\n` +
     (catalystDirectory ? `  - ${resolve(catalystDirectory, identifier)}\n` : '') +
     `  - ${relativePath}\n` +
     `\nNote: NPM package resolution is not yet implemented.`
-  );
+    );
 }
 
 /**
@@ -104,52 +102,52 @@ function resolveCatalystPath(
  * @throws Error if any catalyst fails to load or is invalid
  */
 export async function loadConfiguredCatalysts(
-  config: RiotPlanConfig | null,
-  configFileDir: string = process.cwd()
+    config: RiotPlanConfig | null,
+    configFileDir: string = process.cwd()
 ): Promise<MergedCatalyst | null> {
-  // If no config or no catalysts, return null
-  if (!config?.catalysts || config.catalysts.length === 0) {
-    return null;
-  }
-
-  // Check cache
-  const cacheKey = generateCacheKey(config);
-  if (catalystCacheKey === cacheKey && cachedMergedCatalyst !== null) {
-    return cachedMergedCatalyst;
-  }
-
-  try {
-    // Resolve all catalyst identifiers to absolute paths
-    const catalystPaths = config.catalysts.map((identifier) =>
-      resolveCatalystPath(identifier, configFileDir, config.catalystDirectory)
-    );
-
-    // Load all catalysts
-    const catalysts: Catalyst[] = [];
-    for (const path of catalystPaths) {
-      const result = await loadCatalystSafe(path);
-      if (result.success && result.catalyst) {
-        catalysts.push(result.catalyst);
-      } else {
-        throw new Error(
-          `Failed to load catalyst from ${path}: ${result.error || 'Unknown error'}`
-        );
-      }
+    // If no config or no catalysts, return null
+    if (!config?.catalysts || config.catalysts.length === 0) {
+        return null;
     }
 
-    // Merge catalysts in order
-    const merged = mergeCatalysts(catalysts);
+    // Check cache
+    const cacheKey = generateCacheKey(config);
+    if (catalystCacheKey === cacheKey && cachedMergedCatalyst !== null) {
+        return cachedMergedCatalyst;
+    }
 
-    // Cache the result
-    cachedMergedCatalyst = merged;
-    catalystCacheKey = cacheKey;
+    try {
+    // Resolve all catalyst identifiers to absolute paths
+        const catalystPaths = config.catalysts.map((identifier) =>
+            resolveCatalystPath(identifier, configFileDir, config.catalystDirectory)
+        );
 
-    return merged;
-  } catch (error) {
-    throw new Error(
-      `Failed to load configured catalysts: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
+        // Load all catalysts
+        const catalysts: Catalyst[] = [];
+        for (const path of catalystPaths) {
+            const result = await loadCatalystSafe(path);
+            if (result.success && result.catalyst) {
+                catalysts.push(result.catalyst);
+            } else {
+                throw new Error(
+                    `Failed to load catalyst from ${path}: ${result.error || 'Unknown error'}`
+                );
+            }
+        }
+
+        // Merge catalysts in order
+        const merged = mergeCatalysts(catalysts);
+
+        // Cache the result
+        cachedMergedCatalyst = merged;
+        catalystCacheKey = cacheKey;
+
+        return merged;
+    } catch (error) {
+        throw new Error(
+            `Failed to load configured catalysts: ${error instanceof Error ? error.message : String(error)}`
+        );
+    }
 }
 
 /**
@@ -158,8 +156,8 @@ export async function loadConfiguredCatalysts(
  * Useful for testing or when configuration might have changed.
  */
 export function clearCatalystCache(): void {
-  cachedMergedCatalyst = null;
-  catalystCacheKey = null;
+    cachedMergedCatalyst = null;
+    catalystCacheKey = null;
 }
 
 /**
@@ -172,22 +170,22 @@ export function clearCatalystCache(): void {
  * @returns Partial config with environment variable overrides, or null if no overrides
  */
 export function getCatalystEnvOverrides(): Partial<RiotPlanConfig> | null {
-  const overrides: Partial<RiotPlanConfig> = {};
-  let hasOverrides = false;
+    const overrides: Partial<RiotPlanConfig> = {};
+    let hasOverrides = false;
 
-  // Check for RIOTPLAN_CATALYSTS
-  const catalystsEnv = process.env.RIOTPLAN_CATALYSTS;
-  if (catalystsEnv) {
-    overrides.catalysts = catalystsEnv.split(',').map((s) => s.trim()).filter(Boolean);
-    hasOverrides = true;
-  }
+    // Check for RIOTPLAN_CATALYSTS
+    const catalystsEnv = process.env.RIOTPLAN_CATALYSTS;
+    if (catalystsEnv) {
+        overrides.catalysts = catalystsEnv.split(',').map((s) => s.trim()).filter(Boolean);
+        hasOverrides = true;
+    }
 
-  // Check for RIOTPLAN_CATALYST_DIRECTORY
-  const catalystDirEnv = process.env.RIOTPLAN_CATALYST_DIRECTORY;
-  if (catalystDirEnv) {
-    overrides.catalystDirectory = catalystDirEnv;
-    hasOverrides = true;
-  }
+    // Check for RIOTPLAN_CATALYST_DIRECTORY
+    const catalystDirEnv = process.env.RIOTPLAN_CATALYST_DIRECTORY;
+    if (catalystDirEnv) {
+        overrides.catalystDirectory = catalystDirEnv;
+        hasOverrides = true;
+    }
 
-  return hasOverrides ? overrides : null;
+    return hasOverrides ? overrides : null;
 }

@@ -2,13 +2,10 @@
  * Catalyst Tools - Manage catalysts for plans
  */
 
-import { z } from 'zod';
-import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess } from './shared.js';
 import { loadConfig, loadConfiguredCatalysts } from '../../config/index.js';
-import { loadCatalyst, loadCatalystSafe } from '@kjerneverk/riotplan-catalyst';
+import { loadCatalystSafe } from '@kjerneverk/riotplan-catalyst';
 import { readPlanManifest, addCatalystToManifest, removeCatalystFromManifest } from '@kjerneverk/riotplan-catalyst';
 
 // ============================================================================
@@ -33,8 +30,8 @@ export const catalystListTool: McpTool = {
 };
 
 export async function executeCatalystList(
-    args: any,
-    context: ToolExecutionContext
+    _args: any,
+    _context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
         // Load configuration to get catalyst settings
@@ -106,7 +103,7 @@ export const catalystShowTool: McpTool = {
 
 export async function executeCatalystShow(
     args: any,
-    context: ToolExecutionContext
+    _context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
         const catalystPath = args.catalyst;
