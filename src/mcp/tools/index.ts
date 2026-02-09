@@ -87,6 +87,14 @@ import {
     executeCatalystShow,
     executeCatalystAssociate,
 } from './catalyst.js';
+import {
+    stepReflectTool,
+    executeStepReflect,
+} from './reflect.js';
+import {
+    generateRetrospectiveTool,
+    executeGenerateRetrospective,
+} from './retrospective.js';
 
 /**
  * Base tool executor - wraps command logic
@@ -173,6 +181,12 @@ export async function executeTool(
                 return await executeCatalystShow(args, context);
             case 'riotplan_catalyst_associate':
                 return await executeCatalystAssociate(args, context);
+            // Reflection tool
+            case 'riotplan_step_reflect':
+                return await executeStepReflect(args, context);
+            // Retrospective tool
+            case 'riotplan_generate_retrospective':
+                return await executeGenerateRetrospective(args, context);
             default:
                 return {
                     success: false,
@@ -235,4 +249,8 @@ export const tools: McpTool[] = [
     catalystListTool,
     catalystShowTool,
     catalystAssociateTool,
+    // Reflection tool
+    stepReflectTool,
+    // Retrospective tool
+    generateRetrospectiveTool,
 ];

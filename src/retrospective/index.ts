@@ -8,6 +8,13 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Plan } from "../types.js";
 
+// Re-export reference functions
+export {
+    loadRetrospectiveAsContext,
+    retrospectiveExists,
+    loadMultipleRetrospectives,
+} from './reference.js';
+
 /**
  * Retrospective data structure
  */

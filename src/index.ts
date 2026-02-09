@@ -145,6 +145,25 @@ export {
     type MoveStepResult,
 } from "./steps/operations.js";
 
+// Reflection Operations
+export {
+    writeStepReflection,
+} from "./reflections/writer.js";
+
+export {
+    readStepReflection,
+    readAllReflections,
+    readPriorReflections,
+    type StepReflection,
+} from "./reflections/reader.js";
+
+// Retrospective Operations
+export {
+    loadRetrospectiveAsContext,
+    retrospectiveExists,
+    loadMultipleRetrospectives,
+} from "./retrospective/reference.js";
+
 // Dependency Operations
 export {
     // Parsing

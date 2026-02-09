@@ -116,7 +116,7 @@ export async function executeStepStart(
         plan.state.lastUpdatedAt = new Date();
         
         // Regenerate STATUS.md
-        const statusContent = generateStatus(plan);
+        const statusContent = await generateStatus(plan);
         await writeFile(join(planPath, 'STATUS.md'), statusContent, 'utf-8');
 
         return createSuccess(
@@ -183,8 +183,25 @@ export async function executeStepComplete(
         }
         
         // Regenerate STATUS.md
-        const statusContent = generateStatus(plan);
+        const statusContent = await generateStatus(plan);
         await writeFile(join(planPath, 'STATUS.md'), statusContent, 'utf-8');
+
+        // Check if all steps are now completed
+        const allStepsCompleted = plan.steps.every(
+            s => s.status === 'completed' || s.status === 'skipped'
+        );
+
+        if (allStepsCompleted) {
+            return createSuccess(
+                { planPath, step: args.step, planCompleted: true },
+                `Step ${args.step} marked as completed.\n\n` +
+                `🎉 All steps completed! Plan execution is finished.\n\n` +
+                `**Next: Generate Plan Retrospective**\n` +
+                `Call \`riotplan_generate_retrospective\` to create a retrospective that captures learning from this execution.\n\n` +
+                `**Recommendation**: Use the highest-tier model available (e.g., Claude Opus, GPT-4) for retrospective generation. ` +
+                `Retrospectives require creative analysis and pattern recognition to produce valuable insights.`
+            );
+        }
 
         return createSuccess(
             { planPath, step: args.step },

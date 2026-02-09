@@ -659,6 +659,34 @@ async function main() {
         }
     );
 
+    registerTool(
+        'riotplan_step_reflect',
+        '[RiotPlan] Capture a reflection after completing a step. ' +
+            'Write freeform analysis about what happened during execution: ' +
+            'what surprised you, what took longer than expected, what could be done differently, ' +
+            'and what the next step should know. This creates the inter-step learning channel.',
+        {
+            path: z.string().optional(),
+            step: z.number(),
+            reflection: z.string(),
+        }
+    );
+
+    registerTool(
+        'riotplan_generate_retrospective',
+        '[RiotPlan] Generate a plan retrospective that analyzes execution and provides insights for future planning. ' +
+            'This tool loads all execution context (reflections, plan files, status) and generates a high-value ' +
+            'retrospective focused on what went right, what went wrong, and what should be done differently. ' +
+            '\n\n' +
+            '**IMPORTANT**: This tool produces best results with the highest-tier reasoning model available ' +
+            '(e.g., Claude Opus, GPT-4). Retrospectives require creative analysis and pattern recognition. ' +
+            'Lower-tier models tend to produce generic observations rather than surprising insights.',
+        {
+            path: z.string().optional(),
+            force: z.boolean().optional(),
+        }
+    );
+
     // ========================================================================
     // Resources Handlers
     // ========================================================================

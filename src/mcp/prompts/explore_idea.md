@@ -113,6 +113,56 @@ Ask open-ended questions:
 - "What constraints should we consider?"
 - "What questions need answering?"
 - "Do you have any evidence (docs, diagrams, examples)?"
+- "Is this related to any previous plans? Should we reference their retrospectives?"
+
+### 3a. Referencing Retrospectives from Completed Plans
+
+**If the user mentions a related plan or asks to reference a retrospective:**
+
+When exploring a new idea, the user might say:
+- "This is similar to what we did in plan X"
+- "Consider the lessons from the authentication plan"
+- "Reference the retrospective from plan-user-notifications"
+
+**When this happens:**
+
+1. **Load the retrospective with context:**
+   - Use the retrospective reference reader to load the file
+   - Include the user's reason for why it's relevant
+   - The retrospective will be wrapped with framing that explains its relevance
+
+2. **Let the retrospective inform exploration:**
+   - Use lessons from the retrospective to guide questions
+   - Surface constraints that were discovered in the previous plan
+   - Identify risks that were encountered before
+   - Ask: "The [previous plan] retrospective mentions [X]. Does that apply here?"
+
+3. **Example flow:**
+
+**User**: "This is similar to the authentication plan. Reference that retrospective."
+
+**AI**: *Loads retrospective from the authentication plan*
+*Reads the wrapped content with lessons learned*
+
+**AI**: "I've reviewed the authentication plan retrospective. Key lessons:
+- The middleware coupling was more complex than expected
+- Session timeout logic needed careful handling
+- Better upfront dependency analysis would have helped
+
+Given those lessons, let me ask: What dependencies does this new idea have? Should we do upfront analysis to avoid similar coupling issues?"
+
+4. **Capture the reference:**
+   - Add a note that this idea was informed by a previous retrospective
+   - The retrospective content is in context but NOT saved as evidence
+   - This is direct context injection, not evidence gathering
+
+**Why this matters:**
+- Retrospectives capture hard-won lessons from actual execution
+- Referencing them creates the outer learning loop
+- Past mistakes inform future planning
+- Patterns that worked can be reused
+
+**Anti-Pattern**: Do NOT just dump the retrospective content without framing. Always explain WHY it's relevant and HOW it should inform the current exploration.
 
 ### 4. Capture Responses in TWO Ways
 

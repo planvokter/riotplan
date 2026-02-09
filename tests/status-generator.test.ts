@@ -63,6 +63,7 @@ function createTestPlan(overrides: Partial<Plan> = {}): Plan {
         name: "Test Plan",
         description: "A test plan for unit testing",
         code: "test-plan",
+        path: "/test",
     };
 
     const defaultFiles: PlanFiles = {
@@ -90,9 +91,9 @@ function createTestPlan(overrides: Partial<Plan> = {}): Plan {
 
 describe("generateStatus", () => {
     describe("basic generation", () => {
-        it("should generate valid STATUS.md", () => {
+        it("should generate valid STATUS.md", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("# Test Plan Status");
             expect(status).toContain("## Current State");
@@ -102,9 +103,9 @@ describe("generateStatus", () => {
             expect(status).toContain("## Notes");
         });
 
-        it("should include status legend", () => {
+        it("should include status legend", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("**Status Legend**");
             expect(status).toContain("⬜ Pending");
@@ -112,45 +113,45 @@ describe("generateStatus", () => {
             expect(status).toContain("✅ Completed");
         });
 
-        it("should include last updated timestamp", () => {
+        it("should include last updated timestamp", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("*Last updated:");
         });
     });
 
     describe("current state section", () => {
-        it("should display current status", () => {
+        it("should display current status", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("🔄 IN PROGRESS");
         });
 
-        it("should display current step", () => {
+        it("should display current step", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("03 - Core Implementation");
         });
 
-        it("should display last completed step", () => {
+        it("should display last completed step", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("02 - Foundation");
         });
 
-        it("should display progress percentage", () => {
+        it("should display progress percentage", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("50%");
             expect(status).toContain("2/4 steps");
         });
 
-        it("should handle no current step", () => {
+        it("should handle no current step", async () => {
             const plan = createTestPlan({
                 state: {
                     status: "pending",
@@ -159,16 +160,16 @@ describe("generateStatus", () => {
                     issues: [],
                 },
             });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("| **Current Step** | - |");
         });
     });
 
     describe("step progress section", () => {
-        it("should list all steps", () => {
+        it("should list all steps", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("| 01 | Setup |");
             expect(status).toContain("| 02 | Foundation |");
@@ -176,9 +177,9 @@ describe("generateStatus", () => {
             expect(status).toContain("| 04 | Testing |");
         });
 
-        it("should show step statuses with emojis", () => {
+        it("should show step statuses with emojis", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             // Completed steps
             expect(status).toMatch(/\| 01 \| Setup \| ✅/);
@@ -188,15 +189,15 @@ describe("generateStatus", () => {
             expect(status).toMatch(/\| 04 \| Testing \| ⬜/);
         });
 
-        it("should show step dates", () => {
+        it("should show step dates", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("2026-01-10");
             expect(status).toContain("2026-01-12");
         });
 
-        it("should show step notes", () => {
+        it("should show step notes", async () => {
             const plan = createTestPlan({
                 steps: [
                     {
@@ -210,14 +211,14 @@ describe("generateStatus", () => {
                     },
                 ],
             });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("Completed early");
         });
     });
 
     describe("phase progress section", () => {
-        it("should include phase progress when phases defined", () => {
+        it("should include phase progress when phases defined", async () => {
             const phases: PlanPhase[] = [
                 {
                     name: "Phase 1: Foundation",
@@ -232,14 +233,14 @@ describe("generateStatus", () => {
             ];
 
             const plan = createTestPlan({ phases });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("## Phase Progress");
             expect(status).toContain("Phase 1: Foundation");
             expect(status).toContain("Phase 2: Implementation");
         });
 
-        it("should show phase step ranges", () => {
+        it("should show phase step ranges", async () => {
             const phases: PlanPhase[] = [
                 {
                     name: "Phase 1",
@@ -249,40 +250,40 @@ describe("generateStatus", () => {
             ];
 
             const plan = createTestPlan({ phases });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("01-02");
         });
 
-        it("should not include phases when none defined", () => {
+        it("should not include phases when none defined", async () => {
             const plan = createTestPlan({ phases: undefined });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).not.toContain("## Phase Progress");
         });
 
-        it("should respect includePhases option", () => {
+        it("should respect includePhases option", async () => {
             const phases: PlanPhase[] = [
                 { name: "Phase 1", steps: [1, 2], status: "completed" },
             ];
 
             const plan = createTestPlan({ phases });
-            const status = generateStatus(plan, { includePhases: false });
+            const status = await generateStatus(plan, { includePhases: false });
 
             expect(status).not.toContain("## Phase Progress");
         });
     });
 
     describe("blockers section", () => {
-        it("should show 'None currently' when no blockers", () => {
+        it("should show 'None currently' when no blockers", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("## Blockers");
             expect(status).toContain("None currently.");
         });
 
-        it("should list blockers", () => {
+        it("should list blockers", async () => {
             const plan = createTestPlan({
                 state: {
                     status: "blocked",
@@ -299,7 +300,7 @@ describe("generateStatus", () => {
                     issues: [],
                 },
             });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("Waiting on external API");
             expect(status).toContain("affects steps: 3, 4");
@@ -307,15 +308,15 @@ describe("generateStatus", () => {
     });
 
     describe("issues section", () => {
-        it("should show 'None currently' when no issues", () => {
+        it("should show 'None currently' when no issues", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("## Issues");
             expect(status).toContain("None currently.");
         });
 
-        it("should list issues", () => {
+        it("should list issues", async () => {
             const plan = createTestPlan({
                 state: {
                     status: "in_progress",
@@ -332,7 +333,7 @@ describe("generateStatus", () => {
                     ],
                 },
             });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("**Performance**");
             expect(status).toContain("Tests running slowly");
@@ -340,7 +341,7 @@ describe("generateStatus", () => {
     });
 
     describe("notes preservation", () => {
-        it("should preserve existing notes", () => {
+        it("should preserve existing notes", async () => {
             const plan = createTestPlan();
             const existingContent = `# Old Status
 
@@ -351,7 +352,7 @@ describe("generateStatus", () => {
 
 ---
 `;
-            const status = generateStatus(plan, {
+            const status = await generateStatus(plan, {
                 preserveNotes: true,
                 existingContent,
             });
@@ -360,7 +361,7 @@ describe("generateStatus", () => {
             expect(status).toContain("Important note 2");
         });
 
-        it("should not preserve notes when disabled", () => {
+        it("should not preserve notes when disabled", async () => {
             const plan = createTestPlan();
             const existingContent = `# Old Status
 
@@ -370,7 +371,7 @@ describe("generateStatus", () => {
 
 ---
 `;
-            const status = generateStatus(plan, {
+            const status = await generateStatus(plan, {
                 preserveNotes: false,
                 existingContent,
             });
@@ -380,58 +381,58 @@ describe("generateStatus", () => {
     });
 
     describe("date formatting", () => {
-        it("should use short format by default", () => {
+        it("should use short format by default", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toMatch(/\d{4}-\d{2}-\d{2}/);
         });
 
-        it("should support iso format", () => {
+        it("should support iso format", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan, { dateFormat: "iso" });
+            const status = await generateStatus(plan, { dateFormat: "iso" });
 
             expect(status).toMatch(/\d{4}-\d{2}-\d{2}/);
         });
 
-        it("should support long format", () => {
+        it("should support long format", async () => {
             const plan = createTestPlan();
-            const status = generateStatus(plan, { dateFormat: "long" });
+            const status = await generateStatus(plan, { dateFormat: "long" });
 
             expect(status).toMatch(/January|February|March|April|May|June|July|August|September|October|November|December/);
         });
     });
 
     describe("progress calculation", () => {
-        it("should calculate 0% for no completed steps", () => {
+        it("should calculate 0% for no completed steps", async () => {
             const plan = createTestPlan({
                 steps: [
                     { number: 1, code: "a", filename: "01-a.md", title: "A", status: "pending", filePath: "" },
                     { number: 2, code: "b", filename: "02-b.md", title: "B", status: "pending", filePath: "" },
                 ],
             });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("0%");
             expect(status).toContain("0/2 steps");
         });
 
-        it("should calculate 100% for all completed steps", () => {
+        it("should calculate 100% for all completed steps", async () => {
             const plan = createTestPlan({
                 steps: [
                     { number: 1, code: "a", filename: "01-a.md", title: "A", status: "completed", filePath: "" },
                     { number: 2, code: "b", filename: "02-b.md", title: "B", status: "completed", filePath: "" },
                 ],
             });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("100%");
             expect(status).toContain("2/2 steps");
         });
 
-        it("should handle empty steps array", () => {
+        it("should handle empty steps array", async () => {
             const plan = createTestPlan({ steps: [] });
-            const status = generateStatus(plan);
+            const status = await generateStatus(plan);
 
             expect(status).toContain("0%");
             expect(status).toContain("0/0 steps");
@@ -439,18 +440,18 @@ describe("generateStatus", () => {
     });
 
     describe("roundtrip consistency", () => {
-        it("should produce parseable output", () => {
+        it("should produce parseable output", async () => {
             const plan = createTestPlan();
-            const generated = generateStatus(plan);
+            const generated = await generateStatus(plan);
             const parsed = parseStatus(generated);
 
             expect(parsed.document.currentState.status).toBe("in_progress");
             expect(parsed.document.stepProgress.length).toBe(4);
         });
 
-        it("should preserve step statuses through roundtrip", () => {
+        it("should preserve step statuses through roundtrip", async () => {
             const plan = createTestPlan();
-            const generated = generateStatus(plan);
+            const generated = await generateStatus(plan);
             const parsed = parseStatus(generated);
 
             expect(parsed.document.stepProgress[0].status).toBe("completed");
