@@ -445,6 +445,107 @@ describe("Step Operations", () => {
         });
     });
 
+    describe("plan completion detection", () => {
+        it("should detect when all steps are completed", () => {
+            // Complete all steps
+            const step1 = completeStep(plan, 1);
+            const step2 = completeStep(plan, 2);
+            const step3 = completeStep(plan, 3);
+            
+            // Update plan with completed steps
+            const completedPlan = {
+                ...plan,
+                steps: [step1, step2, step3]
+            };
+            
+            // Check if all steps are completed
+            const allCompleted = completedPlan.steps.every(
+                s => s.status === 'completed' || s.status === 'skipped'
+            );
+            
+            expect(allCompleted).toBe(true);
+        });
+
+        it("should not detect completion when steps are pending", () => {
+            // Complete only first two steps
+            const step1 = completeStep(plan, 1);
+            const step2 = completeStep(plan, 2);
+            
+            // Update plan with partially completed steps
+            const partialPlan = {
+                ...plan,
+                steps: [step1, step2, plan.steps[2]]
+            };
+            
+            // Check if all steps are completed
+            const allCompleted = partialPlan.steps.every(
+                s => s.status === 'completed' || s.status === 'skipped'
+            );
+            
+            expect(allCompleted).toBe(false);
+        });
+
+        it("should detect completion with mix of completed and skipped steps", () => {
+            // Complete first two, skip third
+            const step1 = completeStep(plan, 1);
+            const step2 = completeStep(plan, 2);
+            const step3 = skipStep(plan, 3, "Not needed");
+            
+            // Update plan
+            const mixedPlan = {
+                ...plan,
+                steps: [step1, step2, step3]
+            };
+            
+            // Check if all steps are done (completed or skipped)
+            const allCompleted = mixedPlan.steps.every(
+                s => s.status === 'completed' || s.status === 'skipped'
+            );
+            
+            expect(allCompleted).toBe(true);
+        });
+
+        it("should not detect completion when a step is blocked", () => {
+            // Complete first two, block third
+            const step1 = completeStep(plan, 1);
+            const step2 = completeStep(plan, 2);
+            const step3 = blockStep(plan, 3, "Waiting on dependency");
+            
+            // Update plan
+            const blockedPlan = {
+                ...plan,
+                steps: [step1, step2, step3]
+            };
+            
+            // Check if all steps are completed
+            const allCompleted = blockedPlan.steps.every(
+                s => s.status === 'completed' || s.status === 'skipped'
+            );
+            
+            expect(allCompleted).toBe(false);
+        });
+
+        it("should not detect completion when a step has failed", () => {
+            // Complete first two, fail third
+            const step1 = completeStep(plan, 1);
+            const step2 = completeStep(plan, 2);
+            const step3 = failStep(plan, 3, "Tests failed");
+            
+            // Update plan
+            const failedPlan = {
+                ...plan,
+                steps: [step1, step2, step3]
+            };
+            
+            // Check if all steps are completed
+            const allCompleted = failedPlan.steps.every(
+                s => s.status === 'completed' || s.status === 'skipped'
+            );
+            
+            expect(allCompleted).toBe(false);
+        });
+    });
+
     describe("plan/ subdirectory creation", () => {
         it("should create plan/ subdirectory if it doesn't exist", async () => {
             // Create a plan directory without plan/ subdirectory

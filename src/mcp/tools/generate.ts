@@ -2,43 +2,13 @@
  * Generate Tool - Generate plan from existing prompt
  */
 
+import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { formatError, createSuccess } from './shared.js';
 import { generatePlan } from '../../ai/generator.js';
 import { loadProvider } from '../../ai/provider-loader.js';
 
-export const generateTool: McpTool = {
-    name: 'riotplan_generate',
-    description:
-        'Generate plan content using AI. ' +
-        'Creates detailed, actionable steps from a description. ' +
-        'Note: Requires an AI provider package to be installed. ' +
-        'When using RiotPlan via MCP, consider using riotplan_step_add for manual step creation instead.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            description: {
-                type: 'string',
-                description: 'Plan description/requirements',
-            },
-            steps: {
-                type: 'number',
-                description: 'Number of steps to generate (default: auto-determined)',
-            },
-            provider: {
-                type: 'string',
-                description: 'AI provider (anthropic, openai, gemini)',
-            },
-            model: {
-                type: 'string',
-                description: 'Specific model to use',
-            },
-        },
-        required: ['description'],
-    },
-};
-
-export async function executeGenerate(
+async function executeGenerate(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -121,3 +91,19 @@ export async function executeGenerate(
         return formatError(error);
     }
 }
+
+export const generateTool: McpTool = {
+    name: 'riotplan_generate',
+    description:
+        'Generate plan content using AI. ' +
+        'Creates detailed, actionable steps from a description. ' +
+        'Note: Requires an AI provider package to be installed. ' +
+        'When using RiotPlan via MCP, consider using riotplan_step_add for manual step creation instead.',
+    schema: {
+        description: z.string().describe('Plan description/requirements'),
+        steps: z.number().optional().describe('Number of steps to generate (default: auto-determined)'),
+        provider: z.string().optional().describe('AI provider (anthropic, openai, gemini)'),
+        model: z.string().optional().describe('Specific model to use'),
+    },
+    execute: executeGenerate,
+};

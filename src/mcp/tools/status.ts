@@ -2,36 +2,20 @@
  * Status Tool - Show plan status
  */
 
+import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess } from './shared.js';
+import { resolveDirectory, formatError, createSuccess, ensurePlanManifest } from './shared.js';
 import { loadPlan } from '../../plan/loader.js';
 
-export const statusTool: McpTool = {
-    name: 'riotplan_status',
-    description:
-        'Show current plan status including progress, current step, blockers, and issues. ' +
-        'Returns structured status information.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            verbose: {
-                type: 'boolean',
-                description: 'Include verbose output (default: false)',
-            },
-        },
-    },
-};
-
-export async function executeStatus(
+async function executeStatus(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
         const planPath = args.path ? args.path : resolveDirectory(args, context);
+        
+        // Ensure plan has manifest
+        await ensurePlanManifest(planPath);
         
         const plan = await loadPlan(planPath);
 
@@ -72,3 +56,15 @@ export async function executeStatus(
         return formatError(error);
     }
 }
+
+export const statusTool: McpTool = {
+    name: 'riotplan_status',
+    description:
+        'Show current plan status including progress, current step, blockers, and issues. ' +
+        'Returns structured status information.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        verbose: z.boolean().optional().describe('Include verbose output (default: false)'),
+    },
+    execute: executeStatus,
+};

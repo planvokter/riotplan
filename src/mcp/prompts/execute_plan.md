@@ -176,7 +176,23 @@ Would you like to review the results or is there anything else you'd like to do 
 
 When working on a step:
 
-#### 3.1 Start the Step
+#### 3.1 Read Prior Step Reflections
+
+**BEFORE starting the step, read reflections from prior steps:**
+
+Check if the `reflections/` directory exists. If it does, read all reflection files for steps completed before the current one.
+
+Prior reflections contain:
+- What surprised the executing agent
+- What took longer than expected
+- What could have been done differently
+- Important context for subsequent steps
+
+**Why this matters**: Reflections create the inter-step learning channel. Step 5 learns from the challenges encountered in steps 1-4.
+
+**Example**: If you're about to start Step 3, read `reflections/01-reflection.md` and `reflections/02-reflection.md` to understand what happened in prior steps.
+
+#### 3.2 Start the Step
 
 **ALWAYS mark the step as started BEFORE doing any work:**
 
@@ -189,7 +205,7 @@ riotplan_step_start({
 
 This updates STATUS.md and sets timestamps. **Never skip this step** - it's how RiotPlan tracks progress.
 
-#### 3.2 Read Step Details
+#### 3.3 Read Step Details
 
 Read the step file to understand what needs to be done:
 ```typescript
@@ -240,8 +256,36 @@ riotplan_step_complete({
 
 This updates STATUS.md and advances the plan. **Never skip this step** - completion tracking is essential for RiotPlan.
 
-Confirm completion:
-"Step [N] is complete! [Brief summary of what was accomplished]"
+#### 3.6 Write Step Reflection
+
+**MANDATORY - ALWAYS write a reflection after completing a step:**
+
+```typescript
+riotplan_step_reflect({
+  path: "./path/to/plan",
+  step: N,
+  reflection: "Your genuine reflection here"
+})
+```
+
+**What to include:**
+1. **What surprised you**: Unexpected challenges, wrong assumptions
+2. **What took longer than expected**: Tasks more complex than anticipated
+3. **What could be done differently**: If you could redo this step, what would you change?
+4. **What the next step should know**: Critical context, warnings, insights
+
+**This is NOT a summary**. It's genuine self-reflection about the execution experience. Be honest, specific, and creative.
+
+**Example of good reflection:**
+"This step took 45 minutes instead of 30. The authentication middleware was more tightly coupled to the session store than expected. Had to refactor the middleware interface first. Better upfront dependency analysis would have revealed this. Next step should know: new auth interface is in src/auth/interface.ts, session timeout logic still needs migration."
+
+**Example of poor reflection:**
+"Completed as planned. Tests pass."
+
+**Anti-Pattern**: Do NOT skip reflection. This creates the inter-step learning channel.
+
+Confirm completion with reflection:
+"Step [N] is complete! [Brief summary]. Reflection captured for future steps."
 
 ### 4. Handle Blockers and Issues
 
@@ -493,6 +537,55 @@ Step 05 is about creating the MCP tool for checkpoint creation. Let me check wha
 
 ❌ **Don't**: Treat RiotPlan like a regular task list
 ✅ **Do**: Use RiotPlan's infrastructure - step files, STATUS.md, and tracking tools
+
+## Plan Completion Workflow
+
+When you complete the final step of a plan, the system will signal that all steps are done. At this point, you should generate a plan retrospective to capture learning from the execution.
+
+### The Completion Sequence
+
+1. **Complete the final step** with `riotplan_step_complete`
+2. **System signals**: "All steps completed! Generate plan retrospective."
+3. **Write final step reflection** with `riotplan_step_reflect`
+4. **Consider model switching**: Retrospectives benefit from highest-tier models
+5. **Generate retrospective** with `riotplan_generate_retrospective`
+6. **Confirm completion**: "Plan execution complete with retrospective captured."
+
+### Model Tier Recommendation for Retrospectives
+
+**IMPORTANT**: Retrospective generation requires creative analysis and pattern recognition. For best results:
+
+- **Use the highest-tier model available** (e.g., Claude Opus, GPT-4)
+- **Lower-tier models** tend to produce generic observations rather than surprising insights
+- **If currently using a mid-tier model**, consider pausing and switching before generating the retrospective
+
+The retrospective is the final deliverable of plan execution. It's worth using the best model for this task.
+
+### Example Completion Flow
+
+**Agent completes final step:**
+```typescript
+riotplan_step_complete({ path: "./plan", step: 8 })
+```
+
+**System response:**
+"🎉 All steps completed! Plan execution is finished. Generate plan retrospective with `riotplan_generate_retrospective`. Recommend using highest-tier model."
+
+**Agent writes final reflection:**
+```typescript
+riotplan_step_reflect({ 
+  path: "./plan", 
+  step: 8,
+  reflection: "Final step reflection..."
+})
+```
+
+**Agent (or user after model switch) generates retrospective:**
+```typescript
+riotplan_generate_retrospective({ path: "./plan" })
+```
+
+**Result:** `retrospective.md` is created with high-value analysis of the entire execution.
 
 ## State Transitions
 

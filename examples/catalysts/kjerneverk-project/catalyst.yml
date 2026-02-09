@@ -1,0 +1,9 @@
+id: '@kjerneverk/catalyst-project'
+name: Kjerneverk Project Standards
+version: 1.0.0
+description: Standard constraints and guidance for all Kjerneverk projects
+facets:
+  questions: true
+  constraints: true
+  domainKnowledge: true
+  processGuidance: true

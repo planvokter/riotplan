@@ -45,7 +45,7 @@ export function archiveCommand(): Command {
                             statusPath,
                             "utf-8"
                         ).catch(() => "");
-                        const newStatus = generateStatus(updatedPlan, {
+                        const newStatus = await generateStatus(updatedPlan, {
                             existingContent,
                         });
                         await writeFile(statusPath, newStatus);

@@ -12,6 +12,7 @@ import type {
     Issue,
 } from "../types.js";
 import { PLAN_CONVENTIONS } from "../types.js";
+import { readStepReflection } from "../reflections/reader.js";
 
 // ===== TYPES =====
 
@@ -168,14 +169,15 @@ function generatePhaseProgressSection(plan: Plan): string {
 /**
  * Generate the Step Progress section
  */
-function generateStepProgressSection(
+async function generateStepProgressSection(
+    planPath: string,
     steps: PlanStep[],
     dateFormat: "iso" | "short" | "long"
-): string {
+): Promise<string> {
     let content = `## Step Progress
 
-| Step | Name | Status | Started | Completed | Notes |
-|------|------|--------|---------|-----------|-------|
+| Step | Name | Status | Started | Completed | Reflected | Notes |
+|------|------|--------|---------|-----------|-----------|-------|
 `;
 
     for (const step of steps) {
@@ -183,8 +185,12 @@ function generateStepProgressSection(
         const started = formatDate(step.startedAt, dateFormat);
         const completed = formatDate(step.completedAt, dateFormat);
         const notes = step.notes || "";
+        
+        // Check if reflection exists for this step
+        const hasReflection = await readStepReflection(planPath, step.number);
+        const reflected = hasReflection ? "📝" : "";
 
-        content += `| ${num} | ${step.title} | ${getStatusEmoji(step.status)} | ${started} | ${completed} | ${notes} |\n`;
+        content += `| ${num} | ${step.title} | ${getStatusEmoji(step.status)} | ${started} | ${completed} | ${reflected} | ${notes} |\n`;
     }
 
     return content + "\n";
@@ -274,10 +280,10 @@ function generateFooter(dateFormat: "iso" | "short" | "long"): string {
 /**
  * Generate a complete STATUS.md document from a plan
  */
-export function generateStatus(
+export async function generateStatus(
     plan: Plan,
     options: GenerateStatusOptions = {}
-): string {
+): Promise<string> {
     const {
         preserveNotes = true,
         existingContent,
@@ -325,8 +331,8 @@ export function generateStatus(
         content += generatePhaseProgressSection(plan);
     }
 
-    // Step progress
-    content += generateStepProgressSection(plan.steps, dateFormat);
+    // Step progress (now async to check for reflections)
+    content += await generateStepProgressSection(plan.metadata.path, plan.steps, dateFormat);
 
     // Blockers
     content += generateBlockersSection(plan.state.blockers);

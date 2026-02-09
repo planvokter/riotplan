@@ -35,8 +35,32 @@ jobs:
           # Clean install to ensure platform-specific optional deps (rollup native bindings) are resolved correctly
           # See: https://github.com/npm/cli/issues/4828
           rm -rf node_modules package-lock.json
-          npm install --force
-        timeout-minutes: 10
+          
+          # Retry logic for npm install with exponential backoff
+          # This handles cases where dependent packages were just published to npmjs
+          # and haven't fully propagated across all registry mirrors yet
+          MAX_ATTEMPTS=5
+          ATTEMPT=1
+          WAIT_TIME=10
+          
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "npm install attempt $ATTEMPT of $MAX_ATTEMPTS..."
+            if npm install --force; then
+              echo "✓ npm install succeeded"
+              exit 0
+            fi
+            
+            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+              echo "⏳ npm install failed, waiting ${WAIT_TIME}s before retry..."
+              sleep $WAIT_TIME
+              WAIT_TIME=$((WAIT_TIME * 2))
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+          
+          echo "✗ npm install failed after $MAX_ATTEMPTS attempts"
+          exit 1
+        timeout-minutes: 15
       - run: npm run lint
       - run: npm run build
       - run: npm run test

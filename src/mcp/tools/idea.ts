@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
-import { formatTimestamp, resolveDirectory } from "./shared.js";
+import { formatTimestamp, resolveDirectory, ensurePlanManifest } from "./shared.js";
 import { logEvent } from "./history.js";
 import type { EvidenceType } from "../../types.js";
 
@@ -205,6 +205,14 @@ _Add notes as you think about this..._
 
     await writeFile(join(ideaPath, "LIFECYCLE.md"), lifecycleContent, "utf-8");
   
+    // Create plan.yaml manifest
+    const manifestCreated = await ensurePlanManifest(ideaPath, {
+        id: code,
+        title: code.split('-').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+        ).join(' '),
+    });
+  
     // Log event to history
     await logEvent(ideaPath, {
         timestamp: formatTimestamp(),
@@ -212,7 +220,9 @@ _Add notes as you think about this..._
         data: { code, description },
     });
   
-    return `✅ Idea created: ${ideaPath}\n\nNext steps:\n- Add notes: riotplan_idea_add_note\n- Add constraints: riotplan_idea_add_constraint\n- Add questions: riotplan_idea_add_question\n- Add evidence: riotplan_idea_add_evidence\n- When ready: riotplan_transition to 'shaping'`;
+    const manifestInfo = manifestCreated ? '\n- Created plan.yaml manifest' : '';
+  
+    return `✅ Idea created: ${ideaPath}${manifestInfo}\n\nNext steps:\n- Add notes: riotplan_idea_add_note\n- Add constraints: riotplan_idea_add_constraint\n- Add questions: riotplan_idea_add_question\n- Add evidence: riotplan_idea_add_evidence\n- When ready: riotplan_transition to 'shaping'`;
 }
 
 export async function ideaAddNote(args: z.infer<typeof IdeaAddNoteSchema>): Promise<string> {
@@ -573,41 +583,48 @@ import type { McpTool } from '../types.js';
 export const ideaCreateTool: McpTool = {
     name: "riotplan_idea_create",
     description: "Create a new idea (lightweight, no commitment). Use this when you have an initial concept that needs exploration before becoming a full plan.",
-    inputSchema: IdeaCreateSchema.shape as any,
+    schema: IdeaCreateSchema.shape,
+    execute: executeIdeaCreate,
 };
 
 export const ideaAddNoteTool: McpTool = {
     name: "riotplan_idea_add_note",
     description: "Add a note or thought to an existing idea. Use this to capture thinking as it evolves.",
-    inputSchema: IdeaAddNoteSchema.shape as any,
+    schema: IdeaAddNoteSchema.shape,
+    execute: executeIdeaAddNote,
 };
 
 export const ideaAddConstraintTool: McpTool = {
     name: "riotplan_idea_add_constraint",
     description: "Add a constraint to an idea (e.g., 'Must work on mobile', 'No external dependencies')",
-    inputSchema: IdeaAddConstraintSchema.shape as any,
+    schema: IdeaAddConstraintSchema.shape,
+    execute: executeIdeaAddConstraint,
 };
 
 export const ideaAddQuestionTool: McpTool = {
     name: "riotplan_idea_add_question",
     description: "Add a question that needs answering before the idea can progress",
-    inputSchema: IdeaAddQuestionSchema.shape as any,
+    schema: IdeaAddQuestionSchema.shape,
+    execute: executeIdeaAddQuestion,
 };
 
 export const ideaAddEvidenceTool: McpTool = {
     name: "riotplan_idea_add_evidence",
     description: "Attach evidence to an idea. YOU (the model) should gather evidence using your own capabilities (web search, file reading, analysis), then use this tool to capture and organize it. Supports both file references and inline content (for pasted text, transcripts, web research findings, etc.).",
-    inputSchema: IdeaAddEvidenceSchema.shape as any,
+    schema: IdeaAddEvidenceSchema.shape,
+    execute: executeIdeaAddEvidence,
 };
 
 export const ideaAddNarrativeTool: McpTool = {
     name: "riotplan_idea_add_narrative",
     description: "Add raw narrative content to the timeline. Use this to capture conversational context, thinking-out-loud, or any free-form input that doesn't fit structured categories. Narrative chunks preserve full-fidelity context.",
-    inputSchema: IdeaAddNarrativeSchema.shape as any,
+    schema: IdeaAddNarrativeSchema.shape,
+    execute: executeIdeaAddNarrative,
 };
 
 export const ideaKillTool: McpTool = {
     name: "riotplan_idea_kill",
     description: "Kill an idea with a reason. Use when deciding not to pursue it.",
-    inputSchema: IdeaKillSchema.shape as any,
+    schema: IdeaKillSchema.shape,
+    execute: executeIdeaKill,
 };

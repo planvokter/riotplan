@@ -67,6 +67,28 @@ Review the step content to understand:
 
 **Anti-Pattern**: Do NOT implement from memory alone — if evidence files exist, they contain important details that should be incorporated.
 
+### 2c. Read Prior Step Reflections
+
+**Before starting work, check for reflections from prior steps:**
+
+Prior step reflections contain valuable lessons learned during execution. They document:
+- What surprised the executing agent
+- What took longer than expected
+- What could have been done differently
+- Important context for subsequent steps
+
+**Action**: Check if `reflections/` directory exists in the plan. If it does, read all reflection files for steps that have been completed before this one.
+
+**How to interpret reflections:**
+- Treat them as communication from the agent that executed prior steps
+- Pay attention to warnings about complexity, dependencies, or edge cases
+- Look for patterns or approaches that worked well (or didn't)
+- Consider how prior learnings apply to your current step
+
+**Example**: If you're on Step 5 and reflection files exist for steps 1-4, read them to understand what challenges were encountered and what insights were gained.
+
+**Anti-Pattern**: Do NOT skip reading reflections. They contain hard-won knowledge from actual execution, not just planning assumptions.
+
 ## Step 3: Mark Step as Started
 
 **CRITICAL**: You MUST use the `riotplan_step_start` MCP tool to mark the step as in progress BEFORE doing any work:
@@ -111,7 +133,48 @@ Before marking the step complete, verify:
 
 This updates STATUS.md and advances the plan to the next step. **Never skip this step** - completion tracking is essential. If you complete work without calling this tool, RiotPlan won't know the step is done.
 
-## Step 7: Check Overall Progress
+## Step 7: Write Step Reflection
+
+**MANDATORY**: After completing a step, you MUST reflect on the execution experience using `riotplan_step_reflect`:
+
+```
+{
+  "path": "${path}",
+  "step": N,
+  "reflection": "Your reflection content here"
+}
+```
+
+**What to include in your reflection:**
+
+1. **What surprised you**: What was unexpected? What assumptions were wrong?
+2. **What took longer than expected**: Which tasks were more complex than anticipated?
+3. **What could be done differently**: If you could redo this step, what would you change?
+4. **What the next step should know**: Critical context, warnings, or insights for subsequent steps
+
+**Quality matters**: This is NOT a summary of what you did. This is genuine self-reflection about the execution experience. Be honest, specific, and creative. Generic reflections like "everything went as planned" are not useful.
+
+**Use your reasoning capabilities**: This is where capable models shine. Reflect deeply on what happened and why. What patterns did you notice? What would you do differently next time?
+
+**Example of a good reflection:**
+
+```
+This step took about 45 minutes instead of the estimated 30 minutes. The main surprise was that the existing authentication middleware was more tightly coupled to the session store than I expected from reading the code. I had to refactor the middleware interface first, which wasn't in the original plan.
+
+What could be done differently: Better upfront analysis of the dependency graph would have revealed the coupling. The step file should have included "analyze existing middleware" as a subtask before implementation.
+
+What the next step should know: The new authentication interface is in src/auth/interface.ts. All middleware now uses this interface, so adding new auth providers should be straightforward. Watch out for the session timeout logic - it's still in the old location and needs migration (added as a follow-up task).
+```
+
+**Example of a poor reflection:**
+
+```
+Completed the authentication middleware as planned. Everything worked fine. Tests pass.
+```
+
+**Anti-Pattern**: Do NOT skip reflection or write generic summaries. Reflection creates the inter-step learning channel that makes RiotPlan execution intelligent.
+
+## Step 8: Check Overall Progress
 
 Use `riotplan_status` again to see updated progress and identify the next step to work on.
 
@@ -155,24 +218,32 @@ Here's how you should execute this workflow:
 1. Call `riotplan_status` with path: "${path}"
 2. Review the output and identify the current step
 3. Fetch the step resource or list steps
-4. Call `riotplan_step_start` with the step number
-5. Execute the step tasks (implement, test, document)
-6. Call `riotplan_step_complete` when done
-7. Call `riotplan_status` again to see progress
+4. **Read prior step reflections** from `reflections/` directory
+5. Call `riotplan_step_start` with the step number
+6. Execute the step tasks (implement, test, document)
+7. Call `riotplan_step_complete` when done
+8. **Call `riotplan_step_reflect`** with genuine analysis of the execution
+9. Call `riotplan_status` again to see progress
 
-Remember: Always use MCP tools, never shell commands. And always use RiotPlan's tracking tools (`riotplan_step_start` and `riotplan_step_complete`) - don't just do the work without tracking.
+Remember: Always use MCP tools, never shell commands. And always use RiotPlan's tracking tools (`riotplan_step_start`, `riotplan_step_complete`, and `riotplan_step_reflect`) - don't just do the work without tracking.
 
 ## For AI Assistants
 
 **When executing a step, you MUST:**
 
-1. Call `riotplan_step_start` BEFORE doing any work
-2. Do the actual work (implement, test, document)
-3. Call `riotplan_step_complete` AFTER completing the work
+1. **Read prior reflections** from `reflections/` directory (if they exist)
+2. Call `riotplan_step_start` BEFORE doing any work
+3. Do the actual work (implement, test, document)
+4. Call `riotplan_step_complete` AFTER completing the work
+5. **Call `riotplan_step_reflect`** with genuine, thoughtful analysis
 
 **Do NOT:**
 - Just do the work without calling the tracking tools
 - Skip STATUS.md updates
 - Treat this like a regular task list
+- Skip reflection or write generic summaries
+- Ignore prior step reflections
 
-**Key principle**: If you're working on a RiotPlan step, RiotPlan should manage the execution tracking, not just the planning. Use the tools!
+**Key principle**: If you're working on a RiotPlan step, RiotPlan should manage the execution tracking AND the learning loop, not just the planning. Use the tools!
+
+**Reflection is mandatory**: This is how RiotPlan creates inter-step communication. Later steps learn from earlier ones through reflections. Don't skip it.

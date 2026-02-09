@@ -2,6 +2,7 @@
  * Generate Rule Tool - Generate Cursor rule file for RiotPlan integration
  */
 
+import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { formatError, createSuccess } from './shared.js';
 import { mkdir, writeFile, access } from 'node:fs/promises';
@@ -72,27 +73,7 @@ When working in plan directories or with RiotPlan MCP tools, **RiotPlan owns the
 RiotPlan provides structured ideation, shaping, and execution tracking. When it's active, all planning activity should flow through RiotPlan to maintain a coherent record of the thought process. Competing planning systems create confusion and lose context.
 `;
 
-export const generateRuleTool: McpTool = {
-    name: 'riotplan_generate_rule',
-    description:
-        'Generate a Cursor rule file that configures the IDE to defer to RiotPlan for planning. ' +
-        'Creates .cursor/rules/riotplan.md in the target project.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            projectPath: {
-                type: 'string',
-                description: 'Project directory path (defaults to current working directory)',
-            },
-            force: {
-                type: 'boolean',
-                description: 'Overwrite existing rule file if present (default: false)',
-            },
-        },
-    },
-};
-
-export async function executeGenerateRule(
+async function executeGenerateRule(
     args: Record<string, any>,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -145,3 +126,15 @@ export async function executeGenerateRule(
         return formatError(error);
     }
 }
+
+export const generateRuleTool: McpTool = {
+    name: 'riotplan_generate_rule',
+    description:
+        'Generate a Cursor rule file that configures the IDE to defer to RiotPlan for planning. ' +
+        'Creates .cursor/rules/riotplan.md in the target project.',
+    schema: {
+        projectPath: z.string().optional().describe('Project directory path (defaults to current working directory)'),
+        force: z.boolean().optional().describe('Overwrite existing rule file if present (default: false)'),
+    },
+    execute: executeGenerateRule,
+};

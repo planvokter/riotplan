@@ -30,3 +30,10 @@ export {
     resolvePlanDirectorySync,
     clearResolverCache,
 } from './resolver.js';
+
+// Export catalyst loader functions
+export {
+    loadConfiguredCatalysts,
+    clearCatalystCache,
+    getCatalystEnvOverrides,
+} from './catalyst-loader.js';

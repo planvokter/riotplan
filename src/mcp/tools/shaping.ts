@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
-import { formatTimestamp, resolveDirectory } from "./shared.js";
+import { formatTimestamp, resolveDirectory, ensurePlanManifest } from "./shared.js";
 import { logEvent } from "./history.js";
 
 // Tool schemas
@@ -47,6 +47,9 @@ export const ShapingSelectSchema = z.object({
 
 export async function shapingStart(args: z.infer<typeof ShapingStartSchema>): Promise<string> {
     const shapingPath = args.path || process.cwd();
+  
+    // Ensure plan has manifest
+    await ensurePlanManifest(shapingPath);
   
     // Create SHAPING.md
     const shapingContent = `# Shaping: [Name]
@@ -326,7 +329,7 @@ export async function shapingSelect(args: z.infer<typeof ShapingSelectSchema>): 
         },
     });
   
-    return `✅ Approach selected: ${args.approach}\n\nNext: Transition to 'built' stage to generate detailed plan:\n  riotplan_transition({ stage: "built", reason: "Approach selected: ${args.approach}" })`;
+    return `✅ Approach selected: ${args.approach}\n\n⚠️  IMPORTANT: You must now call riotplan_build to generate the detailed execution plan.\n\nThis will:\n- Create PROVENANCE.md (tracing how artifacts shaped the plan)\n- Create EXECUTION_PLAN.md (detailed step-by-step strategy)\n- Create SUMMARY.md (high-level overview)\n- Create STATUS.md (progress tracking)\n- Generate step files in plan/ directory\n- Transition to 'built' stage\n\nCall: riotplan_build({ path: "${shapingPath}" })`;
 }
 
 // Tool executors for MCP
@@ -410,35 +413,41 @@ import type { McpTool } from '../types.js';
 export const shapingStartTool: McpTool = {
     name: "riotplan_shaping_start",
     description: "Start shaping an idea. Transitions from idea to shaping stage.",
-    inputSchema: ShapingStartSchema.shape as any,
+    schema: ShapingStartSchema.shape,
+    execute: executeShapingStart,
 };
 
 export const shapingAddApproachTool: McpTool = {
     name: "riotplan_shaping_add_approach",
     description: "Add an approach to consider during shaping. Include tradeoffs and assumptions.",
-    inputSchema: ShapingAddApproachSchema.shape as any,
+    schema: ShapingAddApproachSchema.shape,
+    execute: executeShapingAddApproach,
 };
 
 export const shapingAddFeedbackTool: McpTool = {
     name: "riotplan_shaping_add_feedback",
     description: "Add feedback about the current shaping. Use this to capture thoughts, concerns, or refinements.",
-    inputSchema: ShapingAddFeedbackSchema.shape as any,
+    schema: ShapingAddFeedbackSchema.shape,
+    execute: executeShapingAddFeedback,
 };
 
 export const shapingAddEvidenceTool: McpTool = {
     name: "riotplan_shaping_add_evidence",
     description: "Add evidence (documents, images, diagrams) to support decision-making during shaping.",
-    inputSchema: ShapingAddEvidenceSchema.shape as any,
+    schema: ShapingAddEvidenceSchema.shape,
+    execute: executeShapingAddEvidence,
 };
 
 export const shapingCompareTool: McpTool = {
     name: "riotplan_shaping_compare",
     description: "Compare all approaches side-by-side to help make a decision.",
-    inputSchema: ShapingCompareSchema.shape as any,
+    schema: ShapingCompareSchema.shape,
+    execute: executeShapingCompare,
 };
 
 export const shapingSelectTool: McpTool = {
     name: "riotplan_shaping_select",
-    description: "Select an approach and prepare to transition to 'built' stage.",
-    inputSchema: ShapingSelectSchema.shape as any,
+    description: "Select an approach from shaping stage. After calling this, you MUST immediately call riotplan_build to generate the detailed execution plan with PROVENANCE.md, EXECUTION_PLAN.md, SUMMARY.md, and step files.",
+    schema: ShapingSelectSchema.shape,
+    execute: executeShapingSelect,
 };

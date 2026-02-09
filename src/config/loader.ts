@@ -30,7 +30,7 @@ const cardigantime = create({
         configDirectory: process.cwd(),
         isRequired: false, // Config file is optional
         pathResolution: {
-            pathFields: ['planDirectory', 'templateDirectory'],
+            pathFields: ['planDirectory', 'templateDirectory', 'catalystDirectory'],
         },
     },
     configShape: RiotPlanConfigSchema.shape,
@@ -112,7 +112,9 @@ export async function loadConfig(): Promise<RiotPlanConfig | null> {
                     `- planDirectory: string (path to plans directory)\n` +
                     `- defaultProvider: 'anthropic' | 'openai' | 'gemini'\n` +
                     `- defaultModel: string\n` +
-                    `- templateDirectory: string (path to custom templates)\n\n` +
+                    `- templateDirectory: string (path to custom templates)\n` +
+                    `- catalysts: string[] (ordered list of catalyst paths or IDs)\n` +
+                    `- catalystDirectory: string (directory containing local catalysts)\n\n` +
                     `Original error: ${error.message}`
                 );
             }

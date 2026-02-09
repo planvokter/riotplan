@@ -107,6 +107,16 @@ export interface GenerationContext {
         historyFullCount?: number;
         historyAbbreviatedCount?: number;
     };
+    // Catalyst content for plan generation
+    catalystContent?: {
+        constraints: string;
+        domainKnowledge: string;
+        outputTemplates: string;
+        processGuidance: string;
+        questions: string;
+        validationRules: string;
+        appliedCatalysts: string[];  // IDs for traceability
+    };
 }
 
 /**
@@ -376,6 +386,14 @@ The following constraints are NON-NEGOTIABLE. Every constraint must be addressed
 ${constraintsList}`);
     }
     
+    // == CATALYST CONSTRAINTS ==
+    if (context.catalystContent?.constraints) {
+        sections.push(`== CATALYST CONSTRAINTS ==
+The following constraints come from applied catalysts and must also be honored:
+
+${context.catalystContent.constraints}`);
+    }
+    
     // == SELECTED APPROACH ==
     if (context.selectedApproach) {
         sections.push(`== SELECTED APPROACH ==
@@ -431,6 +449,59 @@ ${historyList}`);
 These questions were raised during exploration. Consider them when designing steps.
 
 ${questionsList}`);
+    }
+    
+    // == CATALYST DOMAIN KNOWLEDGE ==
+    if (context.catalystContent?.domainKnowledge) {
+        sections.push(`== CATALYST DOMAIN KNOWLEDGE ==
+The following domain knowledge comes from applied catalysts and provides context about the domain, organization, or technology:
+
+${context.catalystContent.domainKnowledge}`);
+    }
+    
+    // == CATALYST OUTPUT TEMPLATES ==
+    if (context.catalystContent?.outputTemplates) {
+        sections.push(`== CATALYST OUTPUT TEMPLATES ==
+The following output templates define expected deliverables that the plan should produce:
+
+${context.catalystContent.outputTemplates}`);
+    }
+    
+    // == CATALYST PROCESS GUIDANCE ==
+    if (context.catalystContent?.processGuidance) {
+        sections.push(`== CATALYST PROCESS GUIDANCE ==
+The following process guidance from applied catalysts should inform how the plan is structured:
+
+${context.catalystContent.processGuidance}`);
+    }
+    
+    // == CATALYST QUESTIONS ==
+    if (context.catalystContent?.questions) {
+        sections.push(`== CATALYST QUESTIONS ==
+The following questions from applied catalysts should be considered during planning:
+
+${context.catalystContent.questions}`);
+    }
+    
+    // == CATALYST VALIDATION RULES ==
+    if (context.catalystContent?.validationRules) {
+        sections.push(`== CATALYST VALIDATION RULES ==
+The following validation rules from applied catalysts define post-creation checks:
+
+${context.catalystContent.validationRules}`);
+    }
+    
+    // == APPLIED CATALYSTS ==
+    if (context.catalystContent?.appliedCatalysts && context.catalystContent.appliedCatalysts.length > 0) {
+        const catalystList = context.catalystContent.appliedCatalysts
+            .map((id, i) => `${i + 1}. ${id}`)
+            .join('\n');
+        sections.push(`== APPLIED CATALYSTS ==
+This plan was generated with the following catalysts applied (in order):
+
+${catalystList}
+
+The catalyst content above has influenced the constraints, domain knowledge, output expectations, and process guidance for this plan.`);
     }
     
     // == GENERATION INSTRUCTIONS ==

@@ -28,6 +28,16 @@ export interface ArtifactBundle {
         recentEvents: { type: string; timestamp: string; summary: string }[];
         totalEvents: number;
     };
+    // Catalyst content (optional, populated when catalysts are configured)
+    catalystContent?: {
+        constraints: string;
+        domainKnowledge: string;
+        outputTemplates: string;
+        processGuidance: string;
+        questions: string;
+        validationRules: string;
+        appliedCatalysts: string[];
+    };
 }
 
 /**
@@ -234,6 +244,73 @@ function truncate(str: string, maxLength: number): string {
     if (!str) return '';
     if (str.length <= maxLength) return str;
     return str.substring(0, maxLength - 3) + '...';
+}
+
+/**
+ * Attributed content item from merged catalyst
+ */
+interface AttributedContentItem {
+    content: string;
+    sourceId: string;
+    filename?: string;
+}
+
+/**
+ * Convert merged catalyst to the format needed by GenerationContext
+ * 
+ * Takes a MergedCatalyst from @kjerneverk/riotplan-catalyst and converts it
+ * to the catalystContent format used by the generator.
+ * 
+ * The mergedCatalyst parameter uses a simplified type to avoid tight coupling
+ * with the riotplan-catalyst package types.
+ */
+export function loadCatalystContent(mergedCatalyst: {
+    catalystIds: string[];
+    facets: {
+        questions?: AttributedContentItem[];
+        constraints?: AttributedContentItem[];
+        outputTemplates?: AttributedContentItem[];
+        domainKnowledge?: AttributedContentItem[];
+        processGuidance?: AttributedContentItem[];
+        validationRules?: AttributedContentItem[];
+    };
+} | null): ArtifactBundle['catalystContent'] | undefined {
+    if (!mergedCatalyst) {
+        return undefined;
+    }
+    
+    // Helper to render facet content with source attribution
+    const renderFacet = (facetContent: AttributedContentItem[] | undefined): string => {
+        if (!facetContent || facetContent.length === 0) {
+            return '';
+        }
+        
+        // Group content by source catalyst
+        const bySource = new Map<string, string[]>();
+        for (const item of facetContent) {
+            const existing = bySource.get(item.sourceId) || [];
+            existing.push(item.content);
+            bySource.set(item.sourceId, existing);
+        }
+        
+        // Render with source headers
+        const parts: string[] = [];
+        for (const [sourceId, contents] of bySource) {
+            parts.push(`### From ${sourceId}\n\n${contents.join('\n\n')}`);
+        }
+        
+        return parts.join('\n\n');
+    };
+    
+    return {
+        constraints: renderFacet(mergedCatalyst.facets.constraints),
+        domainKnowledge: renderFacet(mergedCatalyst.facets.domainKnowledge),
+        outputTemplates: renderFacet(mergedCatalyst.facets.outputTemplates),
+        processGuidance: renderFacet(mergedCatalyst.facets.processGuidance),
+        questions: renderFacet(mergedCatalyst.facets.questions),
+        validationRules: renderFacet(mergedCatalyst.facets.validationRules),
+        appliedCatalysts: mergedCatalyst.catalystIds,
+    };
 }
 
 /**

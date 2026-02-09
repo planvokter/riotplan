@@ -500,29 +500,34 @@ import type { McpTool } from '../types.js';
 export const checkpointCreateTool: McpTool = {
     name: "riotplan_checkpoint_create",
     description: "Create a named checkpoint of current ideation state with prompt capture. Use this at key decision points to save your progress.",
-    inputSchema: CheckpointCreateSchema.shape as any,
+    schema: CheckpointCreateSchema.shape,
+    execute: executeCheckpointCreate,
 };
 
 export const checkpointListTool: McpTool = {
     name: "riotplan_checkpoint_list",
     description: "List all checkpoints for a plan with timestamps and messages.",
-    inputSchema: CheckpointListSchema.shape as any,
+    schema: CheckpointListSchema.shape,
+    execute: executeCheckpointList,
 };
 
 export const checkpointShowTool: McpTool = {
     name: "riotplan_checkpoint_show",
     description: "Show detailed information about a specific checkpoint including full snapshot.",
-    inputSchema: CheckpointShowSchema.shape as any,
+    schema: CheckpointShowSchema.shape,
+    execute: executeCheckpointShow,
 };
 
 export const checkpointRestoreTool: McpTool = {
     name: "riotplan_checkpoint_restore",
     description: "Restore plan to a previous checkpoint state. This will overwrite current files with checkpoint snapshot.",
-    inputSchema: CheckpointRestoreSchema.shape as any,
+    schema: CheckpointRestoreSchema.shape,
+    execute: executeCheckpointRestore,
 };
 
 export const historyShowTool: McpTool = {
     name: "riotplan_history_show",
     description: "Show ideation history timeline with all events. Can filter by time, event type, or limit results.",
-    inputSchema: HistoryShowSchema.shape as any,
+    schema: HistoryShowSchema.shape,
+    execute: executeHistoryShow,
 };

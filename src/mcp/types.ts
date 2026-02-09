@@ -5,6 +5,8 @@
  * including protocol types, RiotPlan-specific types, and resource result types.
  */
 
+import { z } from 'zod';
+
 // ============================================================================
 // MCP Protocol Types
 // ============================================================================
@@ -12,26 +14,13 @@
 /**
  * MCP Tool definition
  * Represents a callable tool exposed via MCP
+ * Each tool is a self-contained descriptor with Zod schema and executor
  */
 export interface McpTool {
     name: string;
     description: string;
-    inputSchema: {
-        type: 'object';
-        properties: Record<string, McpToolParameter>;
-        required?: string[];
-    };
-}
-
-/**
- * MCP Tool Parameter definition
- * Describes a single parameter for a tool
- */
-export interface McpToolParameter {
-    type: string;
-    description: string;
-    enum?: string[];
-    items?: { type: string };
+    schema: z.ZodRawShape;
+    execute: (args: Record<string, any>, context: ToolExecutionContext) => Promise<ToolResult>;
 }
 
 /**

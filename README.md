@@ -317,6 +317,131 @@ defaultModel: claude-3-5-sonnet-20241022
 
 See [Configuration Guide](./guide/configuration.md) for complete documentation.
 
+## Catalysts: Composable Planning Intelligence
+
+**Catalysts** are composable, layerable bundles of planning guidance that influence how plans are created. They contain questions, constraints, domain knowledge, and process guidance that help shape plans for specific technologies, organizations, or project types.
+
+### What Catalysts Provide
+
+A catalyst can include any combination of:
+
+- **Questions**: Guiding questions for idea exploration (e.g., "What Node.js version will you target?")
+- **Constraints**: Rules plans must satisfy (e.g., "All projects must have 80% test coverage")
+- **Output Templates**: Expected deliverables (e.g., Amazon-style press releases, 6-page narratives)
+- **Domain Knowledge**: Context about an organization, project, or technology
+- **Process Guidance**: How to approach the planning process (tactical vs strategic)
+- **Validation Rules**: Post-creation checks
+
+### Catalyst Structure
+
+A catalyst is a directory containing:
+
+```
+my-catalyst/
+├── catalyst.yml              # Manifest (id, name, version, facets)
+├── questions/                # Guiding questions
+│   └── *.md
+├── constraints/              # Rules and requirements
+│   └── *.md
+├── domain-knowledge/         # Contextual information
+│   └── *.md
+├── process-guidance/         # Process recommendations
+│   └── *.md
+├── output-templates/         # Expected deliverables
+│   └── *.md
+└── validation-rules/         # Post-creation checks
+    └── *.md
+```
+
+**Example `catalyst.yml`:**
+
+```yaml
+id: '@kjerneverk/catalyst-project'
+name: Kjerneverk Project Standards
+version: 1.0.0
+description: Standard constraints and guidance for all Kjerneverk projects
+facets:
+  questions: true
+  constraints: true
+  domainKnowledge: true
+  processGuidance: true
+```
+
+### Using Catalysts
+
+**Via Configuration** (`riotplan.config.yaml`):
+
+```yaml
+planDirectory: ./plans
+catalysts:
+  - ./catalysts/kjerneverk-project
+  - ./catalysts/nodejs
+catalystDirectory: ./catalysts
+```
+
+**Via Command Line:**
+
+```bash
+riotplan create my-feature --catalysts ./catalysts/nodejs,./catalysts/testing
+```
+
+**Via MCP Tools:**
+
+```typescript
+// List configured catalysts
+riotplan_catalyst_list()
+
+// Show catalyst details
+riotplan_catalyst_show({ catalyst: '@kjerneverk/catalyst-project' })
+
+// Associate catalysts with a plan
+riotplan_catalyst_associate({
+  path: './my-plan',
+  action: 'add',
+  catalysts: ['@kjerneverk/catalyst-project']
+})
+```
+
+### Catalyst Layering
+
+Catalysts can be layered to combine guidance from multiple sources:
+
+```yaml
+catalysts:
+  - ./catalysts/software      # Base software practices
+  - ./catalysts/nodejs        # Node.js specific guidance
+  - ./catalysts/company       # Company-specific standards
+```
+
+Content from multiple catalysts is merged in order (first = base, last = top layer), with source attribution maintained for traceability.
+
+### Catalyst Traceability
+
+When catalysts are used, plans record which catalysts influenced their creation:
+
+- **`plan.yaml`**: Records catalyst IDs in the plan manifest
+- **`SUMMARY.md`**: Lists applied catalysts in the plan summary
+- **AI Generation**: Catalyst content is injected into the AI prompt, influencing plan generation
+
+### Example Catalyst
+
+See `examples/catalysts/kjerneverk-project/` for a complete working example demonstrating all facets.
+
+### Future: NPM Distribution
+
+In a future release, catalysts will be distributable as NPM packages, allowing you to:
+
+```bash
+npm install @kjerneverk/catalyst-nodejs
+```
+
+```yaml
+catalysts:
+  - '@kjerneverk/catalyst-nodejs'  # Resolves from node_modules
+```
+
+For now, catalysts are loaded from local directories.
+
 ## Programmatic Usage
 
 ```typescript
@@ -556,3 +681,4 @@ A plan provides structure for complex, iterative AI-assisted work where:
 Apache-2.0
 
 <!-- v1.0.0 -->
+TEST

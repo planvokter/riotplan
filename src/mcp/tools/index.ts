@@ -6,21 +6,17 @@
 
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 
-// Import all tools
-import { createTool, executeCreate } from './create.js';
-import { statusTool, executeStatus } from './status.js';
+// Import all tool definitions (no execute functions needed - they're on the tool objects)
+import { createTool } from './create.js';
+import { statusTool } from './status.js';
 import {
     stepListTool,
     stepStartTool,
     stepCompleteTool,
     stepAddTool,
-    executeStepList,
-    executeStepStart,
-    executeStepComplete,
-    executeStepAdd,
 } from './step.js';
-import { validateTool, executeValidate } from './validate.js';
-import { generateTool, executeGenerate } from './generate.js';
+import { validateTool } from './validate.js';
+import { generateTool } from './generate.js';
 import {
     ideaCreateTool,
     ideaAddNoteTool,
@@ -29,13 +25,6 @@ import {
     ideaAddEvidenceTool,
     ideaAddNarrativeTool,
     ideaKillTool,
-    executeIdeaCreate,
-    executeIdeaAddNote,
-    executeIdeaAddConstraint,
-    executeIdeaAddQuestion,
-    executeIdeaAddEvidence,
-    executeIdeaAddNarrative,
-    executeIdeaKill,
 } from './idea.js';
 import {
     shapingStartTool,
@@ -44,12 +33,6 @@ import {
     shapingAddEvidenceTool,
     shapingCompareTool,
     shapingSelectTool,
-    executeShapingStart,
-    executeShapingAddApproach,
-    executeShapingAddFeedback,
-    executeShapingAddEvidence,
-    executeShapingCompare,
-    executeShapingSelect,
 } from './shaping.js';
 import {
     checkpointCreateTool,
@@ -57,123 +40,19 @@ import {
     checkpointShowTool,
     checkpointRestoreTool,
     historyShowTool,
-    executeCheckpointCreate,
-    executeCheckpointList,
-    executeCheckpointShow,
-    executeCheckpointRestore,
-    executeHistoryShow,
 } from './history.js';
+import { transitionTool } from './transition.js';
+import { buildTool } from './build.js';
+import { generateRuleTool } from './generate-rule.js';
+import { readContextTool } from './context.js';
 import {
-    transitionTool,
-    executeTransition,
-} from './transition.js';
-import {
-    buildTool,
-    executeBuild,
-} from './build.js';
-import {
-    generateRuleTool,
-    executeGenerateRule,
-} from './generate-rule.js';
-import {
-    readContextTool,
-    executeReadContext,
-} from './context.js';
-
-/**
- * Base tool executor - wraps command logic
- */
-export async function executeTool(
-    toolName: string,
-    args: Record<string, any>,
-    context: ToolExecutionContext
-): Promise<ToolResult> {
-    try {
-        // Route to specific tool handler
-        switch (toolName) {
-            case 'riotplan_create':
-                return await executeCreate(args, context);
-            case 'riotplan_status':
-                return await executeStatus(args, context);
-            case 'riotplan_step_list':
-                return await executeStepList(args, context);
-            case 'riotplan_step_start':
-                return await executeStepStart(args, context);
-            case 'riotplan_step_complete':
-                return await executeStepComplete(args, context);
-            case 'riotplan_step_add':
-                return await executeStepAdd(args, context);
-            case 'riotplan_validate':
-                return await executeValidate(args, context);
-            case 'riotplan_generate':
-                return await executeGenerate(args, context);
-            // Idea tools
-            case 'riotplan_idea_create':
-                return await executeIdeaCreate(args, context);
-            case 'riotplan_idea_add_note':
-                return await executeIdeaAddNote(args, context);
-            case 'riotplan_idea_add_constraint':
-                return await executeIdeaAddConstraint(args, context);
-            case 'riotplan_idea_add_question':
-                return await executeIdeaAddQuestion(args, context);
-            case 'riotplan_idea_add_evidence':
-                return await executeIdeaAddEvidence(args, context);
-            case 'riotplan_idea_add_narrative':
-                return await executeIdeaAddNarrative(args, context);
-            case 'riotplan_idea_kill':
-                return await executeIdeaKill(args, context);
-            // Shaping tools
-            case 'riotplan_shaping_start':
-                return await executeShapingStart(args, context);
-            case 'riotplan_shaping_add_approach':
-                return await executeShapingAddApproach(args, context);
-            case 'riotplan_shaping_add_feedback':
-                return await executeShapingAddFeedback(args, context);
-            case 'riotplan_shaping_add_evidence':
-                return await executeShapingAddEvidence(args, context);
-            case 'riotplan_shaping_compare':
-                return await executeShapingCompare(args, context);
-            case 'riotplan_shaping_select':
-                return await executeShapingSelect(args, context);
-            // History and checkpoint tools
-            case 'riotplan_checkpoint_create':
-                return await executeCheckpointCreate(args, context);
-            case 'riotplan_checkpoint_list':
-                return await executeCheckpointList(args, context);
-            case 'riotplan_checkpoint_show':
-                return await executeCheckpointShow(args, context);
-            case 'riotplan_checkpoint_restore':
-                return await executeCheckpointRestore(args, context);
-            case 'riotplan_history_show':
-                return await executeHistoryShow(args, context);
-            // Transition tool
-            case 'riotplan_transition':
-                return await executeTransition(args, context);
-            // Build tool
-            case 'riotplan_build':
-                return await executeBuild(args, context);
-            // Generate rule tool
-            case 'riotplan_generate_rule':
-                return await executeGenerateRule(args, context);
-            // Context tool
-            case 'riotplan_read_context':
-                return await executeReadContext(args, context);
-            default:
-                return {
-                    success: false,
-                    error: `Unknown tool: ${toolName}`,
-                };
-        }
-    } catch (error: any) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-            context: {
-                errorType: error?.constructor?.name || 'Error',
-            },
-        };
-    }
-}
+    catalystListTool,
+    catalystShowTool,
+    catalystAssociateTool,
+} from './catalyst.js';
+import { stepReflectTool } from './reflect.js';
+import { generateRetrospectiveTool } from './retrospective.js';
+import { backfillManifestsTool } from './backfill-manifests.js';
 
 /**
  * Tool definitions array
@@ -216,4 +95,51 @@ export const tools: McpTool[] = [
     generateRuleTool,
     // Context tool
     readContextTool,
+    // Catalyst tools
+    catalystListTool,
+    catalystShowTool,
+    catalystAssociateTool,
+    // Reflection tool
+    stepReflectTool,
+    // Retrospective tool
+    generateRetrospectiveTool,
+    // Backfill tool
+    backfillManifestsTool,
 ];
+
+/**
+ * Tool map for fast lookup by name
+ */
+const toolMap = new Map<string, McpTool>(
+    tools.map(tool => [tool.name, tool])
+);
+
+/**
+ * Base tool executor - wraps command logic
+ * Uses Map-based lookup instead of switch statement
+ */
+export async function executeTool(
+    toolName: string,
+    args: Record<string, any>,
+    context: ToolExecutionContext
+): Promise<ToolResult> {
+    const tool = toolMap.get(toolName);
+    if (!tool) {
+        return {
+            success: false,
+            error: `Unknown tool: ${toolName}`,
+        };
+    }
+    
+    try {
+        return await tool.execute(args, context);
+    } catch (error: any) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+            context: {
+                errorType: error?.constructor?.name || 'Error',
+            },
+        };
+    }
+}

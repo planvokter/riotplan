@@ -3,9 +3,9 @@
  */
 
 import { z } from "zod";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { resolveDirectory, formatError, createSuccess, formatDate } from "./shared.js";
+import { resolveDirectory, formatError, createSuccess, formatDate, ensurePlanManifest } from "./shared.js";
 import { transitionStage } from "./transition.js";
 import { generatePlan } from "../../ai/generator.js";
 import { loadProvider } from "../../ai/provider-loader.js";
@@ -148,7 +148,7 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
     // Create plan files in existing directory
     
     // 1. Create SUMMARY.md
-    const summaryContent = `# ${generationContext.planName}
+    let summaryContent = `# ${generationContext.planName}
 
 ## Overview
 
@@ -172,7 +172,20 @@ ${description}
 
 ## Success Criteria
 
-${result.steps.map((s, i) => `- [ ] Step ${i + 1}: ${s.title}`).join('\n')}
+${result.steps.map((s, i) => `- [ ] Step ${i + 1}: ${s.title}`).join('\n')}`;
+
+    // Add catalyst section if artifacts contain catalyst info
+    if (artifacts.catalystContent?.appliedCatalysts && artifacts.catalystContent.appliedCatalysts.length > 0) {
+        summaryContent += `
+
+## Catalysts Applied
+
+The following catalysts shaped this plan:
+
+${artifacts.catalystContent.appliedCatalysts.map(id => `- ${id}`).join('\n')}`;
+    }
+
+    summaryContent += `
 
 ---
 
@@ -321,7 +334,15 @@ ${step.notes || '_Add any additional notes..._'}
     });
     await writeFile(join(planPath, "PROVENANCE.md"), provenanceContent, "utf-8");
     
-    // 6. Transition to "built" stage
+    // 6. Ensure plan.yaml manifest exists
+    const planDirName = basename(planPath);
+    const manifestCreated = await ensurePlanManifest(planPath, {
+        id: planDirName,
+        title: generationContext.planName,
+        catalysts: artifacts.catalystContent?.appliedCatalysts,
+    });
+    
+    // 7. Transition to "built" stage
     await transitionStage({
         path: planPath,
         stage: "built",
@@ -336,14 +357,31 @@ ${step.notes || '_Add any additional notes..._'}
         ? `\n\nToken Budget:\n${tieringSummary.map(s => `  - ${s}`).join('\n')}`
         : '';
     
+    const manifestInfo = manifestCreated ? `- Created plan.yaml manifest\n` : '';
+    
     return `✅ Plan built successfully!\n\n` +
         `- Generated ${result.steps.length} steps\n` +
         `- Created SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md\n` +
         `- Created plan/ directory with step files\n` +
+        manifestInfo +
         `- Transitioned to 'built' stage\n` +
         `- Preserved existing IDEA.md, SHAPING.md, and history\n` +
         `- ${validationSummary}${tieringInfo}\n\n` +
         `Next: Use 'riotplan_step_start' to begin execution`;
+}
+
+// Tool executor
+async function executeBuild(
+    args: any,
+    context: ToolExecutionContext
+): Promise<ToolResult> {
+    try {
+        const validated = BuildSchema.parse(args);
+        const message = await buildPlan(validated, context);
+        return createSuccess({ built: true }, message);
+    } catch (error) {
+        return formatError(error);
+    }
 }
 
 // MCP Tool definition
@@ -356,44 +394,12 @@ export const buildTool: McpTool = {
         'and generates steps grounded in the artifacts. Produces PROVENANCE.md showing ' +
         'how artifacts shaped the plan. Uses smart tiering for large artifact sets. ' +
         'Creates SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md, and plan/ directory with steps.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Path to idea/shaping directory (optional, defaults to current directory)',
-            },
-            description: {
-                type: 'string',
-                description: 'Optional plan description (defaults to IDEA.md content)',
-            },
-            steps: {
-                type: 'number',
-                description: 'Optional number of steps to generate',
-            },
-            provider: {
-                type: 'string',
-                description: 'AI provider (anthropic, openai, gemini)',
-            },
-            model: {
-                type: 'string',
-                description: 'Specific model to use',
-            },
-        },
-        required: [],
+    schema: {
+        path: z.string().optional().describe('Path to idea/shaping directory (optional, defaults to current directory)'),
+        description: z.string().optional().describe('Optional plan description (defaults to IDEA.md content)'),
+        steps: z.number().optional().describe('Optional number of steps to generate'),
+        provider: z.string().optional().describe('AI provider (anthropic, openai, gemini)'),
+        model: z.string().optional().describe('Specific model to use'),
     },
+    execute: executeBuild,
 };
-
-// Tool executor
-export async function executeBuild(
-    args: any,
-    context: ToolExecutionContext
-): Promise<ToolResult> {
-    try {
-        const validated = BuildSchema.parse(args);
-        const message = await buildPlan(validated, context);
-        return createSuccess({ built: true }, message);
-    } catch (error) {
-        return formatError(error);
-    }
-}

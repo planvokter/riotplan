@@ -6,34 +6,12 @@
  * to load full plan context at stage transitions.
  */
 
+import { z } from 'zod';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess } from './shared.js';
 import { extractConstraints, extractQuestions, extractSelectedApproach, readEvidenceFiles, readRecentHistory } from '../../ai/artifacts.js';
-
-export const readContextTool: McpTool = {
-    name: 'riotplan_read_context',
-    description:
-        'Load all plan artifacts in a single call for stage transitions. ' +
-        'Returns IDEA.md content, SHAPING.md content (if exists), evidence file list with previews, ' +
-        'recent history events, and extracted constraints/questions. ' +
-        'Use this at stage transitions to ensure you have full context before proceeding.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            depth: {
-                type: 'string',
-                enum: ['summary', 'full'],
-                description: 'Level of detail: "summary" for metadata only, "full" for complete file contents (default: full)',
-            },
-        },
-    },
-};
 
 interface EvidenceFile {
     name: string;
@@ -123,7 +101,7 @@ async function readEvidenceFilesWithPreview(planPath: string, depth: string): Pr
     return { files: filesWithPreview, count: filesWithPreview.length };
 }
 
-export async function executeReadContext(
+async function executeReadContext(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -161,3 +139,17 @@ export async function executeReadContext(
         return formatError(error);
     }
 }
+
+export const readContextTool: McpTool = {
+    name: 'riotplan_read_context',
+    description:
+        'Load all plan artifacts in a single call for stage transitions. ' +
+        'Returns IDEA.md content, SHAPING.md content (if exists), evidence file list with previews, ' +
+        'recent history events, and extracted constraints/questions. ' +
+        'Use this at stage transitions to ensure you have full context before proceeding.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        depth: z.enum(['summary', 'full']).optional().describe('Level of detail: "summary" for metadata only, "full" for complete file contents (default: full)'),
+    },
+    execute: executeReadContext,
+};

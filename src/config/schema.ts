@@ -42,6 +42,21 @@ export const RiotPlanConfigSchema = z.object({
      * Optional - if not specified, uses built-in templates
      */
     templateDirectory: z.string().optional(),
+
+    /**
+     * Ordered list of catalyst paths or IDs to apply to all plans
+     * Can be local paths (relative to config file or absolute) or NPM package names
+     * Catalysts are loaded and merged in the order specified
+     * Optional - if not specified, no catalysts are applied
+     */
+    catalysts: z.array(z.string()).optional(),
+
+    /**
+     * Directory containing local catalyst packages
+     * Can be relative (resolved from config file location) or absolute
+     * Optional - if not specified, catalysts are resolved relative to config file
+     */
+    catalystDirectory: z.string().optional(),
 });
 
 /**

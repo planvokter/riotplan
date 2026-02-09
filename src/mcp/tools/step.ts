@@ -2,8 +2,9 @@
  * Step Tools - Manage plan steps
  */
 
+import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess } from './shared.js';
+import { resolveDirectory, formatError, createSuccess, ensurePlanManifest } from './shared.js';
 import { loadPlan } from '../../plan/loader.js';
 import { startStep, completeStep, insertStep } from '../../steps/operations.js';
 import { generateStatus } from '../../status/generator.js';
@@ -14,31 +15,7 @@ import { join } from 'node:path';
 // Step List Tool
 // ============================================================================
 
-export const stepListTool: McpTool = {
-    name: 'riotplan_step_list',
-    description:
-        'List all steps in a plan with their status. ' +
-        'Can filter to show only pending, in-progress, or all steps.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            pending: {
-                type: 'boolean',
-                description: 'Show only pending steps (default: false)',
-            },
-            all: {
-                type: 'boolean',
-                description: 'Include completed steps (default: true)',
-            },
-        },
-    },
-};
-
-export async function executeStepList(
+async function executeStepList(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -70,36 +47,32 @@ export async function executeStepList(
     }
 }
 
+export const stepListTool: McpTool = {
+    name: 'riotplan_step_list',
+    description:
+        'List all steps in a plan with their status. ' +
+        'Can filter to show only pending, in-progress, or all steps.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        pending: z.boolean().optional().describe('Show only pending steps (default: false)'),
+        all: z.boolean().optional().describe('Include completed steps (default: true)'),
+    },
+    execute: executeStepList,
+};
+
 // ============================================================================
 // Step Start Tool
 // ============================================================================
 
-export const stepStartTool: McpTool = {
-    name: 'riotplan_step_start',
-    description:
-        'Mark a step as started. Updates STATUS.md to reflect the step is in progress.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            step: {
-                type: 'number',
-                description: 'Step number to start',
-            },
-        },
-        required: ['step'],
-    },
-};
-
-export async function executeStepStart(
+async function executeStepStart(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
         const planPath = args.path ? args.path : resolveDirectory(args, context);
+        
+        // Ensure plan has manifest
+        await ensurePlanManifest(planPath);
         
         const plan = await loadPlan(planPath);
         const updatedStep = startStep(plan, args.step);
@@ -116,7 +89,7 @@ export async function executeStepStart(
         plan.state.lastUpdatedAt = new Date();
         
         // Regenerate STATUS.md
-        const statusContent = generateStatus(plan);
+        const statusContent = await generateStatus(plan);
         await writeFile(join(planPath, 'STATUS.md'), statusContent, 'utf-8');
 
         return createSuccess(
@@ -128,36 +101,30 @@ export async function executeStepStart(
     }
 }
 
+export const stepStartTool: McpTool = {
+    name: 'riotplan_step_start',
+    description:
+        'Mark a step as started. Updates STATUS.md to reflect the step is in progress.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        step: z.number().describe('Step number to start'),
+    },
+    execute: executeStepStart,
+};
+
 // ============================================================================
 // Step Complete Tool
 // ============================================================================
 
-export const stepCompleteTool: McpTool = {
-    name: 'riotplan_step_complete',
-    description:
-        'Mark a step as completed. Updates STATUS.md to reflect the step is done.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            step: {
-                type: 'number',
-                description: 'Step number to complete',
-            },
-        },
-        required: ['step'],
-    },
-};
-
-export async function executeStepComplete(
+async function executeStepComplete(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
         const planPath = args.path ? args.path : resolveDirectory(args, context);
+        
+        // Ensure plan has manifest
+        await ensurePlanManifest(planPath);
         
         const plan = await loadPlan(planPath);
         const updatedStep = completeStep(plan, args.step);
@@ -183,8 +150,25 @@ export async function executeStepComplete(
         }
         
         // Regenerate STATUS.md
-        const statusContent = generateStatus(plan);
+        const statusContent = await generateStatus(plan);
         await writeFile(join(planPath, 'STATUS.md'), statusContent, 'utf-8');
+
+        // Check if all steps are now completed
+        const allStepsCompleted = plan.steps.every(
+            s => s.status === 'completed' || s.status === 'skipped'
+        );
+
+        if (allStepsCompleted) {
+            return createSuccess(
+                { planPath, step: args.step, planCompleted: true },
+                `Step ${args.step} marked as completed.\n\n` +
+                `🎉 All steps completed! Plan execution is finished.\n\n` +
+                `**Next: Generate Plan Retrospective**\n` +
+                `Call \`riotplan_generate_retrospective\` to create a retrospective that captures learning from this execution.\n\n` +
+                `**Recommendation**: Use the highest-tier model available (e.g., Claude Opus, GPT-4) for retrospective generation. ` +
+                `Retrospectives require creative analysis and pattern recognition to produce valuable insights.`
+            );
+        }
 
         return createSuccess(
             { planPath, step: args.step },
@@ -195,39 +179,22 @@ export async function executeStepComplete(
     }
 }
 
+export const stepCompleteTool: McpTool = {
+    name: 'riotplan_step_complete',
+    description:
+        'Mark a step as completed. Updates STATUS.md to reflect the step is done.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        step: z.number().describe('Step number to complete'),
+    },
+    execute: executeStepComplete,
+};
+
 // ============================================================================
 // Step Add Tool
 // ============================================================================
 
-export const stepAddTool: McpTool = {
-    name: 'riotplan_step_add',
-    description:
-        'Add a new step to the plan. Can specify position or add after a specific step.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            title: {
-                type: 'string',
-                description: 'Step title',
-            },
-            number: {
-                type: 'number',
-                description: 'Step number (optional, defaults to end)',
-            },
-            after: {
-                type: 'number',
-                description: 'Add after this step number (optional)',
-            },
-        },
-        required: ['title'],
-    },
-};
-
-export async function executeStepAdd(
+async function executeStepAdd(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -256,3 +223,16 @@ export async function executeStepAdd(
         return formatError(error);
     }
 }
+
+export const stepAddTool: McpTool = {
+    name: 'riotplan_step_add',
+    description:
+        'Add a new step to the plan. Can specify position or add after a specific step.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        title: z.string().describe('Step title'),
+        number: z.number().optional().describe('Step number (optional, defaults to end)'),
+        after: z.number().optional().describe('Add after this step number (optional)'),
+    },
+    execute: executeStepAdd,
+};

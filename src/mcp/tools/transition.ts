@@ -81,35 +81,8 @@ export async function transitionStage(args: z.infer<typeof TransitionSchema>, co
     return `✅ Transitioned from '${currentStage}' to '${args.stage}'\n\nReason: ${args.reason}`;
 }
 
-// MCP Tool definition
-export const transitionTool: McpTool = {
-    name: 'riotplan_transition',
-    description: 
-        'Move between lifecycle stages (idea → shaping → built → executing → completed, or backwards). ' +
-        'Updates LIFECYCLE.md and logs transition to timeline. ' +
-        'Allows any transitions without validation.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Path to plan/idea/shaping directory (optional, defaults to current directory)',
-            },
-            stage: {
-                type: 'string',
-                description: 'Target stage: idea, shaping, built, executing, completed, cancelled',
-            },
-            reason: {
-                type: 'string',
-                description: 'Reason for transitioning',
-            },
-        },
-        required: ['stage', 'reason'],
-    },
-};
-
 // Tool executor
-export async function executeTransition(
+async function executeTransition(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -121,3 +94,18 @@ export async function executeTransition(
         return formatError(error);
     }
 }
+
+// MCP Tool definition
+export const transitionTool: McpTool = {
+    name: 'riotplan_transition',
+    description: 
+        'Move between lifecycle stages (idea → shaping → built → executing → completed, or backwards). ' +
+        'Updates LIFECYCLE.md and logs transition to timeline. ' +
+        'Allows any transitions without validation.',
+    schema: {
+        path: z.string().optional().describe('Path to plan/idea/shaping directory (optional, defaults to current directory)'),
+        stage: z.string().describe('Target stage: idea, shaping, built, executing, completed, cancelled'),
+        reason: z.string().describe('Reason for transitioning'),
+    },
+    execute: executeTransition,
+};
