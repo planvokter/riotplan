@@ -52,6 +52,9 @@
     "url": "https://github.com/kjerneverk/riotplan"
   },
   "dependencies": {
+    "@kjerneverk/agentic": "^1.0.5",
+    "@kjerneverk/execution-anthropic": "^1.0.4",
+    "@kjerneverk/execution-openai": "^1.0.4",
     "@kjerneverk/execution-sampling": "^1.0.2",
     "@kjerneverk/riotplan-catalyst": "^1.0.5",
     "@modelcontextprotocol/sdk": "^1.25.3",
