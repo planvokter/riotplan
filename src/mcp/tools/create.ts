@@ -6,6 +6,7 @@ import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess, isIdeaOrShapingDirectory } from './shared.js';
 import { createPlan } from '../../plan/creator.js';
 import { join } from 'node:path';
+import { writePlanManifest } from '@kjerneverk/riotplan-catalyst';
 
 export const createTool: McpTool = {
     name: 'riotplan_create',
@@ -52,6 +53,11 @@ export const createTool: McpTool = {
                 type: 'boolean',
                 description: 'Use templates only, no AI generation (default: false)',
             },
+            catalysts: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional catalyst IDs or paths to apply to this plan',
+            },
         },
         required: ['code', 'description'],
     },
@@ -92,15 +98,31 @@ export async function executeCreate(
 
         const result = await createPlan(config);
 
+        // If catalysts are specified, create plan.yaml with catalyst associations
+        if (args.catalysts && args.catalysts.length > 0) {
+            const planManifest = {
+                id: args.code,
+                title: args.name || args.code,
+                catalysts: args.catalysts,
+                created: new Date().toISOString(),
+            };
+            await writePlanManifest(result.path, planManifest);
+        }
+
+        const catalystInfo = args.catalysts && args.catalysts.length > 0
+            ? `\nApplied catalysts: ${args.catalysts.join(', ')}`
+            : '';
+
         return createSuccess(
             {
                 planPath: result.path,
                 code: args.code,
                 stepsCreated: result.plan.steps?.length || 0,
                 filesCreated: result.filesCreated || [],
+                catalysts: args.catalysts || [],
                 warning: detection.isIdeaOrShaping ? 'Existing idea/shaping directory detected' : undefined,
             },
-            `Plan "${args.code}" created successfully at ${result.path}${warningMessage}`
+            `Plan "${args.code}" created successfully at ${result.path}${catalystInfo}${warningMessage}`
         );
     } catch (error) {
         return formatError(error);

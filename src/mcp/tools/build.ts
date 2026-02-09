@@ -148,7 +148,7 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
     // Create plan files in existing directory
     
     // 1. Create SUMMARY.md
-    const summaryContent = `# ${generationContext.planName}
+    let summaryContent = `# ${generationContext.planName}
 
 ## Overview
 
@@ -172,7 +172,20 @@ ${description}
 
 ## Success Criteria
 
-${result.steps.map((s, i) => `- [ ] Step ${i + 1}: ${s.title}`).join('\n')}
+${result.steps.map((s, i) => `- [ ] Step ${i + 1}: ${s.title}`).join('\n')}`;
+
+    // Add catalyst section if artifacts contain catalyst info
+    if (artifacts.catalystContent?.appliedCatalysts && artifacts.catalystContent.appliedCatalysts.length > 0) {
+        summaryContent += `
+
+## Catalysts Applied
+
+The following catalysts shaped this plan:
+
+${artifacts.catalystContent.appliedCatalysts.map(id => `- ${id}`).join('\n')}`;
+    }
+
+    summaryContent += `
 
 ---
 

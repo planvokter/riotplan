@@ -13,6 +13,8 @@ describe('RiotPlanConfigSchema', () => {
                 defaultProvider: 'anthropic' as const,
                 defaultModel: 'claude-3-5-sonnet-20241022',
                 templateDirectory: './templates',
+                catalysts: ['catalyst1', 'catalyst2'],
+                catalystDirectory: './catalysts',
             };
 
             const result = RiotPlanConfigSchema.parse(config);
@@ -20,6 +22,8 @@ describe('RiotPlanConfigSchema', () => {
             expect(result.defaultProvider).toBe('anthropic');
             expect(result.defaultModel).toBe('claude-3-5-sonnet-20241022');
             expect(result.templateDirectory).toBe('./templates');
+            expect(result.catalysts).toEqual(['catalyst1', 'catalyst2']);
+            expect(result.catalystDirectory).toBe('./catalysts');
         });
 
         it('should accept config with only planDirectory', () => {
@@ -32,6 +36,8 @@ describe('RiotPlanConfigSchema', () => {
             expect(result.defaultProvider).toBeUndefined();
             expect(result.defaultModel).toBeUndefined();
             expect(result.templateDirectory).toBeUndefined();
+            expect(result.catalysts).toBeUndefined();
+            expect(result.catalystDirectory).toBeUndefined();
         });
 
         it('should apply default value for planDirectory when not provided', () => {
@@ -99,6 +105,39 @@ describe('RiotPlanConfigSchema', () => {
                 RiotPlanConfigSchema.parse(config);
             }).toThrow();
         });
+
+        it('should reject non-array catalysts', () => {
+            const config = {
+                planDirectory: './plans',
+                catalysts: 'not-an-array',
+            };
+
+            expect(() => {
+                RiotPlanConfigSchema.parse(config);
+            }).toThrow();
+        });
+
+        it('should reject non-string catalyst entries', () => {
+            const config = {
+                planDirectory: './plans',
+                catalysts: [123, 'valid'],
+            };
+
+            expect(() => {
+                RiotPlanConfigSchema.parse(config);
+            }).toThrow();
+        });
+
+        it('should reject non-string catalystDirectory', () => {
+            const config = {
+                planDirectory: './plans',
+                catalystDirectory: 123,
+            };
+
+            expect(() => {
+                RiotPlanConfigSchema.parse(config);
+            }).toThrow();
+        });
     });
 
     describe('optional fields', () => {
@@ -111,6 +150,8 @@ describe('RiotPlanConfigSchema', () => {
             expect(result.defaultProvider).toBeUndefined();
             expect(result.defaultModel).toBeUndefined();
             expect(result.templateDirectory).toBeUndefined();
+            expect(result.catalysts).toBeUndefined();
+            expect(result.catalystDirectory).toBeUndefined();
         });
 
         it('should allow empty config object (uses defaults)', () => {
@@ -118,6 +159,38 @@ describe('RiotPlanConfigSchema', () => {
 
             const result = RiotPlanConfigSchema.parse(config);
             expect(result.planDirectory).toBe('./plans');
+        });
+
+        it('should accept empty catalysts array', () => {
+            const config = {
+                planDirectory: './plans',
+                catalysts: [],
+            };
+
+            const result = RiotPlanConfigSchema.parse(config);
+            expect(result.catalysts).toEqual([]);
+        });
+
+        it('should accept catalysts without catalystDirectory', () => {
+            const config = {
+                planDirectory: './plans',
+                catalysts: ['catalyst1'],
+            };
+
+            const result = RiotPlanConfigSchema.parse(config);
+            expect(result.catalysts).toEqual(['catalyst1']);
+            expect(result.catalystDirectory).toBeUndefined();
+        });
+
+        it('should accept catalystDirectory without catalysts', () => {
+            const config = {
+                planDirectory: './plans',
+                catalystDirectory: './catalysts',
+            };
+
+            const result = RiotPlanConfigSchema.parse(config);
+            expect(result.catalysts).toBeUndefined();
+            expect(result.catalystDirectory).toBe('./catalysts');
         });
     });
 });

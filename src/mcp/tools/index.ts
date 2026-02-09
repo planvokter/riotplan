@@ -79,6 +79,14 @@ import {
     readContextTool,
     executeReadContext,
 } from './context.js';
+import {
+    catalystListTool,
+    catalystShowTool,
+    catalystAssociateTool,
+    executeCatalystList,
+    executeCatalystShow,
+    executeCatalystAssociate,
+} from './catalyst.js';
 
 /**
  * Base tool executor - wraps command logic
@@ -158,6 +166,13 @@ export async function executeTool(
             // Context tool
             case 'riotplan_read_context':
                 return await executeReadContext(args, context);
+            // Catalyst tools
+            case 'riotplan_catalyst_list':
+                return await executeCatalystList(args, context);
+            case 'riotplan_catalyst_show':
+                return await executeCatalystShow(args, context);
+            case 'riotplan_catalyst_associate':
+                return await executeCatalystAssociate(args, context);
             default:
                 return {
                     success: false,
@@ -216,4 +231,8 @@ export const tools: McpTool[] = [
     generateRuleTool,
     // Context tool
     readContextTool,
+    // Catalyst tools
+    catalystListTool,
+    catalystShowTool,
+    catalystAssociateTool,
 ];
