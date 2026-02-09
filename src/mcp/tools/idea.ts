@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
-import { formatTimestamp, resolveDirectory } from "./shared.js";
+import { formatTimestamp, resolveDirectory, ensurePlanManifest } from "./shared.js";
 import { logEvent } from "./history.js";
 import type { EvidenceType } from "../../types.js";
 
@@ -205,6 +205,14 @@ _Add notes as you think about this..._
 
     await writeFile(join(ideaPath, "LIFECYCLE.md"), lifecycleContent, "utf-8");
   
+    // Create plan.yaml manifest
+    const manifestCreated = await ensurePlanManifest(ideaPath, {
+        id: code,
+        title: code.split('-').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+        ).join(' '),
+    });
+  
     // Log event to history
     await logEvent(ideaPath, {
         timestamp: formatTimestamp(),
@@ -212,7 +220,9 @@ _Add notes as you think about this..._
         data: { code, description },
     });
   
-    return `✅ Idea created: ${ideaPath}\n\nNext steps:\n- Add notes: riotplan_idea_add_note\n- Add constraints: riotplan_idea_add_constraint\n- Add questions: riotplan_idea_add_question\n- Add evidence: riotplan_idea_add_evidence\n- When ready: riotplan_transition to 'shaping'`;
+    const manifestInfo = manifestCreated ? '\n- Created plan.yaml manifest' : '';
+  
+    return `✅ Idea created: ${ideaPath}${manifestInfo}\n\nNext steps:\n- Add notes: riotplan_idea_add_note\n- Add constraints: riotplan_idea_add_constraint\n- Add questions: riotplan_idea_add_question\n- Add evidence: riotplan_idea_add_evidence\n- When ready: riotplan_transition to 'shaping'`;
 }
 
 export async function ideaAddNote(args: z.infer<typeof IdeaAddNoteSchema>): Promise<string> {

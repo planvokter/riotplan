@@ -52,6 +52,7 @@ import {
 } from './catalyst.js';
 import { stepReflectTool } from './reflect.js';
 import { generateRetrospectiveTool } from './retrospective.js';
+import { backfillManifestsTool } from './backfill-manifests.js';
 
 /**
  * Tool definitions array
@@ -102,6 +103,8 @@ export const tools: McpTool[] = [
     stepReflectTool,
     // Retrospective tool
     generateRetrospectiveTool,
+    // Backfill tool
+    backfillManifestsTool,
 ];
 
 /**

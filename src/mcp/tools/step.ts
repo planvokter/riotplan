@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess } from './shared.js';
+import { resolveDirectory, formatError, createSuccess, ensurePlanManifest } from './shared.js';
 import { loadPlan } from '../../plan/loader.js';
 import { startStep, completeStep, insertStep } from '../../steps/operations.js';
 import { generateStatus } from '../../status/generator.js';
@@ -71,6 +71,9 @@ async function executeStepStart(
     try {
         const planPath = args.path ? args.path : resolveDirectory(args, context);
         
+        // Ensure plan has manifest
+        await ensurePlanManifest(planPath);
+        
         const plan = await loadPlan(planPath);
         const updatedStep = startStep(plan, args.step);
         
@@ -119,6 +122,9 @@ async function executeStepComplete(
 ): Promise<ToolResult> {
     try {
         const planPath = args.path ? args.path : resolveDirectory(args, context);
+        
+        // Ensure plan has manifest
+        await ensurePlanManifest(planPath);
         
         const plan = await loadPlan(planPath);
         const updatedStep = completeStep(plan, args.step);

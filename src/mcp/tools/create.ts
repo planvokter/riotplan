@@ -4,10 +4,9 @@
 
 import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess, isIdeaOrShapingDirectory } from './shared.js';
+import { resolveDirectory, formatError, createSuccess, isIdeaOrShapingDirectory, ensurePlanManifest } from './shared.js';
 import { createPlan } from '../../plan/creator.js';
 import { join } from 'node:path';
-import { writePlanManifest } from '@kjerneverk/riotplan-catalyst';
 
 async function executeCreate(
     args: any,
@@ -44,20 +43,18 @@ async function executeCreate(
 
         const result = await createPlan(config);
 
-        // If catalysts are specified, create plan.yaml with catalyst associations
-        if (args.catalysts && args.catalysts.length > 0) {
-            const planManifest = {
-                id: args.code,
-                title: args.name || args.code,
-                catalysts: args.catalysts,
-                created: new Date().toISOString(),
-            };
-            await writePlanManifest(result.path, planManifest);
-        }
+        // Always create plan.yaml manifest with plan identity
+        const manifestCreated = await ensurePlanManifest(result.path, {
+            id: args.code,
+            title: args.name || args.code,
+            catalysts: args.catalysts,
+        });
 
         const catalystInfo = args.catalysts && args.catalysts.length > 0
             ? `\nApplied catalysts: ${args.catalysts.join(', ')}`
             : '';
+        
+        const manifestInfo = manifestCreated ? '\nCreated plan.yaml manifest' : '';
 
         return createSuccess(
             {
@@ -66,9 +63,10 @@ async function executeCreate(
                 stepsCreated: result.plan.steps?.length || 0,
                 filesCreated: result.filesCreated || [],
                 catalysts: args.catalysts || [],
+                manifestCreated,
                 warning: detection.isIdeaOrShaping ? 'Existing idea/shaping directory detected' : undefined,
             },
-            `Plan "${args.code}" created successfully at ${result.path}${catalystInfo}${warningMessage}`
+            `Plan "${args.code}" created successfully at ${result.path}${catalystInfo}${manifestInfo}${warningMessage}`
         );
     } catch (error) {
         return formatError(error);

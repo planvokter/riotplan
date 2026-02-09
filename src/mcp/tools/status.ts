@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess } from './shared.js';
+import { resolveDirectory, formatError, createSuccess, ensurePlanManifest } from './shared.js';
 import { loadPlan } from '../../plan/loader.js';
 
 async function executeStatus(
@@ -13,6 +13,9 @@ async function executeStatus(
 ): Promise<ToolResult> {
     try {
         const planPath = args.path ? args.path : resolveDirectory(args, context);
+        
+        // Ensure plan has manifest
+        await ensurePlanManifest(planPath);
         
         const plan = await loadPlan(planPath);
 

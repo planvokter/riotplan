@@ -3,9 +3,9 @@
  */
 
 import { z } from "zod";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { resolveDirectory, formatError, createSuccess, formatDate } from "./shared.js";
+import { resolveDirectory, formatError, createSuccess, formatDate, ensurePlanManifest } from "./shared.js";
 import { transitionStage } from "./transition.js";
 import { generatePlan } from "../../ai/generator.js";
 import { loadProvider } from "../../ai/provider-loader.js";
@@ -334,7 +334,15 @@ ${step.notes || '_Add any additional notes..._'}
     });
     await writeFile(join(planPath, "PROVENANCE.md"), provenanceContent, "utf-8");
     
-    // 6. Transition to "built" stage
+    // 6. Ensure plan.yaml manifest exists
+    const planDirName = basename(planPath);
+    const manifestCreated = await ensurePlanManifest(planPath, {
+        id: planDirName,
+        title: generationContext.planName,
+        catalysts: artifacts.catalystContent?.appliedCatalysts,
+    });
+    
+    // 7. Transition to "built" stage
     await transitionStage({
         path: planPath,
         stage: "built",
@@ -349,10 +357,13 @@ ${step.notes || '_Add any additional notes..._'}
         ? `\n\nToken Budget:\n${tieringSummary.map(s => `  - ${s}`).join('\n')}`
         : '';
     
+    const manifestInfo = manifestCreated ? `- Created plan.yaml manifest\n` : '';
+    
     return `✅ Plan built successfully!\n\n` +
         `- Generated ${result.steps.length} steps\n` +
         `- Created SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md\n` +
         `- Created plan/ directory with step files\n` +
+        manifestInfo +
         `- Transitioned to 'built' stage\n` +
         `- Preserved existing IDEA.md, SHAPING.md, and history\n` +
         `- ${validationSummary}${tieringInfo}\n\n` +

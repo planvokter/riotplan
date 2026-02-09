@@ -2,8 +2,8 @@
  * Shared utilities for MCP tools
  */
 
-import { resolve, join } from 'node:path';
-import { access } from 'node:fs/promises';
+import { resolve, join, basename } from 'node:path';
+import { access, readFile } from 'node:fs/promises';
 import type { ToolResult, ToolExecutionContext } from '../types.js';
 
 export function formatTimestamp(): string {
@@ -102,7 +102,6 @@ export async function isIdeaOrShapingDirectory(path: string): Promise<{
         
         // Try to read and extract stage
         try {
-            const { readFile } = await import('node:fs/promises');
             const content = await readFile(join(path, 'LIFECYCLE.md'), 'utf-8');
             const stageMatch = content.match(/\*\*Stage\*\*: `(\w+)`/);
             if (stageMatch) {
@@ -120,4 +119,51 @@ export async function isIdeaOrShapingDirectory(path: string): Promise<{
         detected,
         stage,
     };
+}
+
+/**
+ * Ensure a plan has a plan.yaml manifest file
+ * 
+ * If the manifest doesn't exist, creates it with basic plan identity.
+ * If it exists, does nothing (preserves existing data).
+ * 
+ * @param planPath - Absolute path to plan directory
+ * @param options - Optional override values for id and title
+ * @returns True if manifest was created, false if it already existed
+ */
+export async function ensurePlanManifest(
+    planPath: string,
+    options?: { id?: string; title?: string; catalysts?: string[] }
+): Promise<boolean> {
+    try {
+        // Try to import the manifest functions
+        const { readPlanManifest, writePlanManifest } = await import('@kjerneverk/riotplan-catalyst');
+        
+        // Check if manifest already exists
+        const existing = await readPlanManifest(planPath);
+        if (existing) {
+            return false; // Already exists, nothing to do
+        }
+        
+        // Generate id and title from path if not provided
+        const planDirName = basename(planPath);
+        const id = options?.id || planDirName;
+        const title = options?.title || planDirName.split('-').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+        ).join(' ');
+        
+        // Create minimal manifest
+        await writePlanManifest(planPath, {
+            id,
+            title,
+            catalysts: options?.catalysts,
+            created: new Date().toISOString(),
+        });
+        
+        return true; // Created new manifest
+    } catch (error) {
+        // If riotplan-catalyst is not available, silently skip
+        // This maintains backward compatibility
+        return false;
+    }
 }

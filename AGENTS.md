@@ -72,12 +72,21 @@ riotplan_step_complete({ path: './my-plan', step: 1 })
 - `riotplan_idea_add_evidence`: Attach supporting materials
 - `riotplan_idea_kill`: Abandon idea with reason
 
-### Shaping Stage Tools
+### Shaping Stage Tools (CRITICAL)
 
 - `riotplan_shaping_add_approach`: Propose solution approaches
 - `riotplan_shaping_add_feedback`: Comment on approaches
 - `riotplan_shaping_compare`: Generate comparison of all approaches
-- `riotplan_shaping_select`: Choose best approach and move to Built stage
+- `riotplan_shaping_select`: Choose best approach
+
+**CRITICAL: After calling `riotplan_shaping_select`, you MUST immediately call `riotplan_build`.**
+
+This is the most common mistake when using RiotPlan. The workflow is:
+1. Call `riotplan_shaping_select` to record the chosen approach
+2. **Immediately** call `riotplan_build` to generate PROVENANCE.md, EXECUTION_PLAN.md, SUMMARY.md, and step files
+3. Only then can you begin executing steps
+
+**Do NOT skip `riotplan_build`** - it creates essential documentation and transitions the plan to "built" stage.
 
 ### History & Checkpoints
 
