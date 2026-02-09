@@ -346,9 +346,346 @@ async function main() {
     }
 
     // Register all tools
-    for (const tool of tools) {
-        registerTool(tool.name, tool.description, tool.schema);
-    }
+    registerTool(
+        'riotplan_create',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Create a new plan with AI generation. Generates detailed, actionable plans from descriptions.',
+        {
+            code: z.string(),
+            name: z.string().optional(),
+            description: z.string(),
+            directory: z.string().optional(),
+            steps: z.number().optional(),
+            direct: z.boolean().optional(),
+            provider: z.string().optional(),
+            model: z.string().optional(),
+            noAi: z.boolean().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_status',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Show current plan status including progress, current step, blockers, and issues.',
+        {
+            path: z.string().optional(),
+            verbose: z.boolean().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_step_list',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. List all steps in a plan with their status. Can filter to show only pending or all steps.',
+        {
+            path: z.string().optional(),
+            pending: z.boolean().optional(),
+            all: z.boolean().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_step_start',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Mark a step as started. Updates STATUS.md to reflect the step is in progress.',
+        {
+            path: z.string().optional(),
+            step: z.number(),
+        }
+    );
+
+    registerTool(
+        'riotplan_step_complete',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Mark a step as completed. Updates STATUS.md to reflect the step is done.',
+        {
+            path: z.string().optional(),
+            step: z.number(),
+        }
+    );
+
+    registerTool(
+        'riotplan_step_add',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add a new step to the plan. Can specify position or add after a specific step.',
+        {
+            path: z.string().optional(),
+            title: z.string(),
+            number: z.number().optional(),
+            after: z.number().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_validate',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Validate plan structure and files. Checks for required files, valid STATUS.md, step numbering, and dependencies.',
+        {
+            path: z.string().optional(),
+            fix: z.boolean().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_generate',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Generate plan content from an existing prompt file. Useful for regenerating plan files.',
+        {
+            path: z.string().optional(),
+            steps: z.number().optional(),
+            provider: z.string().optional(),
+            model: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_build',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. ' +
+        'Build a detailed plan from idea/shaping artifacts using AI generation. ' +
+        'Reads ALL plan artifacts (IDEA.md, SHAPING.md, evidence, history, constraints) ' +
+        'and generates steps grounded in the artifacts. Produces PROVENANCE.md showing ' +
+        'how artifacts shaped the plan. Uses smart tiering for large artifact sets. ' +
+        'Creates SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md, and plan/ directory with steps.',
+        {
+            path: z.string().optional(),
+            description: z.string().optional(),
+            steps: z.number().optional(),
+            provider: z.string().optional(),
+            model: z.string().optional(),
+        }
+    );
+
+    // Idea stage tools
+    registerTool(
+        'riotplan_idea_create',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Create a new idea without commitment. Start exploring a concept in the Idea stage.',
+        {
+            code: z.string(),
+            description: z.string(),
+            directory: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_idea_add_note',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add a note to an idea. Capture thoughts and observations during exploration.',
+        {
+            note: z.string(),
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_idea_add_constraint',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add a constraint to an idea. Document limitations and requirements.',
+        {
+            constraint: z.string(),
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_idea_add_question',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add a question to an idea. Raise uncertainties that need resolution.',
+        {
+            question: z.string(),
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_idea_add_evidence',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add evidence to an idea. Attach supporting materials like diagrams, documents, or examples.',
+        {
+            evidencePath: z.string().optional(),
+            description: z.string(),
+            path: z.string().optional(),
+            content: z.string().optional(),
+            source: z.string().optional(),
+            sourceUrl: z.string().optional(),
+            originalQuery: z.string().optional(),
+            gatheringMethod: z.enum(["manual", "model-assisted"]).optional(),
+            relevanceScore: z.number().min(0).max(1).optional(),
+            summary: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_idea_add_narrative',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add raw narrative content to the timeline. Use this to capture conversational context, thinking-out-loud, or any free-form input that doesn\'t fit structured categories. Narrative chunks preserve full-fidelity context.',
+        {
+            content: z.string(),
+            path: z.string().optional(),
+            source: z.enum(["typing", "voice", "paste", "import"]).optional(),
+            context: z.string().optional(),
+            speaker: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_idea_kill',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Kill an idea. Abandon the idea with a reason, preserving the learning.',
+        {
+            reason: z.string(),
+            path: z.string().optional(),
+        }
+    );
+
+    // Shaping stage tools
+    registerTool(
+        'riotplan_shaping_start',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Start shaping an idea. Move from Idea to Shaping stage to explore approaches.',
+        {
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_shaping_add_approach',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add an approach to consider. Propose a way to solve the problem with explicit tradeoffs.',
+        {
+            name: z.string(),
+            description: z.string(),
+            tradeoffs: z.array(z.string()),
+            assumptions: z.array(z.string()).optional(),
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_shaping_add_feedback',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add feedback on an approach. Provide observations, concerns, or suggestions.',
+        {
+            approach: z.string(),
+            feedback: z.string(),
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_shaping_add_evidence',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Add evidence for an approach. Attach supporting materials that inform the decision.',
+        {
+            approach: z.string(),
+            evidencePath: z.string().optional(),
+            description: z.string(),
+            path: z.string().optional(),
+            content: z.string().optional(),
+            source: z.string().optional(),
+            sourceUrl: z.string().optional(),
+            originalQuery: z.string().optional(),
+            gatheringMethod: z.enum(["manual", "model-assisted"]).optional(),
+            relevanceScore: z.number().min(0).max(1).optional(),
+            summary: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_shaping_compare',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Compare all approaches. Generate a side-by-side comparison of tradeoffs.',
+        {
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_shaping_select',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Select an approach. Choose the best approach and move to Built stage.',
+        {
+            approach: z.string(),
+            reason: z.string(),
+            path: z.string().optional(),
+        }
+    );
+
+    // History and checkpoint tools
+    registerTool(
+        'riotplan_checkpoint_create',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Create a checkpoint. Save a snapshot of the current state with prompt context.',
+        {
+            name: z.string(),
+            message: z.string(),
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_checkpoint_list',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. List all checkpoints. Show all saved checkpoints with timestamps.',
+        {
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_checkpoint_show',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Show checkpoint details. Display the full checkpoint snapshot and prompt context.',
+        {
+            checkpoint: z.string(),
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_checkpoint_restore',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Restore a checkpoint. Revert to a previous state.',
+        {
+            checkpoint: z.string(),
+            path: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_history_show',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Show ideation history. Display the complete timeline of events.',
+        {
+            path: z.string().optional(),
+            limit: z.number().optional(),
+            sinceCheckpoint: z.string().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_generate_rule',
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. Generate a Cursor rule file that configures the IDE to defer to RiotPlan for planning. Creates .cursor/rules/riotplan.md in the target project.',
+        {
+            projectPath: z.string().optional(),
+            force: z.boolean().optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_read_context',
+        '[RiotPlan] Load all plan artifacts in a single call for stage transitions. ' +
+            'Returns IDEA.md content, SHAPING.md content (if exists), evidence file list with previews, ' +
+            'recent history events, and extracted constraints/questions. ' +
+            'Use this at stage transitions to ensure you have full context before proceeding. ' +
+            'The plan files are the source of truth - do not rely on conversation memory alone.',
+        {
+            path: z.string().optional(),
+            depth: z.enum(['summary', 'full']).optional(),
+        }
+    );
+
+    registerTool(
+        'riotplan_step_reflect',
+        '[RiotPlan] Capture a reflection after completing a step. ' +
+            'Write freeform analysis about what happened during execution: ' +
+            'what surprised you, what took longer than expected, what could be done differently, ' +
+            'and what the next step should know. This creates the inter-step learning channel.',
+        {
+            path: z.string().optional(),
+            step: z.number(),
+            reflection: z.string(),
+        }
+    );
+
+    registerTool(
+        'riotplan_generate_retrospective',
+        '[RiotPlan] Generate a plan retrospective that analyzes execution and provides insights for future planning. ' +
+            'This tool loads all execution context (reflections, plan files, status) and generates a high-value ' +
+            'retrospective focused on what went right, what went wrong, and what should be done differently. ' +
+            '\n\n' +
+            '**IMPORTANT**: This tool produces best results with the highest-tier reasoning model available ' +
+            '(e.g., Claude Opus, GPT-4). Retrospectives require creative analysis and pattern recognition. ' +
+            'Lower-tier models tend to produce generic observations rather than surprising insights.',
+        {
+            path: z.string().optional(),
+            force: z.boolean().optional(),
+        }
+    );
 
     // ========================================================================
     // Resources Handlers

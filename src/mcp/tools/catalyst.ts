@@ -2,6 +2,7 @@
  * Catalyst Tools - Manage catalysts for plans
  */
 
+import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess } from './shared.js';
 import { loadConfig, loadConfiguredCatalysts } from '../../config/index.js';
@@ -12,24 +13,7 @@ import { readPlanManifest, addCatalystToManifest, removeCatalystFromManifest } f
 // riotplan_catalyst_list
 // ============================================================================
 
-export const catalystListTool: McpTool = {
-    name: 'riotplan_catalyst_list',
-    description:
-        '[RiotPlan] List all catalysts available to the current project. ' +
-        'Returns catalyst ID, name, description, and which facets are provided. ' +
-        'Sources include config-declared catalysts and catalystDirectory contents.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Optional plan directory (defaults to current directory)',
-            },
-        },
-    },
-};
-
-export async function executeCatalystList(
+async function executeCatalystList(
     _args: any,
     _context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -80,28 +64,23 @@ export async function executeCatalystList(
     }
 }
 
+export const catalystListTool: McpTool = {
+    name: 'riotplan_catalyst_list',
+    description:
+        '[RiotPlan] List all catalysts available to the current project. ' +
+        'Returns catalyst ID, name, description, and which facets are provided. ' +
+        'Sources include config-declared catalysts and catalystDirectory contents.',
+    schema: {
+        path: z.string().optional().describe('Optional plan directory (defaults to current directory)'),
+    },
+    execute: executeCatalystList,
+};
+
 // ============================================================================
 // riotplan_catalyst_show
 // ============================================================================
 
-export const catalystShowTool: McpTool = {
-    name: 'riotplan_catalyst_show',
-    description:
-        '[RiotPlan] Show details of a specific catalyst including manifest and facet summary. ' +
-        'Returns full manifest, list of facet files, and content preview.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            catalyst: {
-                type: 'string',
-                description: 'Catalyst ID or path to show details for',
-            },
-        },
-        required: ['catalyst'],
-    },
-};
-
-export async function executeCatalystShow(
+async function executeCatalystShow(
     args: any,
     _context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -143,39 +122,22 @@ export async function executeCatalystShow(
     }
 }
 
+export const catalystShowTool: McpTool = {
+    name: 'riotplan_catalyst_show',
+    description:
+        '[RiotPlan] Show details of a specific catalyst including manifest and facet summary. ' +
+        'Returns full manifest, list of facet files, and content preview.',
+    schema: {
+        catalyst: z.string().describe('Catalyst ID or path to show details for'),
+    },
+    execute: executeCatalystShow,
+};
+
 // ============================================================================
 // riotplan_catalyst_associate
 // ============================================================================
 
-export const catalystAssociateTool: McpTool = {
-    name: 'riotplan_catalyst_associate',
-    description:
-        '[RiotPlan] Associate one or more catalysts with a specific plan. ' +
-        'Writes/updates the plan\'s plan.yaml manifest to include the catalyst IDs. ' +
-        'Validates that the catalysts exist and can be loaded before associating.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            catalysts: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Catalyst IDs or paths to associate with the plan',
-            },
-            action: {
-                type: 'string',
-                enum: ['add', 'remove', 'set'],
-                description: 'Action to perform: add (append), remove (delete), or set (replace all)',
-            },
-        },
-        required: ['catalysts', 'action'],
-    },
-};
-
-export async function executeCatalystAssociate(
+async function executeCatalystAssociate(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -251,3 +213,17 @@ export async function executeCatalystAssociate(
         return formatError(error);
     }
 }
+
+export const catalystAssociateTool: McpTool = {
+    name: 'riotplan_catalyst_associate',
+    description:
+        '[RiotPlan] Associate one or more catalysts with a specific plan. ' +
+        'Writes/updates the plan\'s plan.yaml manifest to include the catalyst IDs. ' +
+        'Validates that the catalysts exist and can be loaded before associating.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        catalysts: z.array(z.string()).describe('Catalyst IDs or paths to associate with the plan'),
+        action: z.enum(['add', 'remove', 'set']).describe('Action to perform: add (append), remove (delete), or set (replace all)'),
+    },
+    execute: executeCatalystAssociate,
+};

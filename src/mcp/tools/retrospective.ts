@@ -2,6 +2,7 @@
  * Retrospective Tool - Generate plan retrospectives
  */
 
+import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess } from './shared.js';
 import { generateRetrospective } from '../../retrospective/generator.js';
@@ -12,33 +13,7 @@ import { join } from 'node:path';
 // Generate Retrospective Tool
 // ============================================================================
 
-export const generateRetrospectiveTool: McpTool = {
-    name: 'riotplan_generate_retrospective',
-    description:
-        'Generate a plan retrospective that analyzes execution and provides insights for future planning. ' +
-        'This tool loads all execution context (reflections, plan files, status) and generates a high-value ' +
-        'retrospective focused on what went right, what went wrong, and what should be done differently. ' +
-        '\n\n' +
-        '**IMPORTANT**: This tool produces best results with the highest-tier reasoning model available ' +
-        '(e.g., Claude Opus, GPT-4). Retrospectives require creative analysis and pattern recognition. ' +
-        'Lower-tier models tend to produce generic observations rather than surprising insights.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            force: {
-                type: 'boolean',
-                description:
-                    'Generate retrospective even if plan is not completed (default: false)',
-            },
-        },
-    },
-};
-
-export async function executeGenerateRetrospective(
+async function executeGenerateRetrospective(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -109,3 +84,20 @@ ${prompt}
         return formatError(error);
     }
 }
+
+export const generateRetrospectiveTool: McpTool = {
+    name: 'riotplan_generate_retrospective',
+    description:
+        'Generate a plan retrospective that analyzes execution and provides insights for future planning. ' +
+        'This tool loads all execution context (reflections, plan files, status) and generates a high-value ' +
+        'retrospective focused on what went right, what went wrong, and what should be done differently. ' +
+        '\n\n' +
+        '**IMPORTANT**: This tool produces best results with the highest-tier reasoning model available ' +
+        '(e.g., Claude Opus, GPT-4). Retrospectives require creative analysis and pattern recognition. ' +
+        'Lower-tier models tend to produce generic observations rather than surprising insights.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        force: z.boolean().optional().describe('Generate retrospective even if plan is not completed (default: false)'),
+    },
+    execute: executeGenerateRetrospective,
+};

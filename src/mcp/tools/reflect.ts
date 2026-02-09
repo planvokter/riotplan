@@ -2,6 +2,7 @@
  * Reflection Tool - Capture step reflections
  */
 
+import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess } from './shared.js';
 import { loadPlan } from '../../plan/loader.js';
@@ -11,37 +12,7 @@ import { writeStepReflection } from '../../reflections/writer.js';
 // Step Reflect Tool
 // ============================================================================
 
-export const stepReflectTool: McpTool = {
-    name: 'riotplan_step_reflect',
-    description:
-        'Capture a reflection after completing a step. ' +
-        'Write freeform analysis about what happened during execution: ' +
-        'what surprised you, what took longer than expected, what could be done differently, ' +
-        'and what the next step should know. This creates the inter-step learning channel.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            step: {
-                type: 'number',
-                description: 'Step number to reflect on (must be completed)',
-            },
-            reflection: {
-                type: 'string',
-                description:
-                    'The reflection content. Be honest, specific, and creative. ' +
-                    'What surprised you? What took longer than expected? ' +
-                    'What could have been done differently? What should the next step know?',
-            },
-        },
-        required: ['step', 'reflection'],
-    },
-};
-
-export async function executeStepReflect(
+async function executeStepReflect(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -85,3 +56,22 @@ export async function executeStepReflect(
         return formatError(error);
     }
 }
+
+export const stepReflectTool: McpTool = {
+    name: 'riotplan_step_reflect',
+    description:
+        'Capture a reflection after completing a step. ' +
+        'Write freeform analysis about what happened during execution: ' +
+        'what surprised you, what took longer than expected, what could be done differently, ' +
+        'and what the next step should know. This creates the inter-step learning channel.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        step: z.number().describe('Step number to reflect on (must be completed)'),
+        reflection: z.string().describe(
+            'The reflection content. Be honest, specific, and creative. ' +
+            'What surprised you? What took longer than expected? ' +
+            'What could have been done differently? What should the next step know?'
+        ),
+    },
+    execute: executeStepReflect,
+};

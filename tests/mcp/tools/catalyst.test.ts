@@ -7,11 +7,19 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  executeCatalystList,
-  executeCatalystShow,
-  executeCatalystAssociate,
+  catalystListTool,
+  catalystShowTool,
+  catalystAssociateTool,
 } from '../../../src/mcp/tools/catalyst.js';
 import type { ToolExecutionContext } from '../../../src/mcp/types.js';
+
+// Helper wrappers to call tool.execute
+const executeCatalystList = (args: any, context: ToolExecutionContext) => 
+  catalystListTool.execute(args, context);
+const executeCatalystShow = (args: any, context: ToolExecutionContext) => 
+  catalystShowTool.execute(args, context);
+const executeCatalystAssociate = (args: any, context: ToolExecutionContext) => 
+  catalystAssociateTool.execute(args, context);
 
 describe('catalyst tools', () => {
   let testDir: string;

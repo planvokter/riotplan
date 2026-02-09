@@ -573,41 +573,48 @@ import type { McpTool } from '../types.js';
 export const ideaCreateTool: McpTool = {
     name: "riotplan_idea_create",
     description: "Create a new idea (lightweight, no commitment). Use this when you have an initial concept that needs exploration before becoming a full plan.",
-    inputSchema: IdeaCreateSchema.shape as any,
+    schema: IdeaCreateSchema.shape,
+    execute: executeIdeaCreate,
 };
 
 export const ideaAddNoteTool: McpTool = {
     name: "riotplan_idea_add_note",
     description: "Add a note or thought to an existing idea. Use this to capture thinking as it evolves.",
-    inputSchema: IdeaAddNoteSchema.shape as any,
+    schema: IdeaAddNoteSchema.shape,
+    execute: executeIdeaAddNote,
 };
 
 export const ideaAddConstraintTool: McpTool = {
     name: "riotplan_idea_add_constraint",
     description: "Add a constraint to an idea (e.g., 'Must work on mobile', 'No external dependencies')",
-    inputSchema: IdeaAddConstraintSchema.shape as any,
+    schema: IdeaAddConstraintSchema.shape,
+    execute: executeIdeaAddConstraint,
 };
 
 export const ideaAddQuestionTool: McpTool = {
     name: "riotplan_idea_add_question",
     description: "Add a question that needs answering before the idea can progress",
-    inputSchema: IdeaAddQuestionSchema.shape as any,
+    schema: IdeaAddQuestionSchema.shape,
+    execute: executeIdeaAddQuestion,
 };
 
 export const ideaAddEvidenceTool: McpTool = {
     name: "riotplan_idea_add_evidence",
     description: "Attach evidence to an idea. YOU (the model) should gather evidence using your own capabilities (web search, file reading, analysis), then use this tool to capture and organize it. Supports both file references and inline content (for pasted text, transcripts, web research findings, etc.).",
-    inputSchema: IdeaAddEvidenceSchema.shape as any,
+    schema: IdeaAddEvidenceSchema.shape,
+    execute: executeIdeaAddEvidence,
 };
 
 export const ideaAddNarrativeTool: McpTool = {
     name: "riotplan_idea_add_narrative",
     description: "Add raw narrative content to the timeline. Use this to capture conversational context, thinking-out-loud, or any free-form input that doesn't fit structured categories. Narrative chunks preserve full-fidelity context.",
-    inputSchema: IdeaAddNarrativeSchema.shape as any,
+    schema: IdeaAddNarrativeSchema.shape,
+    execute: executeIdeaAddNarrative,
 };
 
 export const ideaKillTool: McpTool = {
     name: "riotplan_idea_kill",
     description: "Kill an idea with a reason. Use when deciding not to pursue it.",
-    inputSchema: IdeaKillSchema.shape as any,
+    schema: IdeaKillSchema.shape,
+    execute: executeIdeaKill,
 };

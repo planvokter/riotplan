@@ -359,46 +359,8 @@ ${step.notes || '_Add any additional notes..._'}
         `Next: Use 'riotplan_step_start' to begin execution`;
 }
 
-// MCP Tool definition
-export const buildTool: McpTool = {
-    name: 'riotplan_build',
-    description:
-        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. ' +
-        'Build a detailed plan from idea/shaping artifacts using AI generation. ' +
-        'Reads ALL plan artifacts (IDEA.md, SHAPING.md, evidence, history, constraints) ' +
-        'and generates steps grounded in the artifacts. Produces PROVENANCE.md showing ' +
-        'how artifacts shaped the plan. Uses smart tiering for large artifact sets. ' +
-        'Creates SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md, and plan/ directory with steps.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Path to idea/shaping directory (optional, defaults to current directory)',
-            },
-            description: {
-                type: 'string',
-                description: 'Optional plan description (defaults to IDEA.md content)',
-            },
-            steps: {
-                type: 'number',
-                description: 'Optional number of steps to generate',
-            },
-            provider: {
-                type: 'string',
-                description: 'AI provider (anthropic, openai, gemini)',
-            },
-            model: {
-                type: 'string',
-                description: 'Specific model to use',
-            },
-        },
-        required: [],
-    },
-};
-
 // Tool executor
-export async function executeBuild(
+async function executeBuild(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -410,3 +372,23 @@ export async function executeBuild(
         return formatError(error);
     }
 }
+
+// MCP Tool definition
+export const buildTool: McpTool = {
+    name: 'riotplan_build',
+    description:
+        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. ' +
+        'Build a detailed plan from idea/shaping artifacts using AI generation. ' +
+        'Reads ALL plan artifacts (IDEA.md, SHAPING.md, evidence, history, constraints) ' +
+        'and generates steps grounded in the artifacts. Produces PROVENANCE.md showing ' +
+        'how artifacts shaped the plan. Uses smart tiering for large artifact sets. ' +
+        'Creates SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md, and plan/ directory with steps.',
+    schema: {
+        path: z.string().optional().describe('Path to idea/shaping directory (optional, defaults to current directory)'),
+        description: z.string().optional().describe('Optional plan description (defaults to IDEA.md content)'),
+        steps: z.number().optional().describe('Optional number of steps to generate'),
+        provider: z.string().optional().describe('AI provider (anthropic, openai, gemini)'),
+        model: z.string().optional().describe('Specific model to use'),
+    },
+    execute: executeBuild,
+};

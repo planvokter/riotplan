@@ -2,32 +2,12 @@
  * Validate Tool - Validate plan structure
  */
 
+import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess } from './shared.js';
 import { validatePlan } from '../../plan/validator.js';
 
-export const validateTool: McpTool = {
-    name: 'riotplan_validate',
-    description:
-        'Validate plan structure and files. ' +
-        'Checks for required files, valid STATUS.md, step numbering, and dependencies. ' +
-        'Can optionally attempt to fix issues.',
-    inputSchema: {
-        type: 'object',
-        properties: {
-            path: {
-                type: 'string',
-                description: 'Plan directory path (defaults to current directory)',
-            },
-            fix: {
-                type: 'boolean',
-                description: 'Attempt to fix issues (default: false)',
-            },
-        },
-    },
-};
-
-export async function executeValidate(
+async function executeValidate(
     args: any,
     context: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -52,3 +32,16 @@ export async function executeValidate(
         return formatError(error);
     }
 }
+
+export const validateTool: McpTool = {
+    name: 'riotplan_validate',
+    description:
+        'Validate plan structure and files. ' +
+        'Checks for required files, valid STATUS.md, step numbering, and dependencies. ' +
+        'Can optionally attempt to fix issues.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        fix: z.boolean().optional().describe('Attempt to fix issues (default: false)'),
+    },
+    execute: executeValidate,
+};

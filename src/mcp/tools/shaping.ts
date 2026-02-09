@@ -410,35 +410,41 @@ import type { McpTool } from '../types.js';
 export const shapingStartTool: McpTool = {
     name: "riotplan_shaping_start",
     description: "Start shaping an idea. Transitions from idea to shaping stage.",
-    inputSchema: ShapingStartSchema.shape as any,
+    schema: ShapingStartSchema.shape,
+    execute: executeShapingStart,
 };
 
 export const shapingAddApproachTool: McpTool = {
     name: "riotplan_shaping_add_approach",
     description: "Add an approach to consider during shaping. Include tradeoffs and assumptions.",
-    inputSchema: ShapingAddApproachSchema.shape as any,
+    schema: ShapingAddApproachSchema.shape,
+    execute: executeShapingAddApproach,
 };
 
 export const shapingAddFeedbackTool: McpTool = {
     name: "riotplan_shaping_add_feedback",
     description: "Add feedback about the current shaping. Use this to capture thoughts, concerns, or refinements.",
-    inputSchema: ShapingAddFeedbackSchema.shape as any,
+    schema: ShapingAddFeedbackSchema.shape,
+    execute: executeShapingAddFeedback,
 };
 
 export const shapingAddEvidenceTool: McpTool = {
     name: "riotplan_shaping_add_evidence",
     description: "Add evidence (documents, images, diagrams) to support decision-making during shaping.",
-    inputSchema: ShapingAddEvidenceSchema.shape as any,
+    schema: ShapingAddEvidenceSchema.shape,
+    execute: executeShapingAddEvidence,
 };
 
 export const shapingCompareTool: McpTool = {
     name: "riotplan_shaping_compare",
     description: "Compare all approaches side-by-side to help make a decision.",
-    inputSchema: ShapingCompareSchema.shape as any,
+    schema: ShapingCompareSchema.shape,
+    execute: executeShapingCompare,
 };
 
 export const shapingSelectTool: McpTool = {
     name: "riotplan_shaping_select",
     description: "Select an approach and prepare to transition to 'built' stage.",
-    inputSchema: ShapingSelectSchema.shape as any,
+    schema: ShapingSelectSchema.shape,
+    execute: executeShapingSelect,
 };
