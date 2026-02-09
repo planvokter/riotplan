@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "@kjerneverk/execution-sampling": "^1.0.2",
-    "@kjerneverk/riotplan-catalyst": "^1.0.4",
+    "@kjerneverk/riotplan-catalyst": "^1.0.5",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@types/inquirer": "^9.0.9",
     "@utilarium/cardigantime": "^0.0.25",
