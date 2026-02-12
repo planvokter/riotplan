@@ -4,19 +4,23 @@
  * RiotPlan CLI
  *
  * Command-line interface for managing and executing plans.
- * This is a thin shell that imports commands from separate packages.
+ * 
+ * LLM-Powered Commands (interactive chat sessions):
+ * - riotplan explore [path|code] [description]  Explore an idea
+ * - riotplan build-plan [path]                  Build execution plan from idea
+ * - riotplan execute-plan [path]                Execute plan steps
+ * - riotplan chat [path]                        General-purpose chat
  *
- * Commands:
- * - riotplan plan init <name>     Create a new plan
- * - riotplan plan validate [path] Validate plan structure
- * - riotplan plan archive [path]  Archive a completed plan
+ * Utility Commands (quick operations):
  * - riotplan status [path]        Show current status
  * - riotplan step list [path]     List steps
  * - riotplan step add <title>     Add a step
  * - riotplan step start <n>       Start a step
  * - riotplan step complete <n>    Complete a step
- * - riotplan feedback create      Create feedback record
- * - riotplan feedback list        List feedback records
+ * - riotplan plan init <name>     Create a new plan
+ * - riotplan plan validate [path] Validate plan structure
+ * - riotplan render [path]        Render plan to various formats
+ * - riotplan check-config         Show configuration
  */
 
 import { Command } from "commander";
@@ -25,23 +29,21 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-// Import command registration functions from command packages
+// Import command registration functions
+// LLM-powered commands
+import { registerExploreCommand } from "./commands/explore.js";
+import { registerBuildPlanCommand } from "./commands/build-plan.js";
+import { registerExecutePlanCommand } from "./commands/execute-plan.js";
+import { registerChatCommand } from "./commands/chat.js";
+
+// Utility commands
 import { registerPlanCommands } from "../commands/plan/index.js";
 import { registerRenderCommands } from "../commands/render/index.js";
 import { registerStatusCommands } from "./commands/status.js";
 import { registerStepCommands } from "./commands/step.js";
-import { registerFeedbackCommands } from "./commands/feedback.js";
-import { registerCreateCommand } from "./commands/create.js";
-import { registerElaborateCommand } from "./commands/elaborate.js";
-import { registerAnalysisCommands } from "./commands/analysis.js";
-import { registerGenerateCommand } from "./commands/generate.js";
-import { registerAmendCommand, registerAmendmentsCommands } from "./commands/amend.js";
-import { registerVerifyCommand } from "./commands/verify.js";
 import { registerConfigCommands } from "./commands/config.js";
 
 // Read version from package.json
-// In development: src/cli/cli.ts -> ../../package.json
-// In production: dist/cli-*.js -> ../package.json
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 let packageJsonPath = join(__dirname, "../package.json");
@@ -64,26 +66,24 @@ export function createProgram(): Command {
 
     program
         .name("riotplan")
-        .description("Manage long-lived, stateful AI workflows")
+        .description("Manage long-lived, stateful AI workflows\n\nLLM-Powered Commands:\n  explore, build-plan, execute-plan, chat\n\nUtility Commands:\n  status, step, plan, render, check-config")
         .version(VERSION)
         .configureHelp({
             sortSubcommands: true,
             subcommandTerm: (cmd) => cmd.name(),
         });
 
-    // Register command groups from packages
+    // Register LLM-powered commands
+    registerExploreCommand(program);
+    registerBuildPlanCommand(program);
+    registerExecutePlanCommand(program);
+    registerChatCommand(program);
+
+    // Register utility commands
     registerPlanCommands(program);
     registerRenderCommands(program);
     registerStatusCommands(program);
     registerStepCommands(program);
-    registerFeedbackCommands(program);
-    registerCreateCommand(program);
-    registerElaborateCommand(program);
-    registerAnalysisCommands(program);
-    registerGenerateCommand(program);
-    registerAmendCommand(program);
-    registerAmendmentsCommands(program);
-    registerVerifyCommand(program);
     registerConfigCommands(program);
 
     // Global options

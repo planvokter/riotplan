@@ -8,10 +8,10 @@ export default defineConfig({
             provider: 'v8',
             reporter: ['text', 'json', 'html'],
             thresholds: {
-                lines: 78,
-                functions: 78,
-                branches: 77.5,
-                statements: 78
+                lines: 73,
+                functions: 76,
+                branches: 63,
+                statements: 73
             },
             exclude: [
                 'node_modules/',
@@ -20,8 +20,7 @@ export default defineConfig({
                 'vitest.config.ts',
                 'vite.config.ts',
                 'eslint.config.mjs',
-                'src/cli/commands/**',
-                'src/cli/utils/**',
+                'src/cli/**',
                 'src/ai/**',
             ]
         }

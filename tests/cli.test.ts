@@ -34,7 +34,33 @@ describe("CLI", () => {
         });
     });
 
-    describe("command groups", () => {
+    describe("LLM-powered commands", () => {
+        it("should have explore command", () => {
+            const program = createProgram();
+            const commands = program.commands.map((c) => c.name());
+            expect(commands).toContain("explore");
+        });
+
+        it("should have build-plan command", () => {
+            const program = createProgram();
+            const commands = program.commands.map((c) => c.name());
+            expect(commands).toContain("build-plan");
+        });
+
+        it("should have execute-plan command", () => {
+            const program = createProgram();
+            const commands = program.commands.map((c) => c.name());
+            expect(commands).toContain("execute-plan");
+        });
+
+        it("should have chat command", () => {
+            const program = createProgram();
+            const commands = program.commands.map((c) => c.name());
+            expect(commands).toContain("chat");
+        });
+    });
+
+    describe("utility commands", () => {
         it("should have plan command group", () => {
             const program = createProgram();
             const commands = program.commands.map((c) => c.name());
@@ -53,10 +79,16 @@ describe("CLI", () => {
             expect(commands).toContain("step");
         });
 
-        it("should have feedback command group", () => {
+        it("should have render command", () => {
             const program = createProgram();
             const commands = program.commands.map((c) => c.name());
-            expect(commands).toContain("feedback");
+            expect(commands).toContain("render");
+        });
+
+        it("should have check-config command", () => {
+            const program = createProgram();
+            const commands = program.commands.map((c) => c.name());
+            expect(commands).toContain("check-config");
         });
     });
 
@@ -145,192 +177,23 @@ describe("CLI", () => {
         });
     });
 
-    describe("feedback subcommands", () => {
-        it("should have create subcommand", () => {
+    describe("explore command options", () => {
+        it("should have provider option", () => {
             const program = createProgram();
-            const feedbackCmd = program.commands.find(
-                (c) => c.name() === "feedback"
-            );
-            expect(feedbackCmd).toBeDefined();
+            const exploreCmd = program.commands.find((c) => c.name() === "explore");
+            expect(exploreCmd).toBeDefined();
 
-            const subcommands = feedbackCmd!.commands.map((c) => c.name());
-            expect(subcommands).toContain("create");
+            const options = exploreCmd!.options.map((o) => o.long);
+            expect(options).toContain("--provider");
         });
 
-        it("should have list subcommand", () => {
+        it("should have model option", () => {
             const program = createProgram();
-            const feedbackCmd = program.commands.find(
-                (c) => c.name() === "feedback"
-            );
-            expect(feedbackCmd).toBeDefined();
+            const exploreCmd = program.commands.find((c) => c.name() === "explore");
+            expect(exploreCmd).toBeDefined();
 
-            const subcommands = feedbackCmd!.commands.map((c) => c.name());
-            expect(subcommands).toContain("list");
-        });
-
-        it("should have show subcommand", () => {
-            const program = createProgram();
-            const feedbackCmd = program.commands.find(
-                (c) => c.name() === "feedback"
-            );
-            expect(feedbackCmd).toBeDefined();
-
-            const subcommands = feedbackCmd!.commands.map((c) => c.name());
-            expect(subcommands).toContain("show");
-        });
-    });
-
-    describe("elaborate command", () => {
-        it("should have elaborate command", () => {
-            const program = createProgram();
-            const commands = program.commands.map((c) => c.name());
-            expect(commands).toContain("elaborate");
-        });
-
-        it("should have message option", () => {
-            const program = createProgram();
-            const elaborateCmd = program.commands.find((c) => c.name() === "elaborate");
-            expect(elaborateCmd).toBeDefined();
-
-            const options = elaborateCmd!.options.map((o) => o.long);
-            expect(options).toContain("--message");
-        });
-    });
-
-    describe("amend command", () => {
-        it("should have amend command", () => {
-            const program = createProgram();
-            const commands = program.commands.map((c) => c.name());
-            expect(commands).toContain("amend");
-        });
-
-        it("should have message option", () => {
-            const program = createProgram();
-            const amendCmd = program.commands.find((c) => c.name() === "amend");
-            expect(amendCmd).toBeDefined();
-
-            const options = amendCmd!.options.map((o) => o.long);
-            expect(options).toContain("--message");
-        });
-
-        it("should have step option", () => {
-            const program = createProgram();
-            const amendCmd = program.commands.find((c) => c.name() === "amend");
-            expect(amendCmd).toBeDefined();
-
-            const options = amendCmd!.options.map((o) => o.long);
-            expect(options).toContain("--step");
-        });
-    });
-
-    describe("amendments command", () => {
-        it("should have amendments command group", () => {
-            const program = createProgram();
-            const commands = program.commands.map((c) => c.name());
-            expect(commands).toContain("amendments");
-        });
-
-        it("should have list subcommand", () => {
-            const program = createProgram();
-            const amendmentsCmd = program.commands.find((c) => c.name() === "amendments");
-            expect(amendmentsCmd).toBeDefined();
-
-            const subcommands = amendmentsCmd!.commands.map((c) => c.name());
-            expect(subcommands).toContain("list");
-        });
-    });
-
-    describe("generate command", () => {
-        it("should have generate command", () => {
-            const program = createProgram();
-            const commands = program.commands.map((c) => c.name());
-            expect(commands).toContain("generate");
-        });
-
-        it("should have steps option", () => {
-            const program = createProgram();
-            const generateCmd = program.commands.find((c) => c.name() === "generate");
-            expect(generateCmd).toBeDefined();
-
-            const options = generateCmd!.options.map((o) => o.long);
-            expect(options).toContain("--steps");
-        });
-
-        it("should have force option", () => {
-            const program = createProgram();
-            const generateCmd = program.commands.find((c) => c.name() === "generate");
-            expect(generateCmd).toBeDefined();
-
-            const options = generateCmd!.options.map((o) => o.long);
-            expect(options).toContain("--force");
-        });
-    });
-
-    describe("analysis command", () => {
-        it("should have analysis command group", () => {
-            const program = createProgram();
-            const commands = program.commands.map((c) => c.name());
-            expect(commands).toContain("analysis");
-        });
-
-        it("should have show subcommand", () => {
-            const program = createProgram();
-            const analysisCmd = program.commands.find((c) => c.name() === "analysis");
-            expect(analysisCmd).toBeDefined();
-
-            const subcommands = analysisCmd!.commands.map((c) => c.name());
-            expect(subcommands).toContain("show");
-        });
-
-        it("should have ready subcommand", () => {
-            const program = createProgram();
-            const analysisCmd = program.commands.find((c) => c.name() === "analysis");
-            expect(analysisCmd).toBeDefined();
-
-            const subcommands = analysisCmd!.commands.map((c) => c.name());
-            expect(subcommands).toContain("ready");
-        });
-    });
-
-    describe("create command", () => {
-        it("should have create command", () => {
-            const program = createProgram();
-            const commands = program.commands.map((c) => c.name());
-            expect(commands).toContain("create");
-        });
-
-        it("should have direct option", () => {
-            const program = createProgram();
-            const createCmd = program.commands.find((c) => c.name() === "create");
-            expect(createCmd).toBeDefined();
-
-            const options = createCmd!.options.map((o) => o.long);
-            expect(options).toContain("--direct");
-        });
-
-        it("should have analyze option", () => {
-            const program = createProgram();
-            const createCmd = program.commands.find((c) => c.name() === "create");
-            expect(createCmd).toBeDefined();
-
-            const options = createCmd!.options.map((o) => o.long);
-            expect(options).toContain("--analyze");
-        });
-
-        it("should have path option", () => {
-            const program = createProgram();
-            const createCmd = program.commands.find((c) => c.name() === "create");
-            expect(createCmd).toBeDefined();
-
-            const options = createCmd!.options.map((o) => o.long);
-            expect(options).toContain("--path");
-        });
-
-        it("should accept optional name argument", () => {
-            const program = createProgram();
-            const createCmd = program.commands.find((c) => c.name() === "create");
-            expect(createCmd).toBeDefined();
-            expect(createCmd!.usage()).toContain("[name]");
+            const options = exploreCmd!.options.map((o) => o.long);
+            expect(options).toContain("--model");
         });
     });
 

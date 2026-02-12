@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { readdir, stat } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess, ensurePlanManifest } from './shared.js';
@@ -58,7 +58,7 @@ async function findPlanDirectories(basePath: string, maxDepth: number = 3): Prom
                 // Recurse into subdirectories
                 await scan(fullPath, depth + 1);
             }
-        } catch (error) {
+        } catch {
             // Skip directories we can't read
         }
     }

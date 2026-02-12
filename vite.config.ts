@@ -46,6 +46,7 @@ export default defineConfig({
         "node:async_hooks",
         "node:util",
         "node:crypto",
+        "node:child_process",
       ],
       output: {
         entryFileNames: "[name].js",

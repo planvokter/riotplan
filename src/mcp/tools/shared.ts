@@ -161,7 +161,7 @@ export async function ensurePlanManifest(
         });
         
         return true; // Created new manifest
-    } catch (error) {
+    } catch {
         // If riotplan-catalyst is not available, silently skip
         // This maintains backward compatibility
         return false;
