@@ -68,11 +68,23 @@ export interface ExecutionOptions {
 }
 
 /**
+ * Streaming chunk from provider
+ */
+export interface StreamChunk {
+    type: 'text' | 'tool_use' | 'tool_result' | 'error' | 'done';
+    text?: string;
+    toolUse?: { id: string; name: string; input: unknown };
+    toolResult?: { id: string; content: string };
+    error?: string;
+}
+
+/**
  * Provider interface for LLM execution
  */
 export interface Provider {
     readonly name: string;
     execute(request: Request, options?: ExecutionOptions): Promise<ProviderResponse>;
+    executeStream?(request: Request, options?: ExecutionOptions): AsyncIterable<StreamChunk>;
     supportsModel?(model: string): boolean;
 }
 

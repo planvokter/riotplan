@@ -204,11 +204,9 @@ describe("CLI", () => {
             expect(options).toContain("--verbose");
         });
 
-        it("should have json option", () => {
-            const program = createProgram();
-            const options = program.options.map((o) => o.long);
-            expect(options).toContain("--json");
-        });
+        // Note: --json is intentionally NOT a global option because it conflicts
+        // with subcommand-specific --json options. Each command that needs JSON
+        // output should define its own --json option.
 
         it("should have no-color option", () => {
             const program = createProgram();

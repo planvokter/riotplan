@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess, ensurePlanManifest } from './shared.js';
 import { loadPlan } from '../../plan/loader.js';
-import { startStep, completeStep, insertStep } from '../../steps/operations.js';
+import { startStep, completeStep, insertStep, removeStep, moveStep } from '../../steps/operations.js';
 import { generateStatus } from '../../status/generator.js';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -235,4 +235,97 @@ export const stepAddTool: McpTool = {
         after: z.number().optional().describe('Add after this step number (optional)'),
     },
     execute: executeStepAdd,
+};
+
+// ============================================================================
+// Step Remove Tool
+// ============================================================================
+
+async function executeStepRemove(
+    args: any,
+    context: ToolExecutionContext
+): Promise<ToolResult> {
+    try {
+        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        
+        const plan = await loadPlan(planPath);
+        
+        const result = await removeStep(plan, args.step);
+
+        // Regenerate STATUS.md
+        const updatedPlan = await loadPlan(planPath);
+        const statusContent = await generateStatus(updatedPlan);
+        await writeFile(join(planPath, 'STATUS.md'), statusContent, 'utf-8');
+
+        return createSuccess(
+            { 
+                planPath, 
+                removedStep: result.removedStep.number,
+                removedTitle: result.removedStep.title,
+                deletedFile: result.deletedFile,
+                renamedFiles: result.renamedFiles,
+            },
+            `Step ${args.step} "${result.removedStep.title}" removed. ${result.renamedFiles.length} files renumbered.`
+        );
+    } catch (error) {
+        return formatError(error);
+    }
+}
+
+export const stepRemoveTool: McpTool = {
+    name: 'riotplan_step_remove',
+    description:
+        'Remove a step from the plan. Deletes the step file and automatically renumbers remaining steps.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        step: z.number().describe('Step number to remove'),
+    },
+    execute: executeStepRemove,
+};
+
+// ============================================================================
+// Step Move Tool
+// ============================================================================
+
+async function executeStepMove(
+    args: any,
+    context: ToolExecutionContext
+): Promise<ToolResult> {
+    try {
+        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        
+        const plan = await loadPlan(planPath);
+        
+        const result = await moveStep(plan, args.from, args.to);
+
+        // Regenerate STATUS.md
+        const updatedPlan = await loadPlan(planPath);
+        const statusContent = await generateStatus(updatedPlan);
+        await writeFile(join(planPath, 'STATUS.md'), statusContent, 'utf-8');
+
+        return createSuccess(
+            { 
+                planPath, 
+                step: result.step.number,
+                from: args.from,
+                to: args.to,
+                renamedFiles: result.renamedFiles,
+            },
+            `Step moved from position ${args.from} to position ${args.to}. ${result.renamedFiles.length} files renumbered.`
+        );
+    } catch (error) {
+        return formatError(error);
+    }
+}
+
+export const stepMoveTool: McpTool = {
+    name: 'riotplan_step_move',
+    description:
+        'Move a step to a different position in the plan. Automatically renumbers all affected step files.',
+    schema: {
+        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        from: z.number().describe('Current step number to move'),
+        to: z.number().describe('Target position to move the step to'),
+    },
+    execute: executeStepMove,
 };

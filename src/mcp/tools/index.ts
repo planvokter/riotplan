@@ -14,6 +14,8 @@ import {
     stepStartTool,
     stepCompleteTool,
     stepAddTool,
+    stepRemoveTool,
+    stepMoveTool,
 } from './step.js';
 import { validateTool } from './validate.js';
 import { generateTool } from './generate.js';
@@ -53,6 +55,7 @@ import {
 import { stepReflectTool } from './reflect.js';
 import { generateRetrospectiveTool } from './retrospective.js';
 import { backfillManifestsTool } from './backfill-manifests.js';
+import { switchPlanTool, listPlansTool } from './switch.js';
 
 /**
  * Tool definitions array
@@ -64,6 +67,8 @@ export const tools: McpTool[] = [
     stepStartTool,
     stepCompleteTool,
     stepAddTool,
+    stepRemoveTool,
+    stepMoveTool,
     validateTool,
     generateTool,
     // Idea tools
@@ -105,6 +110,9 @@ export const tools: McpTool[] = [
     generateRetrospectiveTool,
     // Backfill tool
     backfillManifestsTool,
+    // Plan switching tools
+    switchPlanTool,
+    listPlansTool,
 ];
 
 /**

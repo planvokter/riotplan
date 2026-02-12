@@ -22,7 +22,21 @@ export async function readFileImpl(
         ? params.path 
         : resolve(workingDirectory, params.path);
 
-    const content = await readFile(filePath, 'utf-8');
+    let content: string;
+    try {
+        content = await readFile(filePath, 'utf-8');
+    } catch (err: any) {
+        if (err.code === 'ENOENT') {
+            return `File not found: ${params.path}`;
+        }
+        if (err.code === 'EISDIR') {
+            return `"${params.path}" is a directory. Use list_files to explore directories.`;
+        }
+        if (err.code === 'EACCES') {
+            return `Permission denied: ${params.path}`;
+        }
+        throw err;
+    }
     
     // Check size limit
     if (content.length > MAX_FILE_SIZE) {

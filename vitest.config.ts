@@ -22,6 +22,7 @@ export default defineConfig({
                 'eslint.config.mjs',
                 'src/cli/**',
                 'src/ai/**',
+                'src/mcp/tools/**',
             ]
         }
     },

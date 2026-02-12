@@ -101,15 +101,15 @@ export const IdeaAddQuestionSchema = z.object({
 
 export const IdeaAddEvidenceSchema = z.object({
     path: z.string().optional().describe("Path to idea directory"),
-    evidencePath: z.string().optional().describe("Path to evidence file, or 'inline' for pasted text"),
+    evidencePath: z.string().optional().describe("PREFERRED: Path to evidence file. The tool will copy/link the file. Use 'inline' ONLY for very short content (<500 chars)"),
     description: z.string().describe("Description of the evidence and its relevance"),
-    content: z.string().optional().describe("Inline content if evidencePath is 'inline' (for pasted text/transcripts)"),
+    content: z.string().optional().describe("ONLY use for very short inline content (<500 chars). For files or long content, use evidencePath instead"),
     source: z.string().optional().describe("Where evidence came from (e.g., 'web search', 'user paste', 'file analysis')"),
     sourceUrl: z.string().optional().describe("URL where evidence was retrieved from (if applicable)"),
     originalQuery: z.string().optional().describe("Original question or search query that prompted gathering this evidence"),
     gatheringMethod: z.enum(["manual", "model-assisted"]).optional().describe("How evidence was gathered"),
     relevanceScore: z.number().min(0).max(1).optional().describe("Relevance score (0-1) from model if model-assisted"),
-    summary: z.string().optional().describe("Model-generated summary of the evidence"),
+    summary: z.string().optional().describe("Brief summary of the evidence (keep short, <200 chars)"),
 });
 
 export const IdeaAddNarrativeSchema = z.object({
@@ -499,6 +499,14 @@ export async function executeIdeaCreate(args: any, context: ToolExecutionContext
         // This matches the behavior of executeCreate and uses the four-tier resolution strategy
         const resolvedDirectory = validated.directory || resolveDirectory(args, context);
         const result = await ideaCreate({ ...validated, directory: resolvedDirectory });
+        
+        // Automatically switch context to the newly created plan
+        // This ensures subsequent tool calls operate on the new plan
+        const newPlanPath = join(resolvedDirectory, validated.code);
+        if (context.updateContext) {
+            context.updateContext({ workingDirectory: newPlanPath });
+        }
+        
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };

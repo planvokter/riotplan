@@ -136,6 +136,10 @@ export function wrapMcpTool(
                 workingDirectory: context?.workingDirectory || process.cwd(),
                 config: context?.storage?.config,
                 logger: context?.logger,
+                // Pass through the context updater so tools can change working directory
+                updateContext: context?.updateContext,
+                // Pass through progress callback so long-running tools can update the spinner
+                progressCallback: context?.progressCallback,
             };
 
             // Execute the MCP tool

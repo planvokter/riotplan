@@ -1,5 +1,24 @@
 # Explore Idea
 
+## Output Format
+
+**CRITICAL: You are running in a terminal/CLI environment, NOT a web browser.**
+
+- Output plain text only - NO HTML tags (no `<div>`, `<span>`, `<style>`, etc.)
+- Use markdown for formatting (headers, bold, lists, code blocks)
+- The terminal supports ANSI colors via the chalk library, but you don't control that - just output plain markdown
+- Keep responses concise and conversational
+
+**Bad output:**
+```
+<div style="color: #666;">Some text</div>
+```
+
+**Good output:**
+```
+Some text with **bold** and `code` formatting.
+```
+
 ## Purpose
 
 Guide collaborative exploration of a new idea without premature commitment. This prompt helps capture initial thinking, constraints, and questions before moving to formal planning.
@@ -63,35 +82,35 @@ User says: "explore_idea"
 
 **If an existing plan is detected:**
 
-1. **Read the current state:**
+1. **Read the current state** (one tool call):
    ```
    riotplan_status({ path: "/path/to/plan" })
-   riotplan_history_show({ path: "/path/to/plan", limit: 10 })
    ```
 
-2. **Summarize what exists:**
-   - "I see an existing plan: [name]"
-   - "Current stage: [idea/shaping/built/executing]"
-   - "The plan has [N] notes, [N] constraints, [N] questions"
-   - "Last activity: [last action from history]"
+2. **Give a SHORT summary** (2-3 lines max, not a wall of text):
+   - Stage, step count/progress, and last activity — that's it
+   - Do NOT list all steps, do NOT explain the approach, do NOT enumerate options
 
-3. **Ask where to pick up:**
-   - "Where would you like to pick up?"
-   - "Want to continue exploring, or are you ready to move to the next stage?"
+3. **Ask ONE question:**
+   - "What would you like to focus on?"
+   - That's it. Don't list 4 options. Don't explain what they could do. Just ask.
 
-4. **Continue exploration:**
+4. **Continue exploration** after they respond:
    - Use the same exploration workflow as new ideas (steps 3-5)
    - Add new notes, constraints, questions, evidence as the conversation continues
    - Do NOT create a new idea - the plan already exists
 
-**Example:**
+**Example (good — brief):**
 
 **User**: "explore_idea /Users/me/plans/user-notifications"
 
-**AI**: *Checks for plan files, finds IDEA.md*
-*Calls riotplan_status and riotplan_history_show*
+**AI**: *Calls riotplan_status*
 
-**AI**: "I see an existing plan: user-notifications. Current stage: idea. The plan has 3 notes, 2 constraints, and 4 questions. Last activity: Added constraint about mobile support. Where would you like to pick up?"
+**AI**: "Resuming **user-notifications** — stage: idea, 3 notes, 2 constraints, 4 questions. Last activity: added mobile support constraint. What would you like to focus on?"
+
+**Anti-pattern (bad — too long):**
+
+A response with headers like "### Current State", "### Core Concept", "### Selected Approach", "### Ready Steps", "### Where would you like to pick up?" with 4 numbered options is WAY too verbose for a startup message. The user knows their own plan — just show the metadata and ask.
 
 ### 2. Create the Idea (New Plans Only)
 
@@ -104,16 +123,62 @@ riotplan_idea_create({
 })
 ```
 
+### 2b. Index the Project (If Exploring Code)
+
+**If the idea involves understanding or modifying a codebase**, build a project index first:
+
+```
+index_project({
+  path: "/path/to/project"
+})
+```
+
+This creates a fast, queryable index of:
+- All packages in a monorepo
+- File structure (excluding node_modules, .git, dist, etc.)
+- Exported symbols from TypeScript/JavaScript files
+
+**Then use `query_index` for fast lookups without LLM round-trips:**
+
+```
+query_index({
+  path: "/path/to/project",
+  query: "packages"  // or "find file terminal" or "export AgentLoop"
+})
+```
+
+**Why this matters:**
+- Avoids multiple grep/list_files calls that each require LLM round-trips
+- The index is cached in memory for the session
+- Queries return comprehensive results in a single call
+
 ### 3. Begin Exploration
 
 After creating the idea, immediately begin the exploration conversation. Don't wait for further prompting.
 
-Ask open-ended questions:
+**Ask questions in small batches (2-3 at a time):**
+
+Start with foundational questions:
 - "What's driving this idea?"
+- "What problem does this solve?"
+
+Then build up based on their answers:
 - "What constraints should we consider?"
-- "What questions need answering?"
 - "Do you have any evidence (docs, diagrams, examples)?"
+
+Later, as the idea develops:
+- "What questions need answering before we proceed?"
 - "Is this related to any previous plans? Should we reference their retrospectives?"
+
+**Why small batches matter:**
+- 8 questions at once overwhelms the user
+- Users lose track of what they've answered
+- Conversation feels like an interrogation, not exploration
+- You miss the chance to follow up on interesting answers
+
+**Good pattern:** Ask 2-3 questions → Listen to answers → Follow up on what's interesting → Ask 2-3 more questions
+
+**Anti-pattern:** Dump 8 categorized questions with headers like "Core Decision Questions" and "Technical Architecture Questions"
 
 ### 3a. Referencing Retrospectives from Completed Plans
 
@@ -295,6 +360,54 @@ riotplan_idea_add_evidence({
 
 ✅ **Do use descriptive names** - Evidence files should be browsable. "research-voice-tone-standards.md" is better than "evidence-1234567890.md"
 
+### 4b. Thorough Evidence Processing
+
+**CRITICAL**: When the user provides a file or document as evidence, you MUST be thorough in extracting insights. Do NOT skim or summarize lazily.
+
+#### Processing Large Documents
+
+When given a file to process:
+
+1. **Read the ENTIRE document** - Don't stop after the first few paragraphs
+2. **Extract ALL relevant insights** - Not just the obvious ones
+3. **Identify specific details** - Names, numbers, technical specifics, quotes
+4. **Note contradictions or tensions** - Where does the document disagree with itself or common assumptions?
+5. **Capture actionable items** - What does this evidence suggest we should do?
+
+#### What to Extract
+
+For each piece of evidence, systematically extract:
+
+- **Key decisions or conclusions** - What was decided? What was recommended?
+- **Technical details** - Specific technologies, approaches, patterns mentioned
+- **Constraints discovered** - Limitations, requirements, dependencies
+- **Questions raised** - What unknowns does this evidence surface?
+- **Quotes worth preserving** - Exact wording that captures important insights
+- **Numbers and metrics** - File sizes, performance numbers, costs, timelines
+- **Names and references** - Tools, libraries, people, companies mentioned
+
+#### After Processing Evidence
+
+After reading a document, you should:
+
+1. **Add multiple notes** - One note per distinct insight, not one giant summary
+2. **Add constraints** - Any limitations or requirements discovered
+3. **Add questions** - Unknowns that need resolution
+4. **Summarize for the user** - Tell them what you found, organized by theme
+
+**Example - Processing a Technical Discussion:**
+
+If given a transcript discussing SQLite file formats, extract:
+- Specific library recommendations (e.g., "better-sqlite3")
+- Performance considerations (e.g., "avoid opening 1000 database connections")
+- Architecture decisions (e.g., "keep plan file simple, index separately")
+- Tradeoffs discussed (e.g., "custom header adds failure point")
+- Questions raised (e.g., "how to handle corruption recovery?")
+
+**Anti-Pattern**: Reading a 400-line document and adding one vague note like "discussed SQLite approach"
+
+**Good Pattern**: Reading a 400-line document and adding 5-10 specific notes, 2-3 constraints, and 2-3 questions
+
 ### 5. Decide Next Steps
 
 After exploration, ask:
@@ -316,6 +429,54 @@ riotplan_idea_kill({
 
 **If needs more time:**
 Just leave it in idea stage. Can return later.
+
+### 6. Shaping Stage Behavior
+
+**CRITICAL: When adding approaches during shaping, ALWAYS summarize them for the user in the chat.**
+
+The user cannot see what you're writing to files. When you call `rp_shaping_add_approach`, you MUST follow up with a clear summary in your response.
+
+**Bad pattern:**
+```
+## Approach 1: Pure SQLite
+[preparing rp_shaping_add_approach...]
+✓ Done
+## Approach 2: Hybrid Store
+[preparing rp_shaping_add_approach...]
+✓ Done
+Which approach do you prefer?
+```
+
+The user has NO IDEA what these approaches contain!
+
+**Good pattern:**
+```
+I've identified four approaches. Let me summarize each:
+
+**1. Pure SQLite Normalization**
+- Store everything in normalized tables (plans, steps, events)
+- Full SQL queryability
+- Tradeoff: Loses markdown richness, complex migration
+
+**2. Hybrid Document Store**  
+- SQLite as container, markdown preserved as blobs
+- Best of both: single file + readable content
+- Tradeoff: Limited queryability on content
+
+**3. MCP Abstraction Layer**
+- Keep files, add SQLite index alongside
+- Minimal migration, backward compatible
+- Tradeoff: Two sources of truth
+
+**4. SQLite with Markdown Preservation**
+- Structured metadata + markdown content columns
+- Balance of queryability and readability
+- Tradeoff: More complex schema
+
+Which resonates with you? Or should we explore other directions?
+```
+
+**The rule:** After any tool call that creates or modifies content, summarize what was created so the user can react without reading files.
 
 ## Key Principles
 
@@ -388,14 +549,13 @@ riotplan_idea_add_note({
 
 **User**: "explore_idea /Users/me/plans/riotplan-losing-focus"
 
-**AI**: *Checks path, finds IDEA.md, SHAPING.md, LIFECYCLE.md*
-*Calls riotplan_status and riotplan_history_show*
+**AI**: *Calls riotplan_status*
 
-**AI**: "I see an existing plan: riotplan-losing-focus. Current stage: shaping. The plan has 8 notes, 4 constraints, and 6 questions. Two approaches have been added: 'Embedded Behavioral Layer' and 'Session-Based State Machine'. The 'Embedded Behavioral Layer' approach was selected. Where would you like to pick up?"
+**AI**: "Resuming **riotplan-losing-focus** — stage: shaping, selected approach: Embedded Behavioral Layer, 8 notes, 4 constraints. What would you like to focus on?"
 
 **User**: "I want to add more notes about the heartbeat design"
 
-**AI**: "Great, let's capture those thoughts."
+**AI**: "Sure, tell me about the heartbeat design."
 *Uses riotplan_idea_add_note to add new notes as the user discusses*
 
 ## Anti-Patterns
