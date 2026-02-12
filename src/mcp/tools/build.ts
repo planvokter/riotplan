@@ -1,18 +1,69 @@
 /**
  * Build Tool - Build plan from idea/shaping directory
+ * 
+ * Supports two generation modes:
+ * - Agent mode: Uses an AgentLoop with read-only codebase tools for higher quality
+ * - One-shot mode: Single LLM call (fallback when tools unavailable)
  */
 
 import { z } from "zod";
-import { join, basename } from "node:path";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join, basename, dirname, resolve } from "node:path";
+import { readFile, writeFile, mkdir, rm, readdir as readdirAsync } from "node:fs/promises";
+import { readdirSync } from "node:fs";
 import { resolveDirectory, formatError, createSuccess, formatDate, ensurePlanManifest } from "./shared.js";
 import { transitionStage } from "./transition.js";
 import { generatePlan } from "../../ai/generator.js";
+import { generatePlanWithAgent } from "../../ai/agent-generator.js";
 import { loadProvider } from "../../ai/provider-loader.js";
 import { loadArtifacts } from "../../ai/artifacts.js";
 import { validatePlan } from "../../ai/validation.js";
 import { generateProvenanceMarkdown } from "../../ai/provenance.js";
+import { checkpointCreate } from "./history.js";
 import type { McpTool, ToolResult, ToolExecutionContext } from "../types.js";
+import type { GenerationContext } from "../../ai/generator.js";
+
+/**
+ * Project root indicator files (language-agnostic).
+ * Duplicated from common.ts to avoid heavy CLI dependencies.
+ */
+const PROJECT_ROOT_INDICATORS = [
+    'package.json', 'Cargo.toml', 'pyproject.toml', 'setup.py',
+    'go.mod', 'pom.xml', 'build.gradle', 'CMakeLists.txt',
+    'Gemfile', 'Package.swift', '.git',
+];
+
+/**
+ * Find the project root by walking up from a plan path.
+ */
+function findProjectRoot(startPath: string): string {
+    let current = resolve(startPath);
+    const maxDepth = 10;
+    for (let i = 0; i < maxDepth; i++) {
+        try {
+            const entries = readdirSync(current);
+            if (PROJECT_ROOT_INDICATORS.some(ind => entries.includes(ind))) {
+                return current;
+            }
+        } catch { /* can't read dir */ }
+        const parent = dirname(current);
+        if (parent === current) break; // reached filesystem root
+        current = parent;
+    }
+    return resolve(startPath); // fallback to start path
+}
+
+/**
+ * Try to load read-only codebase tools for agent mode.
+ * Returns null if tools are not available (e.g., in bundled MCP-only context).
+ */
+async function loadCodebaseTools(): Promise<any[] | null> {
+    try {
+        const mod = await import('../../cli/tools/environment/index.js');
+        return mod.readOnlyEnvironmentTools || null;
+    } catch {
+        return null;
+    }
+}
 
 // Tool schema
 export const BuildSchema = z.object({
@@ -21,6 +72,7 @@ export const BuildSchema = z.object({
     steps: z.number().optional().describe("Optional number of steps to generate"),
     provider: z.string().optional().describe("AI provider (anthropic, openai, gemini)"),
     model: z.string().optional().describe("Specific model to use"),
+    agentMode: z.boolean().optional().describe("Use agent-powered generation (auto-detected if not specified)"),
 });
 
 // Tool implementation
@@ -104,7 +156,7 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
         );
     }
     
-    const generationContext = {
+    const generationContext: GenerationContext = {
         planName: planPath.split('/').pop() || 'Plan',
         description: fullContext,
         stepCount: args.steps,
@@ -118,9 +170,81 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
         shapingContent: artifacts.shapingContent || undefined,
     };
     
-    const generationResult = await generatePlan(generationContext, provider, {
-        model: args.model,
-    });
+    // Pre-fetch codebase context from the project index (if available).
+    // The explore session indexes at startup; calling query_index here
+    // gets a cache hit (~0ms) and gives the agent immediate project awareness.
+    const projectRoot = findProjectRoot(planPath);
+    try {
+        const { queryIndexImpl, indexProjectImpl } = await import('../../cli/tools/environment/project-index.js');
+        // Ensure index exists (cache hit if explore already built it)
+        await indexProjectImpl({ path: projectRoot }, projectRoot);
+        // Get a summary of packages and key files
+        const packagesSummary = await queryIndexImpl({ path: projectRoot, query: 'packages' }, projectRoot);
+        generationContext.codebaseContext = `Project root: ${projectRoot}\n\n${packagesSummary}`;
+    } catch {
+        // Index not available — agent can still use tools to explore
+    }
+    
+    // Progress callback to show generation status
+    // Uses the terminal spinner's sub-message if available (CLI context),
+    // otherwise falls back to stderr dots (MCP context)
+    const hasSpinner = typeof context.progressCallback === 'function';
+    const onProgress = (event: { type: string; charsReceived?: number; message?: string }) => {
+        if (hasSpinner && event.message) {
+            // Update the terminal spinner's sub-message (no direct writes)
+            context.progressCallback!(0, null, event.message);
+        } else if (!hasSpinner && event.type === 'streaming' && event.charsReceived) {
+            process.stderr.write('.');
+        }
+    };
+    
+    // Determine whether to use agent mode
+    // Agent mode uses an AgentLoop with read-only codebase tools for higher quality plans
+    let useAgentMode = args.agentMode;
+    let codebaseTools: any[] | null = null;
+    
+    if (useAgentMode !== false) {
+        // Try to load codebase tools for agent mode
+        codebaseTools = await loadCodebaseTools();
+        if (useAgentMode === undefined) {
+            // Auto-detect: use agent mode if tools are available
+            useAgentMode = codebaseTools !== null && codebaseTools.length > 0;
+        }
+    }
+    
+    let generationResult;
+    let generationMode: string;
+    
+    if (useAgentMode && codebaseTools && codebaseTools.length > 0) {
+        // Agent-powered generation: multi-turn agent with codebase exploration
+        generationMode = 'agent';
+        onProgress({ type: 'started', message: `agent mode — exploring ${projectRoot}` });
+        
+        try {
+            generationResult = await generatePlanWithAgent(
+                generationContext,
+                provider,
+                codebaseTools,
+                { model: args.model, onProgress },
+                projectRoot,
+            );
+        } catch {
+            // Fall back to one-shot if agent fails
+            onProgress({ type: 'streaming', message: `agent failed, falling back to one-shot` });
+            generationMode = 'one-shot (agent fallback)';
+            generationResult = await generatePlan(generationContext, provider, {
+                model: args.model,
+                onProgress,
+            });
+        }
+    } else {
+        // One-shot generation: single LLM call (original behavior)
+        generationMode = 'one-shot';
+        generationResult = await generatePlan(generationContext, provider, {
+            model: args.model,
+            onProgress,
+        });
+    }
     
     const { plan: result, tiering } = generationResult;
     
@@ -283,7 +407,26 @@ This plan was built from ${currentStage} stage.
     await writeFile(join(planPath, "STATUS.md"), statusContent, "utf-8");
     
     // 4. Create plan/ directory with step files
+    // Checkpoint previous build before replacing (so it's recoverable)
     const planDir = join(planPath, "plan");
+    let checkpointName: string | undefined;
+    try {
+        const existingSteps = await readdirAsync(planDir).catch(() => []);
+        if (existingSteps.length > 0) {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            checkpointName = `pre-build-${ts}`;
+            await checkpointCreate({
+                path: planPath,
+                name: checkpointName,
+                message: `Auto-checkpoint before rebuild (${existingSteps.length} step files)`,
+                capturePrompt: false,
+            });
+        }
+    } catch { /* checkpoint is best-effort */ }
+    // Now clean and recreate
+    try {
+        await rm(planDir, { recursive: true, force: true });
+    } catch { /* directory may not exist yet */ }
     await mkdir(planDir, { recursive: true });
     
     for (const step of result.steps) {
@@ -314,7 +457,7 @@ ${step.testing || '_Add testing approach..._'}
 
 ## Files Changed
 
-- _List files that will be modified..._
+${step.filesChanged && step.filesChanged.length > 0 ? step.filesChanged.map(f => `- \`${f}\``).join('\n') : '- _List files that will be modified..._'}
 
 ## Notes
 
@@ -360,9 +503,10 @@ ${step.notes || '_Add any additional notes..._'}
     const manifestInfo = manifestCreated ? `- Created plan.yaml manifest\n` : '';
     
     return `✅ Plan built successfully!\n\n` +
-        `- Generated ${result.steps.length} steps\n` +
+        `- Generated ${result.steps.length} steps (${generationMode} mode)\n` +
         `- Created SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md\n` +
         `- Created plan/ directory with step files\n` +
+        (checkpointName ? `- Previous build checkpointed as "${checkpointName}"\n` : '') +
         manifestInfo +
         `- Transitioned to 'built' stage\n` +
         `- Preserved existing IDEA.md, SHAPING.md, and history\n` +
@@ -400,6 +544,7 @@ export const buildTool: McpTool = {
         steps: z.number().optional().describe('Optional number of steps to generate'),
         provider: z.string().optional().describe('AI provider (anthropic, openai, gemini)'),
         model: z.string().optional().describe('Specific model to use'),
+        agentMode: z.boolean().optional().describe('Use agent-powered generation with codebase exploration (auto-detected if not specified)'),
     },
     execute: executeBuild,
 };

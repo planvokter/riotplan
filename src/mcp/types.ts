@@ -124,6 +124,8 @@ export interface ToolExecutionContext {
         };
     }) => Promise<void>;
     progressToken?: string | number;
+    /** Callback to update the shared context (e.g., change working directory) */
+    updateContext?: (updates: { workingDirectory?: string; [key: string]: any }) => void;
 }
 
 /**

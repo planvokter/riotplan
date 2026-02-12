@@ -14,6 +14,9 @@ export {
     runCommandTool,
     writeFileTool,
     editFileTool,
+    renameFileTool,
+    copyFileTool,
+    deleteFileTool,
     environmentTools,
     readOnlyEnvironmentTools,
     writeEnvironmentTools,
@@ -48,11 +51,12 @@ import {
 /**
  * Tool set for `riotplan explore` command
  * 
- * Read-only access to files + idea exploration tools.
- * NO file write capabilities - enforces safe exploration.
+ * Full environment access + idea exploration and step management tools.
+ * Includes file write, rename, copy, delete, and shell commands so the
+ * agent can create/reorganize plan files, step files, and project structure.
  */
 export const exploreToolSet: Tool[] = [
-    ...readOnlyEnvironmentTools,
+    ...environmentTools,
     ...exploreRiotPlanTools,
 ];
 
@@ -111,7 +115,7 @@ export function getToolSetForCommand(command: 'explore' | 'build' | 'execute' | 
  * Check if a tool set includes write capabilities
  */
 export function hasWriteCapabilities(tools: Tool[]): boolean {
-    const writeToolNames = ['write_file', 'edit_file', 'run_command'];
+    const writeToolNames = ['write_file', 'edit_file', 'rename_file', 'copy_file', 'delete_file', 'run_command'];
     return tools.some(tool => writeToolNames.includes(tool.name));
 }
 

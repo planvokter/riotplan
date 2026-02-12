@@ -77,61 +77,85 @@ export async function readTimeline(planPath: string): Promise<TimelineEvent[]> {
     }
 }
 
+type FileSnapshot = { exists: boolean; content?: string };
+
 /**
- * Capture current state snapshot
+ * Try to read a file and return a snapshot
+ */
+async function snapshotFile(filePath: string): Promise<FileSnapshot> {
+    try {
+        const content = await readFile(filePath, 'utf-8');
+        return { exists: true, content };
+    } catch {
+        return { exists: false };
+    }
+}
+
+/**
+ * Capture current state snapshot.
+ * Includes idea/shaping/lifecycle files AND build outputs (plan steps, SUMMARY, etc.)
  */
 async function captureCurrentState(planPath: string): Promise<{
     timestamp: string;
     stage: string;
-    idea?: { exists: boolean; content?: string };
-    shaping?: { exists: boolean; content?: string };
-    lifecycle?: { exists: boolean; content?: string };
+    idea?: FileSnapshot;
+    shaping?: FileSnapshot;
+    lifecycle?: FileSnapshot;
+    buildOutputs?: Record<string, FileSnapshot>;
+    steps?: Record<string, FileSnapshot>;
 }> {
-    const snapshot = {
+    const snapshot: {
+        timestamp: string;
+        stage: string;
+        idea?: FileSnapshot;
+        shaping?: FileSnapshot;
+        lifecycle?: FileSnapshot;
+        buildOutputs?: Record<string, FileSnapshot>;
+        steps?: Record<string, FileSnapshot>;
+    } = {
         timestamp: formatTimestamp(),
         stage: 'unknown',
-        idea: undefined as { exists: boolean; content?: string } | undefined,
-        shaping: undefined as { exists: boolean; content?: string } | undefined,
-        lifecycle: undefined as { exists: boolean; content?: string } | undefined,
     };
   
-    // Try to read IDEA.md
-    try {
-        const ideaContent = await readFile(join(planPath, 'IDEA.md'), 'utf-8');
-        snapshot.idea = {
-            content: ideaContent,
-            exists: true,
-        };
-    } catch {
-        snapshot.idea = { exists: false };
-    }
+    // Core plan files
+    snapshot.idea = await snapshotFile(join(planPath, 'IDEA.md'));
+    snapshot.shaping = await snapshotFile(join(planPath, 'SHAPING.md'));
+    snapshot.lifecycle = await snapshotFile(join(planPath, 'LIFECYCLE.md'));
   
-    // Try to read SHAPING.md
-    try {
-        const shapingContent = await readFile(join(planPath, 'SHAPING.md'), 'utf-8');
-        snapshot.shaping = {
-            content: shapingContent,
-            exists: true,
-        };
-    } catch {
-        snapshot.shaping = { exists: false };
-    }
-  
-    // Try to read LIFECYCLE.md
-    try {
-        const lifecycleContent = await readFile(join(planPath, 'LIFECYCLE.md'), 'utf-8');
-        snapshot.lifecycle = {
-            content: lifecycleContent,
-            exists: true,
-        };
-    
-        // Extract current stage
-        const stageMatch = lifecycleContent.match(/\*\*Stage\*\*:\s*`(\w+)`/);
+    // Extract current stage from LIFECYCLE.md
+    if (snapshot.lifecycle?.exists && snapshot.lifecycle.content) {
+        const stageMatch = snapshot.lifecycle.content.match(/\*\*Stage\*\*:\s*`(\w+)`/);
         if (stageMatch) {
             snapshot.stage = stageMatch[1];
         }
+    }
+  
+    // Build output files
+    const buildFiles = ['SUMMARY.md', 'EXECUTION_PLAN.md', 'STATUS.md', 'PROVENANCE.md'];
+    const buildOutputs: Record<string, FileSnapshot> = {};
+    for (const file of buildFiles) {
+        const snap = await snapshotFile(join(planPath, file));
+        if (snap.exists) {
+            buildOutputs[file] = snap;
+        }
+    }
+    if (Object.keys(buildOutputs).length > 0) {
+        snapshot.buildOutputs = buildOutputs;
+    }
+  
+    // Step files from plan/ directory
+    try {
+        const planDir = join(planPath, 'plan');
+        const stepFiles = await readdir(planDir);
+        const steps: Record<string, FileSnapshot> = {};
+        for (const file of stepFiles.filter(f => f.endsWith('.md'))) {
+            steps[file] = await snapshotFile(join(planDir, file));
+        }
+        if (Object.keys(steps).length > 0) {
+            snapshot.steps = steps;
+        }
     } catch {
-        snapshot.lifecycle = { exists: false };
+        // No plan/ directory
     }
   
     return snapshot;

@@ -107,6 +107,8 @@ export interface GenerationContext {
         historyFullCount?: number;
         historyAbbreviatedCount?: number;
     };
+    // Codebase context for injection into prompts (project structure, key files)
+    codebaseContext?: string;
     // Catalyst content for plan generation
     catalystContent?: {
         constraints: string;
@@ -120,12 +122,28 @@ export interface GenerationContext {
 }
 
 /**
+ * Progress callback for plan generation
+ */
+export type GenerationProgressCallback = (event: {
+    type: 'started' | 'streaming' | 'parsing' | 'complete';
+    charsReceived?: number;
+    message?: string;
+}) => void;
+
+/**
+ * Extended options for plan generation
+ */
+export interface GenerationOptionsWithProgress extends ExecutionOptions {
+    onProgress?: GenerationProgressCallback;
+}
+
+/**
  * Generate a plan using AI
  */
 export async function generatePlan(
     context: GenerationContext,
     provider: Provider,
-    options: ExecutionOptions = {}
+    options: GenerationOptionsWithProgress = {}
 ): Promise<GenerationResult> {
     // Apply token budget tiering if artifacts are present
     let tieringDecision: TieringDecision | undefined;
@@ -292,9 +310,46 @@ export async function generatePlan(
         },
     };
 
-    const response = await provider.execute(request, options);
+    // Use streaming to avoid Anthropic SDK timeout errors for long requests
+    // The SDK throws an error if max_tokens is high and streaming is not used
+    let responseContent = '';
+    const { onProgress } = options;
     
-    const plan = parsePlanResponse(response.content, context.stepCount || 5);
+    // Notify start
+    onProgress?.({ type: 'started', message: 'Generating plan...' });
+    
+    if (provider.executeStream) {
+        // Use streaming and collect the full response
+        let lastProgressUpdate = Date.now();
+        for await (const chunk of provider.executeStream(request, options)) {
+            if (chunk.type === 'text' && chunk.text) {
+                responseContent += chunk.text;
+                
+                // Report progress every 500ms to avoid flooding
+                const now = Date.now();
+                if (now - lastProgressUpdate > 500) {
+                    onProgress?.({ 
+                        type: 'streaming', 
+                        charsReceived: responseContent.length,
+                        message: `Generating... (${responseContent.length} chars)`
+                    });
+                    lastProgressUpdate = now;
+                }
+            }
+        }
+    } else {
+        // Fallback to non-streaming for providers that don't support it
+        const response = await provider.execute(request, options);
+        responseContent = response.content;
+    }
+    
+    // Notify parsing
+    onProgress?.({ type: 'parsing', message: 'Parsing generated plan...' });
+    
+    const plan = parsePlanResponse(responseContent, context.stepCount || 5);
+    
+    // Notify complete
+    onProgress?.({ type: 'complete', message: 'Plan generation complete' });
     
     return {
         plan,
@@ -311,6 +366,10 @@ export async function generatePlan(
  */
 const SYSTEM_PROMPT = `You are an expert project planner generating an execution plan that MUST be grounded in the provided artifacts.
 
+## Dual Audience
+
+Your plan serves two audiences: (1) a human reviewer who will read the plan and judge your design choices BEFORE implementation, and (2) an LLM that will execute each step. Both need you to SHOW your thinking with code samples, not just describe it in prose.
+
 ## Core Principles
 
 1. **Constraints are non-negotiable**: Every constraint from IDEA.md MUST be addressed by at least one step. Do not ignore or work around constraints.
@@ -323,14 +382,17 @@ const SYSTEM_PROMPT = `You are an expert project planner generating an execution
 
 5. **Be concrete, not generic**: Reference specific files, functions, code patterns from the evidence. Don't generate generic steps that could apply to any project.
 
+6. **Show, don't tell**: Every task that introduces an interface, schema, config, or significant function MUST include a code sketch in its description — key method signatures, table schemas, type definitions. Not the full implementation, just enough for a human to evaluate the design and say "yes" or "change X."
+
 ## Output Requirements
 
 - Generate steps that are directly traceable to the artifacts
 - Each step should cite which constraints it addresses
 - Reference evidence when it informs a step's design
 - Be specific about files, functions, and code changes
+- Include sample code in task descriptions (markdown code blocks with language tags)
 
-CRITICAL: You must output ONLY valid JSON. Do not include any text before or after the JSON object. Ensure all strings are properly escaped.`;
+CRITICAL: You must output ONLY valid JSON. Do not include any text before or after the JSON object. Ensure all strings are properly escaped. Code blocks in task descriptions should use escaped backticks.`;
 
 /**
  * Build the user prompt for plan generation
@@ -543,7 +605,7 @@ For each step, provide:
 - A clear title
 - Objective (what this step accomplishes)
 - Background (context and prerequisites, referencing evidence where relevant)
-- Specific tasks (concrete actions, not generic placeholders)
+- Specific tasks with **sample code** — every task that introduces an interface, schema, config, or significant function MUST include a code sketch in the description using markdown code blocks. Don't write the full implementation, just enough for a human to judge the design: key method signatures, table schemas, type definitions, config formats. This is a plan that a human will review before execution.
 - Acceptance criteria (measurable verification)
 - Testing approach
 - Files that will be changed

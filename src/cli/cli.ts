@@ -12,6 +12,7 @@
  * - riotplan chat [path]                        General-purpose chat
  *
  * Utility Commands (quick operations):
+ * - riotplan list               List all plans with status
  * - riotplan status [path]        Show current status
  * - riotplan step list [path]     List steps
  * - riotplan step add <title>     Add a step
@@ -42,6 +43,7 @@ import { registerRenderCommands } from "../commands/render/index.js";
 import { registerStatusCommands } from "./commands/status.js";
 import { registerStepCommands } from "./commands/step.js";
 import { registerConfigCommands } from "./commands/config.js";
+import { registerListCommand } from "./commands/list.js";
 
 // Read version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -66,7 +68,7 @@ export function createProgram(): Command {
 
     program
         .name("riotplan")
-        .description("Manage long-lived, stateful AI workflows\n\nLLM-Powered Commands:\n  explore, build-plan, execute-plan, chat\n\nUtility Commands:\n  status, step, plan, render, check-config")
+        .description("Manage long-lived, stateful AI workflows\n\nLLM-Powered Commands:\n  explore, build-plan, execute-plan, chat\n\nUtility Commands:\n  list, status, step, plan, render, check-config")
         .version(VERSION)
         .configureHelp({
             sortSubcommands: true,
@@ -80,6 +82,7 @@ export function createProgram(): Command {
     registerChatCommand(program);
 
     // Register utility commands
+    registerListCommand(program);
     registerPlanCommands(program);
     registerRenderCommands(program);
     registerStatusCommands(program);
@@ -87,9 +90,11 @@ export function createProgram(): Command {
     registerConfigCommands(program);
 
     // Global options
+    // Note: --json is intentionally NOT a global option because it conflicts
+    // with subcommand-specific --json options. Each command that needs JSON
+    // output should define its own --json option.
     program
         .option("-v, --verbose", "Verbose output")
-        .option("--json", "Output as JSON")
         .option("--no-color", "Disable colored output");
 
     // Handle unknown commands
