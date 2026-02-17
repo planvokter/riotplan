@@ -7,7 +7,8 @@
   "types": "./dist/index.d.ts",
   "bin": {
     "riotplan": "./dist/bin.js",
-    "riotplan-mcp": "./dist/mcp-server.js"
+    "riotplan-mcp": "./dist/mcp-server.js",
+    "riotplan-mcp-http": "./dist/mcp-server-http.js"
   },
   "exports": {
     ".": {
@@ -52,17 +53,21 @@
     "url": "https://github.com/kjerneverk/riotplan"
   },
   "dependencies": {
+    "@hono/mcp": "^0.2.3",
+    "@hono/node-server": "^1.19.9",
     "@kjerneverk/agentic": "^1.0.7",
     "@kjerneverk/execution": "^1.0.6",
     "@kjerneverk/execution-anthropic": "^1.0.9",
     "@kjerneverk/execution-openai": "^1.0.8",
     "@kjerneverk/execution-sampling": "^1.0.3",
     "@kjerneverk/riotplan-catalyst": "^1.0.5",
+    "@kjerneverk/riotplan-format": "file:../riotplan-format",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@types/inquirer": "^9.0.9",
     "@utilarium/cardigantime": "^0.0.25",
     "chalk": "^5.4.1",
     "commander": "^14.0.2",
+    "hono": "^4.11.9",
     "inquirer": "^13.2.1",
     "js-yaml": "^4.1.1",
     "marked": "^17.0.1",
