@@ -260,15 +260,31 @@ export function createApp(config: ServerConfig): Hono {
             const sessionId = c.req.header('Mcp-Session-Id') || generateSessionId();
             const session = await getOrCreateSession(sessionId, config.plansDir, config);
 
+            // Parse the JSON-RPC request body
+            const body = await c.req.json();
+
+            // Create a new Request with the parsed body
+            const request = new Request(c.req.raw.url, {
+                method: c.req.raw.method,
+                headers: c.req.raw.headers,
+                body: JSON.stringify(body),
+            });
+
             // Handle the request through the transport
-            const result = await session.transport.handleRequest(c);
+            const response = await session.transport.handleRequest(request);
 
             // Set session ID header if this is a new session
             if (!c.req.header('Mcp-Session-Id')) {
-                c.header('Mcp-Session-Id', sessionId);
+                const headers = new Headers(response.headers);
+                headers.set('Mcp-Session-Id', sessionId);
+                return new Response(response.body, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers,
+                });
             }
 
-            return result;
+            return response;
         } catch (error) {
             console.error('[RiotPlan HTTP] Error handling POST /mcp:', error);
             return c.json(

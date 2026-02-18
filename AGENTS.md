@@ -192,6 +192,51 @@ RiotPlan uses **artifacts** to inform AI generation:
 
 The AI receives all these artifacts in a structured prompt, ensuring generated plans are grounded in the actual context.
 
+## Verification System
+
+RiotPlan includes a verification system to prevent incomplete steps from being marked complete.
+
+### How Verification Works
+
+When you call `riotplan_step_complete`, RiotPlan:
+
+1. Checks acceptance criteria (if configured)
+2. Verifies artifacts exist (if configured)
+3. Enforces based on configuration level
+4. Auto-generates retrospective when plan completes
+
+### Enforcement Levels
+
+- **Advisory**: Shows warnings, never blocks
+- **Interactive** (default): Prompts user if issues found
+- **Strict**: Blocks unless `--force` flag used
+
+### Writing Honest Reflections
+
+**CRITICAL**: Reflections must be accurate. Don't claim work is done if it isn't.
+
+**Bad reflection:**
+```
+Added CLI command 'riotplan migrate' with dry-run support.
+```
+
+**Good reflection:**
+```
+Created migration utility code (migrate-to-http.ts) and command definition
+(commands/migrate.ts). NOTE: Command is NOT yet registered in cli.ts - this
+needs to be done to make it accessible.
+```
+
+**Why this matters**: The riotplan-http-mcp plan was marked complete when the CLI command wasn't actually registered. The reflection claimed it was done, but it wasn't. Verification would have caught this if acceptance criteria mentioned CLI registration.
+
+### Using Verification as an AI Assistant
+
+1. **Check acceptance criteria before completing** - Read the step file and verify each criterion is met
+2. **Use --force only when justified** - Don't bypass verification to avoid work
+3. **Write specific acceptance criteria** - "CLI command registered and accessible" not "Command added"
+4. **Include evidence in reflections** - Link to commits, test output, or artifacts
+5. **Let verification catch mistakes** - If prompted, review your work before forcing
+
 ## Best Practices for AI Assistants
 
 ### 1. Respect the Lifecycle
