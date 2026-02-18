@@ -103,6 +103,7 @@ export class Terminal {
             const lines: string[] = [];
             let timeoutId: NodeJS.Timeout | null = null;
             let lineHandler: ((line: string) => void) | null = null;
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             let continuationMode = false; // True when last line ended with \
 
             const finishReading = () => {

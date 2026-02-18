@@ -9,11 +9,19 @@
  *     dryRun: false
  *   });
  */
+/* eslint-disable no-console */
 
-import { readdirSync, statSync, existsSync, mkdirSync } from 'node:fs';
+import { readdirSync, statSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import { createSqliteProvider, generatePlanUuid, formatPlanFilename } from '@kjerneverk/riotplan-format';
+import { 
+    createSqliteProvider, 
+    generatePlanUuid, 
+    formatPlanFilename,
+    type PlanMetadata as FormatPlanMetadata,
+    type PlanStep as FormatPlanStep 
+} from '@kjerneverk/riotplan-format';
 import { loadPlan } from '../plan/loader.js';
+import type { Plan } from '../types.js';
 
 export interface MigrationOptions {
     /** Source directory containing directory-based plans */
@@ -89,6 +97,25 @@ function getCategoryFromPath(planPath: string): 'active' | 'done' | 'hold' {
 }
 
 /**
+ * Infer file type from filename
+ */
+function inferFileType(filename: string): 'idea' | 'shaping' | 'summary' | 'execution_plan' | 'status' | 'provenance' | 'lifecycle' | 'evidence' | 'feedback' | 'prompt' | 'reflection' | 'other' {
+    const lower = filename.toLowerCase();
+    if (lower === 'idea.md') return 'idea';
+    if (lower === 'shaping.md') return 'shaping';
+    if (lower === 'summary.md') return 'summary';
+    if (lower === 'execution_plan.md') return 'execution_plan';
+    if (lower === 'status.md') return 'status';
+    if (lower === 'provenance.md') return 'provenance';
+    if (lower === 'lifecycle.md') return 'lifecycle';
+    if (lower.includes('evidence')) return 'evidence';
+    if (lower.includes('feedback')) return 'feedback';
+    if (lower.includes('prompt')) return 'prompt';
+    if (lower.includes('reflection')) return 'reflection';
+    return 'other';
+}
+
+/**
  * Migrate a single plan
  */
 async function migratePlan(
@@ -128,32 +155,54 @@ async function migratePlan(
     // Create SQLite provider for target
     const provider = createSqliteProvider(targetPath);
 
-    // Initialize with metadata
-    await provider.initialize({
-        ...plan.metadata,
+    // Map riotplan metadata to riotplan-format metadata
+    const formatMetadata: FormatPlanMetadata = {
+        id: plan.metadata.code,
         uuid,
-        // Add project slug if provided
-        ...(projectSlug ? { description: `[${projectSlug}] ${plan.metadata.description || ''}` } : {}),
-    });
+        name: plan.metadata.name,
+        description: projectSlug 
+            ? `[${projectSlug}] ${plan.metadata.description || ''}` 
+            : plan.metadata.description,
+        createdAt: plan.metadata.createdAt?.toISOString() || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        stage: plan.state.stage || 'idea',
+        schemaVersion: 1,
+    };
+
+    // Initialize with metadata
+    await provider.initialize(formatMetadata);
 
     // Migrate steps
-    if (plan.steps) {
+    if (plan.steps && plan.steps.length > 0) {
         for (const step of plan.steps) {
-            await provider.addStep(step);
+            // Map riotplan step to riotplan-format step
+            const formatStep: FormatPlanStep = {
+                number: step.number,
+                code: step.code || `step-${step.number}`,
+                title: step.title,
+                description: step.description,
+                status: step.status,
+                startedAt: step.startedAt?.toISOString(),
+                completedAt: step.completedAt?.toISOString(),
+                content: step.content || '',
+            };
+            await provider.addStep(formatStep);
         }
     }
 
     // Migrate files
     if (plan.files) {
-        for (const file of plan.files) {
-            await provider.saveFile(file);
-        }
-    }
-
-    // Migrate timeline events
-    if (plan.timeline) {
-        for (const event of plan.timeline) {
-            await provider.addTimelineEvent(event);
+        const fileEntries = Object.entries(plan.files);
+        for (const [filename, content] of fileEntries) {
+            if (content) {
+                await provider.saveFile({
+                    type: inferFileType(filename),
+                    filename,
+                    content,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                });
+            }
         }
     }
 

@@ -3,7 +3,9 @@
  *
  * Provides common functionality for tools that work with StorageProvider API
  */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { StorageProvider } from '@kjerneverk/riotplan-format';
 import type { ServerConfig } from '../server-hono.js';
 import { readdirSync, statSync } from 'node:fs';
@@ -51,7 +53,7 @@ export function findAllPlanFiles(plansDir: string): string[] {
                     planFiles.push(fullPath);
                 }
             }
-        } catch (error) {
+        } catch {
             // Skip directories we can't read
         }
     }

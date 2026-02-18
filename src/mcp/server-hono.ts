@@ -10,13 +10,14 @@
  * - Integration with riotplan-format StorageProvider
  * - Health check endpoint
  */
+/* eslint-disable no-console */
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
 import { StreamableHTTPTransport } from '@hono/mcp';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import { httpTools, getHttpTool } from './tools-http/index.js';
@@ -150,7 +151,7 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
     });
 
     // List available tools
-    server.setRequestHandler({ method: 'tools/list' }, async () => {
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
         return {
             tools: httpTools.map((tool) => ({
                 name: tool.name,

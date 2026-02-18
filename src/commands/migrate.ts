@@ -1,6 +1,7 @@
 /**
  * Migration command for converting plans to HTTP format
  */
+/* eslint-disable no-console */
 
 import { Command } from 'commander';
 import { migrateToHttpFormat } from '../migration/migrate-to-http.js';

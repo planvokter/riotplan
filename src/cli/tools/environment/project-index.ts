@@ -48,6 +48,7 @@ const ALL_ANALYZABLE_EXTENSIONS = new Set(
 );
 
 // Source file extensions to include in the index (broader than analyzable)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _SOURCE_EXTENSIONS = new Set([
     // JS/TS
     '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
