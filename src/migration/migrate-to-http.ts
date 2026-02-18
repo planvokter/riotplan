@@ -155,6 +155,14 @@ async function migratePlan(
     // Create SQLite provider for target
     const provider = createSqliteProvider(targetPath);
 
+    // Map plan status to lifecycle stage
+    const mapStatusToStage = (status: string): 'idea' | 'shaping' | 'built' | 'executing' | 'completed' | 'cancelled' => {
+        if (status === 'completed') return 'completed';
+        if (status === 'in_progress') return 'executing';
+        if (status === 'pending') return 'built';
+        return 'idea';
+    };
+
     // Map riotplan metadata to riotplan-format metadata
     const formatMetadata: FormatPlanMetadata = {
         id: plan.metadata.code,
@@ -165,7 +173,7 @@ async function migratePlan(
             : plan.metadata.description,
         createdAt: plan.metadata.createdAt?.toISOString() || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        stage: plan.state.stage || 'idea',
+        stage: mapStatusToStage(plan.state.status),
         schemaVersion: 1,
     };
 
@@ -175,16 +183,28 @@ async function migratePlan(
     // Migrate steps
     if (plan.steps && plan.steps.length > 0) {
         for (const step of plan.steps) {
+            // Map TaskStatus to StepStatus (riotplan-format doesn't have 'failed')
+            const mapStepStatus = (status: string): 'pending' | 'in_progress' | 'completed' | 'skipped' => {
+                if (status === 'completed') return 'completed';
+                if (status === 'in_progress') return 'in_progress';
+                if (status === 'skipped') return 'skipped';
+                if (status === 'failed') return 'skipped'; // Map failed to skipped
+                return 'pending';
+            };
+
+            // Read step content from file
+            const stepContent = plan.files[step.filename] || '';
+
             // Map riotplan step to riotplan-format step
             const formatStep: FormatPlanStep = {
                 number: step.number,
                 code: step.code || `step-${step.number}`,
                 title: step.title,
                 description: step.description,
-                status: step.status,
+                status: mapStepStatus(step.status),
                 startedAt: step.startedAt?.toISOString(),
                 completedAt: step.completedAt?.toISOString(),
-                content: step.content || '',
+                content: stepContent,
             };
             await provider.addStep(formatStep);
         }
