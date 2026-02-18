@@ -5,7 +5,8 @@
  * based on configuration settings.
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, access } from 'node:fs/promises';
+import { resolve, dirname } from 'node:path';
 import type { Plan, PlanStep } from '../types.js';
 import type { AcceptanceCriterion } from './types.js';
 
@@ -168,13 +169,49 @@ export class VerificationEngine {
      *
      * Parses the "Files Changed" section and verifies files exist.
      *
-     * @param _step - The step to check
+     * @param step - The step to check
      * @returns List of missing artifacts
      */
-    private async checkArtifacts(_step: PlanStep): Promise<string[]> {
-        // TODO: Implement artifact checking
-        // This will be implemented in Step 5
-        return [];
+    private async checkArtifacts(step: PlanStep): Promise<string[]> {
+        try {
+            const content = await readFile(step.filePath, 'utf-8');
+            const missing: string[] = [];
+
+            // Find the "Files Changed" section
+            const sectionMatch = content.match(
+                /##\s+Files Changed\s*\n([\s\S]*?)(?=\n##|$)/i
+            );
+
+            if (!sectionMatch) {
+                return missing;
+            }
+
+            const section = sectionMatch[1];
+
+            // Extract file paths from list items
+            // Matches: - path/to/file.ts or - `path/to/file.ts`
+            const fileRegex = /^\s*-\s+`?([^\s`]+\.[a-zA-Z0-9]+)`?/gm;
+            let match;
+
+            while ((match = fileRegex.exec(section)) !== null) {
+                const filePath = match[1].trim();
+                
+                // Resolve path relative to plan directory (go up from plan/ to root)
+                const planRoot = resolve(dirname(step.filePath), '../..');
+                const fullPath = resolve(planRoot, filePath);
+
+                try {
+                    await access(fullPath);
+                } catch {
+                    missing.push(filePath);
+                }
+            }
+
+            return missing;
+        } catch {
+            // If we can't read the file, return empty array
+            return [];
+        }
     }
 
     /**

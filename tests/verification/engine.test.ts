@@ -188,6 +188,56 @@ Do some work
             expect(result.messages).toHaveLength(0);
         });
 
+        it('should check artifacts when enabled', async () => {
+            const stepFile = join(tempDir, '01-step.md');
+            writeFileSync(
+                stepFile,
+                `# Step 01
+
+## Files Changed
+
+- src/config/schema.ts
+- src/nonexistent/file.ts
+`
+            );
+
+            const plan = createMockPlan([{ filePath: stepFile }]);
+
+            const result = await engine.verifyStepCompletion(plan, 1, {
+                enforcement: 'interactive',
+                checkAcceptanceCriteria: false,
+                checkArtifacts: true,
+            });
+
+            expect(result.artifacts).toBeDefined();
+            expect(result.artifacts).toContain('src/nonexistent/file.ts');
+        });
+
+        it('should pass when no files changed section exists', async () => {
+            const stepFile = join(tempDir, '01-step.md');
+            
+            writeFileSync(
+                stepFile,
+                `# Step 01
+
+## Tasks
+
+Do some work
+`
+            );
+
+            const plan = createMockPlan([{ filePath: stepFile }]);
+
+            const result = await engine.verifyStepCompletion(plan, 1, {
+                enforcement: 'interactive',
+                checkAcceptanceCriteria: false,
+                checkArtifacts: true,
+            });
+
+            expect(result.isValid).toBe(true);
+            expect(result.artifacts).toHaveLength(0);
+        });
+
         it('should return error when step not found', async () => {
             const plan = createMockPlan([]);
 
