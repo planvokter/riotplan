@@ -5,6 +5,9 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { loadPlan, insertStep, startStep, completeStep, blockStep, unblockStep, skipStep } from "../../index.js";
+import { handleInteractiveVerification, handleVerificationError } from "../utils/verification.js";
+import { VerificationError } from "../../verification/errors.js";
+import { loadConfig } from "../../config/loader.js";
 
 /**
  * Register step commands with the CLI program
@@ -84,14 +87,36 @@ export function registerStepCommands(program: Command): void {
         });
 
     step.command("complete")
-        .description("Mark a step as complete")
+        .description(
+            "Mark a step as complete\n\n" +
+            "Verification:\n" +
+            "  Checks acceptance criteria by default (configure in riotplan.config.yaml)\n" +
+            "  Use --force to bypass verification checks\n" +
+            "  Use --skip-verification to disable verification entirely"
+        )
         .argument("<n>", "Step number to complete", parseInt)
         .option("-n, --notes <text>", "Completion notes")
+        .option("-f, --force", "Force completion even if verification fails")
+        .option("--skip-verification", "Skip verification checks entirely")
         .argument("[path]", "Path to plan directory", process.cwd())
-        .action(async (stepNumber: number, options: { notes?: string }, path: string) => {
+        .action(async (stepNumber: number, options: { notes?: string; force?: boolean; skipVerification?: boolean }, path: string) => {
             try {
                 const plan = await loadPlan(path);
-                const completed = completeStep(plan, stepNumber, options.notes);
+                const config = await loadConfig();
+                
+                // Handle interactive verification if configured
+                if (config?.verification?.enforcement === 'interactive' && !options.force && !options.skipVerification) {
+                    const proceed = await handleInteractiveVerification(plan, stepNumber);
+                    if (!proceed) {
+                        process.exit(0);
+                    }
+                }
+                
+                const completed = await completeStep(plan, stepNumber, {
+                    notes: options.notes,
+                    force: options.force,
+                    skipVerification: options.skipVerification,
+                });
                  
                 console.log(chalk.green(`✓ Completed step ${completed.number}: ${completed.title}`));
                 if (options.notes) {
@@ -99,8 +124,12 @@ export function registerStepCommands(program: Command): void {
                     console.log(chalk.dim(`  Notes: ${options.notes}`));
                 }
             } catch (error) {
-                 
-                console.error(chalk.red("Error completing step:"), (error as Error).message);
+                if (error instanceof VerificationError) {
+                    handleVerificationError(error, options.force);
+                } else {
+                     
+                    console.error(chalk.red("Error completing step:"), (error as Error).message);
+                }
                 process.exit(1);
             }
         });

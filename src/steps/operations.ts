@@ -10,6 +10,10 @@ import { readdir, rename, readFile, writeFile, rm, mkdir } from "node:fs/promise
 import { join } from "node:path";
 import type { Plan, PlanStep, TaskStatus } from "../types.js";
 import { PLAN_CONVENTIONS } from "../types.js";
+import { VerificationEngine } from "../verification/engine.js";
+import { VerificationError } from "../verification/errors.js";
+import { loadConfig } from "../config/loader.js";
+import { generateRetrospective } from "../retrospective/generator.js";
 
 // ===== TYPES =====
 
@@ -459,24 +463,98 @@ export function unblockStep(plan: Plan, stepNumber: number): PlanStep {
 }
 
 /**
- * Complete a step
+ * Options for step completion
  */
-export function completeStep(
+export interface CompleteStepOptions {
+    /** Notes about the completion */
+    notes?: string;
+    /** Force completion even if verification fails */
+    force?: boolean;
+    /** Skip verification entirely */
+    skipVerification?: boolean;
+}
+
+/**
+ * Complete a step with optional verification
+ */
+export async function completeStep(
     plan: Plan,
     stepNumber: number,
-    notes?: string
-): PlanStep {
+    options?: CompleteStepOptions
+): Promise<PlanStep> {
     const step = plan.steps.find((s) => s.number === stepNumber);
     if (!step) {
         throw new Error(`Step ${stepNumber} not found`);
     }
 
-    return {
+    // Load configuration
+    const config = await loadConfig();
+    const verificationConfig = config?.verification;
+
+    // Run verification if enabled and not skipped
+    if (!options?.skipVerification && verificationConfig) {
+        const engine = new VerificationEngine();
+        const result = await engine.verifyStepCompletion(plan, stepNumber, {
+            enforcement: verificationConfig.enforcement,
+            checkAcceptanceCriteria: verificationConfig.checkAcceptanceCriteria,
+            checkArtifacts: verificationConfig.checkArtifacts,
+            force: options?.force,
+        });
+
+        // Check if we should block completion
+        if (engine.shouldBlock(result, {
+            enforcement: verificationConfig.enforcement,
+            checkAcceptanceCriteria: verificationConfig.checkAcceptanceCriteria,
+            checkArtifacts: verificationConfig.checkArtifacts,
+            force: options?.force,
+        })) {
+            throw new VerificationError(
+                result.messages.join('\n'),
+                result
+            );
+        }
+
+        // Store verification result in step notes if there are messages
+        if (result.messages.length > 0 && result.level !== 'passed') {
+            const verificationNotes = `\n\nVerification (${result.level}):\n${result.messages.join('\n')}`;
+            options = {
+                ...options,
+                notes: (options?.notes || '') + verificationNotes,
+            };
+        }
+    }
+
+    const completedStep = {
         ...step,
-        status: "completed",
+        status: "completed" as TaskStatus,
         completedAt: new Date(),
-        notes,
+        notes: options?.notes,
     };
+
+    // Check if all steps are now complete and auto-generate retrospective
+    if (verificationConfig?.autoRetrospective) {
+        const updatedPlan = {
+            ...plan,
+            steps: plan.steps.map(s => s.number === stepNumber ? completedStep : s),
+        };
+        
+        const allStepsComplete = updatedPlan.steps.every(s => 
+            s.status === 'completed' || s.status === 'skipped'
+        );
+        
+        if (allStepsComplete) {
+            try {
+                await generateRetrospective(plan.metadata.path, {
+                    force: false,
+                });
+            } catch {
+                // Don't block completion if retrospective generation fails
+                // Silently continue - retrospective can be generated manually later
+            }
+        }
+    }
+
+    return completedStep;
 }
 
 /**

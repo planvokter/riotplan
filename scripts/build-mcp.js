@@ -16,7 +16,7 @@ const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, '..');
 
 async function buildMcpServer() {
-    console.log('Building MCP server...');
+    console.log('Building MCP stdio server...');
     
     await build({
         configFile: false,
@@ -47,7 +47,48 @@ async function buildMcpServer() {
         },
     });
 
-    console.log('MCP server built successfully');
+    console.log('MCP stdio server built successfully');
+}
+
+async function buildMcpHttpServer() {
+    console.log('Building MCP HTTP server...');
+    
+    await build({
+        configFile: false,
+        build: {
+            lib: {
+                entry: resolve(rootDir, 'src/mcp/bin-http.ts'),
+                formats: ['es'],
+                fileName: () => 'mcp-server-http.js',
+            },
+            outDir: resolve(rootDir, 'dist'),
+            emptyOutDir: false,
+            rollupOptions: {
+                external: [
+                    '@modelcontextprotocol/sdk',
+                    '@modelcontextprotocol/sdk/server/index.js',
+                    '@hono/mcp',
+                    '@hono/node-server',
+                    'hono',
+                    'hono/cors',
+                    'hono/streaming',
+                    'commander',
+                    'zod',
+                    '@utilarium/cardigantime',
+                    '@kjerneverk/execution',
+                    '@kjerneverk/execution-anthropic',
+                    '@kjerneverk/execution-openai',
+                    '@kjerneverk/execution-gemini',
+                    '@kjerneverk/riotprompt',
+                    '@kjerneverk/riotplan-format',
+                    '@kjerneverk/agentic',
+                    /^node:/,
+                ],
+            },
+        },
+    });
+
+    console.log('MCP HTTP server built successfully');
 }
 
 
@@ -79,6 +120,7 @@ function copyPrompts() {
 async function main() {
     try {
         await buildMcpServer();
+        await buildMcpHttpServer();
         copyPrompts();
         console.log('MCP build complete!');
     } catch (error) {

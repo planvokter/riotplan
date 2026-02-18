@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
-import { chmod } from 'node:fs/promises';
+import { chmod, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 
 export default defineConfig({
@@ -35,6 +35,9 @@ export default defineConfig({
         "@modelcontextprotocol/sdk/server/mcp.js",
         "@modelcontextprotocol/sdk/server/stdio.js",
         "zod",
+        "better-sqlite3",
+        "bindings",
+        "file-uri-to-path",
         "node:fs",
         "node:path",
         "node:fs/promises",
@@ -58,6 +61,15 @@ export default defineConfig({
             // Make bin executable after build
             const binPath = path.resolve('dist/bin.js');
             await chmod(binPath, 0o755);
+            
+            // Copy schema.sql from riotplan-format for SQLite provider
+            const schemaSource = path.resolve('../riotplan-format/dist/schema.sql');
+            const schemaDest = path.resolve('dist/schema.sql');
+            try {
+              await copyFile(schemaSource, schemaDest);
+            } catch (error) {
+              console.warn('Warning: Could not copy schema.sql from riotplan-format:', error);
+            }
           }
         }
       ]

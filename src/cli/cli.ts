@@ -44,6 +44,7 @@ import { registerStatusCommands } from "./commands/status.js";
 import { registerStepCommands } from "./commands/step.js";
 import { registerConfigCommands } from "./commands/config.js";
 import { registerListCommand } from "./commands/list.js";
+import { createMigrateCommand } from "../commands/migrate.js";
 
 // Read version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -88,6 +89,7 @@ export function createProgram(): Command {
     registerStatusCommands(program);
     registerStepCommands(program);
     registerConfigCommands(program);
+    program.addCommand(createMigrateCommand());
 
     // Global options
     // Note: --json is intentionally NOT a global option because it conflicts

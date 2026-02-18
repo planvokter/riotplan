@@ -193,4 +193,77 @@ describe('RiotPlanConfigSchema', () => {
             expect(result.catalystDirectory).toBe('./catalysts');
         });
     });
+
+    describe('verification configuration', () => {
+        it('should apply default verification settings when not provided', () => {
+            const config = {};
+
+            const result = RiotPlanConfigSchema.parse(config);
+            expect(result.verification).toBeDefined();
+            expect(result.verification.enforcement).toBe('interactive');
+            expect(result.verification.checkAcceptanceCriteria).toBe(true);
+            expect(result.verification.checkArtifacts).toBe(false);
+            expect(result.verification.autoRetrospective).toBe(true);
+            expect(result.verification.requireEvidence).toBe(false);
+        });
+
+        it('should accept custom verification settings', () => {
+            const config = {
+                verification: {
+                    enforcement: 'strict' as const,
+                    checkAcceptanceCriteria: false,
+                    checkArtifacts: true,
+                    autoRetrospective: false,
+                    requireEvidence: true,
+                },
+            };
+
+            const result = RiotPlanConfigSchema.parse(config);
+            expect(result.verification.enforcement).toBe('strict');
+            expect(result.verification.checkAcceptanceCriteria).toBe(false);
+            expect(result.verification.checkArtifacts).toBe(true);
+            expect(result.verification.autoRetrospective).toBe(false);
+            expect(result.verification.requireEvidence).toBe(true);
+        });
+
+        it('should accept valid enforcement levels', () => {
+            const levels = ['advisory', 'interactive', 'strict'] as const;
+
+            for (const level of levels) {
+                const config = {
+                    verification: {
+                        enforcement: level,
+                    },
+                };
+
+                const result = RiotPlanConfigSchema.parse(config);
+                expect(result.verification.enforcement).toBe(level);
+            }
+        });
+
+        it('should reject invalid enforcement level', () => {
+            const config = {
+                verification: {
+                    enforcement: 'invalid',
+                },
+            };
+
+            expect(() => {
+                RiotPlanConfigSchema.parse(config);
+            }).toThrow();
+        });
+
+        it('should accept partial verification config with defaults', () => {
+            const config = {
+                verification: {
+                    enforcement: 'advisory' as const,
+                },
+            };
+
+            const result = RiotPlanConfigSchema.parse(config);
+            expect(result.verification.enforcement).toBe('advisory');
+            expect(result.verification.checkAcceptanceCriteria).toBe(true);
+            expect(result.verification.checkArtifacts).toBe(false);
+        });
+    });
 });
