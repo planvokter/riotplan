@@ -127,7 +127,11 @@ async function executeStepComplete(
         await ensurePlanManifest(planPath);
         
         const plan = await loadPlan(planPath);
-        const updatedStep = completeStep(plan, args.step);
+        const updatedStep = await completeStep(plan, args.step, {
+            notes: undefined,
+            force: args.force,
+            skipVerification: args.skipVerification,
+        });
         
         // Update the plan's steps array
         const stepIndex = plan.steps.findIndex(s => s.number === args.step);
@@ -182,10 +186,12 @@ async function executeStepComplete(
 export const stepCompleteTool: McpTool = {
     name: 'riotplan_step_complete',
     description:
-        'Mark a step as completed. Updates STATUS.md to reflect the step is done.',
+        'Mark a step as completed. Updates STATUS.md to reflect the step is done. Runs verification checks based on configuration (can be bypassed with force or skipVerification flags).',
     schema: {
         path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
         step: z.number().describe('Step number to complete'),
+        force: z.boolean().optional().describe('Force completion even if verification fails'),
+        skipVerification: z.boolean().optional().describe('Skip verification checks entirely'),
     },
     execute: executeStepComplete,
 };

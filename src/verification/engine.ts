@@ -84,7 +84,7 @@ export class VerificationEngine {
                     messages.push(`  - [ ] ${criterion.text}`);
                 }
             } else if (acceptanceCriteria.length === 0) {
-                level = level === 'error' ? 'error' : 'warning';
+                level = 'warning';
                 messages.push('No acceptance criteria found in step file');
             } else {
                 messages.push(
@@ -157,7 +157,7 @@ export class VerificationEngine {
             }
 
             return criteria;
-        } catch (error) {
+        } catch {
             // If we can't read the file, return empty array
             return [];
         }
@@ -168,10 +168,10 @@ export class VerificationEngine {
      *
      * Parses the "Files Changed" section and verifies files exist.
      *
-     * @param step - The step to check
+     * @param _step - The step to check
      * @returns List of missing artifacts
      */
-    private async checkArtifacts(step: PlanStep): Promise<string[]> {
+    private async checkArtifacts(_step: PlanStep): Promise<string[]> {
         // TODO: Implement artifact checking
         // This will be implemented in Step 5
         return [];

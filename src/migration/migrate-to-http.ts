@@ -21,7 +21,6 @@ import {
     type PlanStep as FormatPlanStep 
 } from '@kjerneverk/riotplan-format';
 import { loadPlan } from '../plan/loader.js';
-import type { Plan } from '../types.js';
 
 export interface MigrationOptions {
     /** Source directory containing directory-based plans */
@@ -178,7 +177,10 @@ async function migratePlan(
     };
 
     // Initialize with metadata
-    await provider.initialize(formatMetadata);
+    const initResult = await provider.initialize(formatMetadata);
+    if (!initResult.success) {
+        throw new Error(`Failed to initialize plan: ${initResult.error}`);
+    }
 
     // Migrate steps
     if (plan.steps && plan.steps.length > 0) {

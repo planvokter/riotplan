@@ -3,10 +3,7 @@
  *
  * Provides common functionality for tools that work with StorageProvider API
  */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { StorageProvider } from '@kjerneverk/riotplan-format';
 import type { ServerConfig } from '../server-hono.js';
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';

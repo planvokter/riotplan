@@ -87,11 +87,17 @@ export function registerStepCommands(program: Command): void {
         .description("Mark a step as complete")
         .argument("<n>", "Step number to complete", parseInt)
         .option("-n, --notes <text>", "Completion notes")
+        .option("-f, --force", "Force completion even if verification fails")
+        .option("--skip-verification", "Skip verification checks entirely")
         .argument("[path]", "Path to plan directory", process.cwd())
-        .action(async (stepNumber: number, options: { notes?: string }, path: string) => {
+        .action(async (stepNumber: number, options: { notes?: string; force?: boolean; skipVerification?: boolean }, path: string) => {
             try {
                 const plan = await loadPlan(path);
-                const completed = completeStep(plan, stepNumber, options.notes);
+                const completed = await completeStep(plan, stepNumber, {
+                    notes: options.notes,
+                    force: options.force,
+                    skipVerification: options.skipVerification,
+                });
                  
                 console.log(chalk.green(`✓ Completed step ${completed.number}: ${completed.title}`));
                 if (options.notes) {

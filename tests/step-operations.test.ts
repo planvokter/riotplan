@@ -338,21 +338,21 @@ describe("Step Operations", () => {
     });
 
     describe("completeStep", () => {
-        it("should complete step", () => {
-            const completed = completeStep(plan, 1);
+        it("should complete step", async () => {
+            const completed = await completeStep(plan, 1);
 
             expect(completed.status).toBe("completed");
             expect(completed.completedAt).toBeInstanceOf(Date);
         });
 
-        it("should complete step with notes", () => {
-            const completed = completeStep(plan, 1, "Finished early");
+        it("should complete step with notes", async () => {
+            const completed = await completeStep(plan, 1, { notes: "Finished early" });
 
             expect(completed.notes).toBe("Finished early");
         });
 
-        it("should throw for non-existent step", () => {
-            expect(() => completeStep(plan, 99)).toThrow("Step 99 not found");
+        it("should throw for non-existent step", async () => {
+            await expect(completeStep(plan, 99)).rejects.toThrow("Step 99 not found");
         });
     });
 
@@ -446,11 +446,11 @@ describe("Step Operations", () => {
     });
 
     describe("plan completion detection", () => {
-        it("should detect when all steps are completed", () => {
+        it("should detect when all steps are completed", async () => {
             // Complete all steps
-            const step1 = completeStep(plan, 1);
-            const step2 = completeStep(plan, 2);
-            const step3 = completeStep(plan, 3);
+            const step1 = await completeStep(plan, 1);
+            const step2 = await completeStep(plan, 2);
+            const step3 = await completeStep(plan, 3);
             
             // Update plan with completed steps
             const completedPlan = {
@@ -466,10 +466,10 @@ describe("Step Operations", () => {
             expect(allCompleted).toBe(true);
         });
 
-        it("should not detect completion when steps are pending", () => {
+        it("should not detect completion when steps are pending", async () => {
             // Complete only first two steps
-            const step1 = completeStep(plan, 1);
-            const step2 = completeStep(plan, 2);
+            const step1 = await completeStep(plan, 1);
+            const step2 = await completeStep(plan, 2);
             
             // Update plan with partially completed steps
             const partialPlan = {
@@ -485,10 +485,10 @@ describe("Step Operations", () => {
             expect(allCompleted).toBe(false);
         });
 
-        it("should detect completion with mix of completed and skipped steps", () => {
+        it("should detect completion with mix of completed and skipped steps", async () => {
             // Complete first two, skip third
-            const step1 = completeStep(plan, 1);
-            const step2 = completeStep(plan, 2);
+            const step1 = await completeStep(plan, 1);
+            const step2 = await completeStep(plan, 2);
             const step3 = skipStep(plan, 3, "Not needed");
             
             // Update plan

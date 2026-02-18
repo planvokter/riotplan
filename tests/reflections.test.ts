@@ -207,7 +207,7 @@ What the next step should know:
 
         it('should allow reflection after step completion', async () => {
             // Start and complete step 1 (modifies plan in memory)
-            const updatedStep = completeStep(plan, 1);
+            const updatedStep = await completeStep(plan, 1);
             
             // Update the plan's steps array
             const stepIndex = plan.steps.findIndex(s => s.number === 1);
