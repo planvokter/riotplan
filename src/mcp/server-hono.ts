@@ -14,8 +14,8 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { streamSSE } from 'hono/streaming';
 import { StreamableHTTPTransport } from '@hono/mcp';
+import { HTTPException } from 'hono/http-exception';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'node:crypto';
@@ -181,7 +181,9 @@ async function getOrCreateSession(
     if (!session) {
         // Create new session
         const server = createMcpServer(plansDir, sessionId, config);
-        const transport = new StreamableHTTPTransport();
+        // enableJsonResponse makes POST /mcp return JSON instead of SSE,
+        // which keeps the API simple and works with non-streaming clients.
+        const transport = new StreamableHTTPTransport({ enableJsonResponse: true });
 
         await server.connect(transport);
 
@@ -254,38 +256,27 @@ export function createApp(config: ServerConfig): Hono {
     });
 
     // POST /mcp - JSON-RPC requests (all MCP protocol methods)
+    // Clients MUST send: Accept: application/json, text/event-stream
+    // Clients MUST send: Content-Type: application/json
     app.post('/mcp', async (c: Context) => {
         try {
             // Get or generate session ID
             const sessionId = c.req.header('Mcp-Session-Id') || generateSessionId();
             const session = await getOrCreateSession(sessionId, config.plansDir, config);
 
-            // Parse the JSON-RPC request body
-            const body = await c.req.json();
+            // Pass the Hono Context directly — the transport reads headers and body from it.
+            const response = await session.transport.handleRequest(c);
 
-            // Create a new Request with the parsed body
-            const request = new Request(c.req.raw.url, {
-                method: c.req.raw.method,
-                headers: c.req.raw.headers,
-                body: JSON.stringify(body),
-            });
-
-            // Handle the request through the transport
-            const response = await session.transport.handleRequest(request);
-
-            // Set session ID header if this is a new session
-            if (!c.req.header('Mcp-Session-Id')) {
-                const headers = new Headers(response.headers);
-                headers.set('Mcp-Session-Id', sessionId);
-                return new Response(response.body, {
-                    status: response.status,
-                    statusText: response.statusText,
-                    headers,
-                });
+            if (!response) {
+                return c.json({ error: { code: -32603, message: 'No response from transport' } }, 500);
             }
 
             return response;
         } catch (error) {
+            // HTTPException carries the proper MCP error response; return it as-is.
+            if (error instanceof HTTPException) {
+                return error.getResponse();
+            }
             console.error('[RiotPlan HTTP] Error handling POST /mcp:', error);
             return c.json(
                 {
@@ -300,55 +291,57 @@ export function createApp(config: ServerConfig): Hono {
         }
     });
 
-    // GET /mcp - SSE stream for notifications
-    app.get('/mcp', (c: Context) => {
-        const sessionId = c.req.header('Mcp-Session-Id');
-
-        if (!sessionId) {
-            return c.json({ error: 'Missing Mcp-Session-Id header' }, 400);
-        }
-
-        const session = sessions.get(sessionId);
-        if (!session) {
-            return c.json({ error: 'Session not found' }, 404);
-        }
-
-        return streamSSE(c, async (stream) => {
-            try {
-                // Send ping every 30 seconds to keep connection alive
-                const pingInterval = setInterval(() => {
-                    stream.writeSSE({
-                        event: 'ping',
-                        data: JSON.stringify({ timestamp: new Date().toISOString() }),
-                    });
-                }, 30000);
-
-                // Wait for stream to close
-                await stream.sleep(Number.MAX_SAFE_INTEGER);
-
-                clearInterval(pingInterval);
-            } catch (error) {
-                console.error('[RiotPlan HTTP] Error in SSE stream:', error);
+    // GET /mcp - SSE stream for server-initiated notifications
+    // Clients MUST send: Accept: text/event-stream
+    app.get('/mcp', async (c: Context) => {
+        try {
+            const sessionId = c.req.header('Mcp-Session-Id');
+            if (!sessionId) {
+                return c.json({ error: 'Missing Mcp-Session-Id header' }, 400);
             }
-        });
+
+            const session = sessions.get(sessionId);
+            if (!session) {
+                return c.json({ error: 'Session not found' }, 404);
+            }
+
+            const response = await session.transport.handleRequest(c);
+            if (!response) {
+                return c.json({ error: 'No SSE stream available' }, 500);
+            }
+            return response;
+        } catch (error) {
+            if (error instanceof HTTPException) {
+                return error.getResponse();
+            }
+            console.error('[RiotPlan HTTP] Error handling GET /mcp:', error);
+            return c.json({ error: 'Internal error' }, 500);
+        }
     });
 
     // DELETE /mcp - Session termination
-    app.delete('/mcp', (c: Context) => {
-        const sessionId = c.req.header('Mcp-Session-Id');
+    app.delete('/mcp', async (c: Context) => {
+        try {
+            const sessionId = c.req.header('Mcp-Session-Id');
+            if (!sessionId) {
+                return c.json({ error: 'Missing Mcp-Session-Id header' }, 400);
+            }
 
-        if (!sessionId) {
-            return c.json({ error: 'Missing Mcp-Session-Id header' }, 400);
-        }
+            const session = sessions.get(sessionId);
+            if (!session) {
+                return c.json({ error: 'Session not found' }, 404);
+            }
 
-        const session = sessions.get(sessionId);
-        if (session) {
-            session.server.close();
+            const response = await session.transport.handleRequest(c);
             sessions.delete(sessionId);
-            return c.json({ message: 'Session terminated' });
+            return response ?? c.body(null, 200);
+        } catch (error) {
+            if (error instanceof HTTPException) {
+                return error.getResponse();
+            }
+            console.error('[RiotPlan HTTP] Error handling DELETE /mcp:', error);
+            return c.json({ error: 'Internal error' }, 500);
         }
-
-        return c.json({ error: 'Session not found' }, 404);
     });
 
     // Start session cleanup interval

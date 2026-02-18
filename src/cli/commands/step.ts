@@ -87,7 +87,13 @@ export function registerStepCommands(program: Command): void {
         });
 
     step.command("complete")
-        .description("Mark a step as complete")
+        .description(
+            "Mark a step as complete\n\n" +
+            "Verification:\n" +
+            "  Checks acceptance criteria by default (configure in riotplan.config.yaml)\n" +
+            "  Use --force to bypass verification checks\n" +
+            "  Use --skip-verification to disable verification entirely"
+        )
         .argument("<n>", "Step number to complete", parseInt)
         .option("-n, --notes <text>", "Completion notes")
         .option("-f, --force", "Force completion even if verification fails")
