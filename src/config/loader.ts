@@ -114,7 +114,12 @@ export async function loadConfig(): Promise<RiotPlanConfig | null> {
                     `- defaultModel: string\n` +
                     `- templateDirectory: string (path to custom templates)\n` +
                     `- catalysts: string[] (ordered list of catalyst paths or IDs)\n` +
-                    `- catalystDirectory: string (directory containing local catalysts)\n\n` +
+                    `- catalystDirectory: string (directory containing local catalysts)\n` +
+                    `- verification.enforcement: 'advisory' | 'interactive' | 'strict'\n` +
+                    `- verification.checkAcceptanceCriteria: boolean\n` +
+                    `- verification.checkArtifacts: boolean\n` +
+                    `- verification.autoRetrospective: boolean\n` +
+                    `- verification.requireEvidence: boolean\n\n` +
                     `Original error: ${error.message}`
                 );
             }

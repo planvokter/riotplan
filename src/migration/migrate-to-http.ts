@@ -193,7 +193,7 @@ async function migratePlan(
             };
 
             // Read step content from file
-            const stepContent = plan.files[step.filename] || '';
+            const stepContent = (plan.files as unknown as Record<string, string>)[step.filename] || '';
 
             // Map riotplan step to riotplan-format step
             const formatStep: FormatPlanStep = {
