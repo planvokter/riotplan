@@ -14,7 +14,7 @@ Use the `riotplan_status` tool to check the current plan state:
 
 ```
 {
-  "path": "${path}",
+  "planId": "${planId}",
   "verbose": false
 }
 ```
@@ -36,14 +36,14 @@ Verify that prerequisites are met and identify which step to execute.
 Fetch the step resource to get full content and acceptance criteria:
 
 ```
-riotplan://step/${path}?number={stepNumber}
+riotplan://step/${planId}?number={stepNumber}
 ```
 
 Or use the `riotplan_step_list` tool to see all steps:
 
 ```
 {
-  "path": "${path}",
+  "planId": "${planId}",
   "pending": true
 }
 ```
@@ -95,7 +95,7 @@ Prior step reflections contain valuable lessons learned during execution. They d
 
 ```
 {
-  "path": "${path}",
+  "planId": "${planId}",
   "step": N
 }
 ```
@@ -126,7 +126,7 @@ Before marking the step complete, verify:
 
 ```
 {
-  "path": "${path}",
+  "planId": "${planId}",
   "step": N
 }
 ```
@@ -139,7 +139,7 @@ This updates STATUS.md and advances the plan to the next step. **Never skip this
 
 ```
 {
-  "path": "${path}",
+  "planId": "${planId}",
   "step": N,
   "reflection": "Your reflection content here"
 }
@@ -215,7 +215,7 @@ If a step is too complex:
 
 Here's how you should execute this workflow:
 
-1. Call `riotplan_status` with path: "${path}"
+1. Call `riotplan_status` with `planId`: "${planId}"
 2. Review the output and identify the current step
 3. Fetch the step resource or list steps
 4. **Read prior step reflections** from `reflections/` directory

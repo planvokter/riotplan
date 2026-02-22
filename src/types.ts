@@ -281,6 +281,7 @@ export type NarrativeSpeaker = "user" | "assistant" | string;
  */
 export type TimelineEventType =
     | "idea_created"
+    | "idea_content_set"
     | "note_added"
     | "constraint_added"
     | "question_added"
@@ -700,6 +701,9 @@ export interface PlanMetadata {
 
   /** When the plan was created */
   createdAt?: Date;
+
+  /** Filesystem path this plan targets (from plan.yaml) */
+  projectPath?: string;
 
   /** Path to the plan directory */
   path: string;

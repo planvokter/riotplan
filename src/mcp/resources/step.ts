@@ -21,7 +21,7 @@ export async function readStepResource(path: string, stepNumber: number): Promis
         const content = readFileSync(stepFilePath, 'utf-8');
 
         return {
-            planPath: plan.metadata.path,
+            planId: plan.metadata.code,
             number: step.number,
             title: step.title,
             status: step.status,
@@ -29,6 +29,6 @@ export async function readStepResource(path: string, stepNumber: number): Promis
             content,
         };
     } catch (error) {
-        throw new Error(`Failed to read step ${stepNumber} at ${path}: ${error}`);
+        throw new Error(`Failed to read step ${stepNumber}: ${error}`);
     }
 }

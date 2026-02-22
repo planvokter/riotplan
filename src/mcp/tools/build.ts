@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { join, basename, dirname, resolve } from "node:path";
+import { join, basename, dirname, resolve, relative, normalize, isAbsolute } from "node:path";
 import { readFile, writeFile, mkdir, rm, readdir as readdirAsync } from "node:fs/promises";
 import { readdirSync } from "node:fs";
 import { resolveDirectory, formatError, createSuccess, formatDate, ensurePlanManifest } from "./shared.js";
@@ -21,6 +21,7 @@ import { generateProvenanceMarkdown } from "../../ai/provenance.js";
 import { checkpointCreate } from "./history.js";
 import type { McpTool, ToolResult, ToolExecutionContext } from "../types.js";
 import type { GenerationContext } from "../../ai/generator.js";
+import { readProjectBinding, resolveProjectContext } from "./project-binding-shared.js";
 
 /**
  * Project root indicator files (language-agnostic).
@@ -52,6 +53,33 @@ function findProjectRoot(startPath: string): string {
     return resolve(startPath); // fallback to start path
 }
 
+function normalizeSingleFilePath(filePath: string, basePath: string): string {
+    let value = filePath.trim();
+    if (!value) return '';
+
+    // Tolerate markdown-y list entries returned by models.
+    value = value.replace(/^[-*]\s+/, '');
+    value = value.replace(/^`+|`+$/g, '');
+    value = value.replace(/^"+|"+$/g, '');
+    value = value.replace(/^'+|'+$/g, '');
+    value = value.replace(/\\/g, '/');
+
+    if (isAbsolute(value)) {
+        value = relative(basePath, value);
+    }
+
+    const normalized = normalize(value).replace(/\\/g, '/');
+    return normalized.replace(/^\.\//, '');
+}
+
+export function normalizeStepFilePaths(filesChanged: string[] | undefined, basePath: string): string[] {
+    if (!filesChanged || filesChanged.length === 0) return [];
+    const normalized = filesChanged
+        .map((pathValue) => normalizeSingleFilePath(pathValue, basePath))
+        .filter((pathValue) => pathValue.length > 0);
+    return [...new Set(normalized)];
+}
+
 /**
  * Try to load read-only codebase tools for agent mode.
  * Returns null if tools are not available (e.g., in bundled MCP-only context).
@@ -67,7 +95,7 @@ async function loadCodebaseTools(): Promise<any[] | null> {
 
 // Tool schema
 export const BuildSchema = z.object({
-    path: z.string().optional().describe("Path to idea/shaping directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     description: z.string().optional().describe("Optional plan description (defaults to IDEA.md content)"),
     steps: z.number().optional().describe("Optional number of steps to generate"),
     provider: z.string().optional().describe("AI provider (anthropic, openai, gemini)"),
@@ -170,10 +198,18 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
         shapingContent: artifacts.shapingContent || undefined,
     };
     
-    // Pre-fetch codebase context from the project index (if available).
-    // The explore session indexes at startup; calling query_index here
-    // gets a cache hit (~0ms) and gives the agent immediate project awareness.
-    const projectRoot = findProjectRoot(planPath);
+    // Resolve project root for path portability and codebase context.
+    // Prefer explicit bound project context, then fall back to root detection from plan path.
+    const binding = await readProjectBinding(planPath);
+    const resolvedContext = await resolveProjectContext({
+        planPath,
+        cwd: context.workingDirectory,
+        project: binding.project,
+        contextConfig: context.config,
+    });
+    const projectRoot = resolvedContext.resolved && resolvedContext.projectRoot
+        ? resolvedContext.projectRoot
+        : findProjectRoot(planPath);
     try {
         const { queryIndexImpl, indexProjectImpl } = await import('../../cli/tools/environment/project-index.js');
         // Ensure index exists (cache hit if explore already built it)
@@ -416,7 +452,7 @@ This plan was built from ${currentStage} stage.
             const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
             checkpointName = `pre-build-${ts}`;
             await checkpointCreate({
-                path: planPath,
+                planId: planPath,
                 name: checkpointName,
                 message: `Auto-checkpoint before rebuild (${existingSteps.length} step files)`,
                 capturePrompt: false,
@@ -432,6 +468,7 @@ This plan was built from ${currentStage} stage.
     for (const step of result.steps) {
         const stepNum = step.number.toString().padStart(2, '0');
         const stepFile = join(planDir, `${stepNum}-${step.title.toLowerCase().replace(/\s+/g, '-')}.md`);
+        const filesChanged = normalizeStepFilePaths(step.filesChanged, projectRoot);
         
         const stepContent = `# Step ${stepNum}: ${step.title}
 
@@ -457,7 +494,7 @@ ${step.testing || '_Add testing approach..._'}
 
 ## Files Changed
 
-${step.filesChanged && step.filesChanged.length > 0 ? step.filesChanged.map(f => `- \`${f}\``).join('\n') : '- _List files that will be modified..._'}
+${filesChanged.length > 0 ? filesChanged.map(f => `- \`${f}\``).join('\n') : '- _List files that will be modified..._'}
 
 ## Notes
 
@@ -487,7 +524,7 @@ ${step.notes || '_Add any additional notes..._'}
     
     // 7. Transition to "built" stage
     await transitionStage({
-        path: planPath,
+        planId: planPath,
         stage: "built",
         reason: `Plan built from ${currentStage} stage with ${result.steps.length} steps`,
     }, context);
@@ -539,7 +576,7 @@ export const buildTool: McpTool = {
         'how artifacts shaped the plan. Uses smart tiering for large artifact sets. ' +
         'Creates SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md, and plan/ directory with steps.',
     schema: {
-        path: z.string().optional().describe('Path to idea/shaping directory (optional, defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (optional, defaults to current plan context)'),
         description: z.string().optional().describe('Optional plan description (defaults to IDEA.md content)'),
         steps: z.number().optional().describe('Optional number of steps to generate'),
         provider: z.string().optional().describe('AI provider (anthropic, openai, gemini)'),

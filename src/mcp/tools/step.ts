@@ -20,7 +20,7 @@ async function executeStepList(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
         const plan = await loadPlan(planPath);
 
         let steps = plan.steps;
@@ -32,7 +32,7 @@ async function executeStepList(
         }
 
         return createSuccess({
-            planPath: plan.metadata.path,
+            planId: plan.metadata.code,
             steps: steps.map(s => ({
                 number: s.number,
                 title: s.title,
@@ -53,7 +53,7 @@ export const stepListTool: McpTool = {
         'List all steps in a plan with their status. ' +
         'Can filter to show only pending, in-progress, or all steps.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         pending: z.boolean().optional().describe('Show only pending steps (default: false)'),
         all: z.boolean().optional().describe('Include completed steps (default: true)'),
     },
@@ -69,7 +69,7 @@ async function executeStepStart(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
         
         // Ensure plan has manifest
         await ensurePlanManifest(planPath);
@@ -93,7 +93,7 @@ async function executeStepStart(
         await writeFile(join(planPath, 'STATUS.md'), statusContent, 'utf-8');
 
         return createSuccess(
-            { planPath, step: args.step },
+            { planId: plan.metadata.code, step: args.step },
             `Step ${args.step} marked as started`
         );
     } catch (error) {
@@ -106,7 +106,7 @@ export const stepStartTool: McpTool = {
     description:
         'Mark a step as started. Updates STATUS.md to reflect the step is in progress.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         step: z.number().describe('Step number to start'),
     },
     execute: executeStepStart,
@@ -121,7 +121,7 @@ async function executeStepComplete(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
         
         // Ensure plan has manifest
         await ensurePlanManifest(planPath);
@@ -164,7 +164,7 @@ async function executeStepComplete(
 
         if (allStepsCompleted) {
             return createSuccess(
-                { planPath, step: args.step, planCompleted: true },
+                { planId: plan.metadata.code, step: args.step, planCompleted: true },
                 `Step ${args.step} marked as completed.\n\n` +
                 `🎉 All steps completed! Plan execution is finished.\n\n` +
                 `**Next: Generate Plan Retrospective**\n` +
@@ -175,7 +175,7 @@ async function executeStepComplete(
         }
 
         return createSuccess(
-            { planPath, step: args.step },
+            { planId: plan.metadata.code, step: args.step },
             `Step ${args.step} marked as completed`
         );
     } catch (error) {
@@ -188,7 +188,7 @@ export const stepCompleteTool: McpTool = {
     description:
         'Mark a step as completed. Updates STATUS.md to reflect the step is done. Runs verification checks based on configuration (can be bypassed with force or skipVerification flags).',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         step: z.number().describe('Step number to complete'),
         force: z.boolean().optional().describe('Force completion even if verification fails'),
         skipVerification: z.boolean().optional().describe('Skip verification checks entirely'),
@@ -205,7 +205,7 @@ async function executeStepAdd(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
         
         const plan = await loadPlan(planPath);
         
@@ -218,7 +218,7 @@ async function executeStepAdd(
 
         return createSuccess(
             { 
-                planPath, 
+                planId: plan.metadata.code,
                 step: result.step.number, 
                 file: result.createdFile,
                 renamedFiles: result.renamedFiles,
@@ -235,7 +235,7 @@ export const stepAddTool: McpTool = {
     description:
         'Add a new step to the plan. Can specify position or add after a specific step.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         title: z.string().describe('Step title'),
         number: z.number().optional().describe('Step number (optional, defaults to end)'),
         after: z.number().optional().describe('Add after this step number (optional)'),
@@ -252,7 +252,7 @@ async function executeStepRemove(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
         
         const plan = await loadPlan(planPath);
         
@@ -265,7 +265,7 @@ async function executeStepRemove(
 
         return createSuccess(
             { 
-                planPath, 
+                planId: plan.metadata.code,
                 removedStep: result.removedStep.number,
                 removedTitle: result.removedStep.title,
                 deletedFile: result.deletedFile,
@@ -283,7 +283,7 @@ export const stepRemoveTool: McpTool = {
     description:
         'Remove a step from the plan. Deletes the step file and automatically renumbers remaining steps.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         step: z.number().describe('Step number to remove'),
     },
     execute: executeStepRemove,
@@ -298,7 +298,7 @@ async function executeStepMove(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
         
         const plan = await loadPlan(planPath);
         
@@ -311,7 +311,7 @@ async function executeStepMove(
 
         return createSuccess(
             { 
-                planPath, 
+                planId: plan.metadata.code,
                 step: result.step.number,
                 from: args.from,
                 to: args.to,
@@ -329,7 +329,7 @@ export const stepMoveTool: McpTool = {
     description:
         'Move a step to a different position in the plan. Automatically renumbers all affected step files.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         from: z.number().describe('Current step number to move'),
         to: z.number().describe('Target position to move the step to'),
     },

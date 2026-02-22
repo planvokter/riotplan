@@ -12,7 +12,7 @@ Use the `riotplan_status` tool to see high-level progress:
 
 ```
 {
-  "path": "${path}",
+  "planId": "${planId}",
   "verbose": false
 }
 ```
@@ -31,7 +31,7 @@ Use the `riotplan_step_list` tool to see all steps:
 
 ```
 {
-  "path": "${path}",
+  "planId": "${planId}",
   "pending": false,
   "all": true
 }
@@ -41,7 +41,7 @@ Or to see only remaining work:
 
 ```
 {
-  "path": "${path}",
+  "planId": "${planId}",
   "pending": true
 }
 ```
@@ -122,7 +122,7 @@ Suggest using `riotplan_step_add`:
 
 ```
 {
-  "path": "${path}",
+  "planId": "${planId}",
   "title": "New Step Title",
   "after": 5
 }
@@ -135,7 +135,7 @@ If a step is too complex, suggest breaking it into smaller steps using `riotplan
 
 Here's how you should execute this workflow:
 
-1. Call `riotplan_status` with path: "${path}"
+1. Call `riotplan_status` with `planId`: "${planId}"
 2. Present the status to the user clearly
 3. Call `riotplan_step_list` to show all steps
 4. Identify any issues or blockers

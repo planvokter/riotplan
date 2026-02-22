@@ -35,18 +35,18 @@ Guide collaborative exploration of a new idea without premature commitment. This
 
 ### 1. Detect Existing Plan or Create New
 
-**FIRST: Check if the user provided a path to an existing plan.**
+**FIRST: Check if the user provided a planId for an existing plan.**
 
 Look for:
-- A file path or directory path in the user's message
+- A plan identifier in the user's message
 - Plan files: IDEA.md, SHAPING.md, STATUS.md, or LIFECYCLE.md
 
-**If user provides a path:**
-- Check if IDEA.md, SHAPING.md, STATUS.md, or LIFECYCLE.md exists at that path
-- If YES → this is an EXISTING plan, go to step 1b (Resume Existing Plan)
-- If NO → this is a new plan, continue to step 1a (Extract or Gather Idea Details)
+**If user provides a planId:**
+- Check if that plan exists by calling `riotplan_status({ planId: "..." })`
+- If YES -> this is an EXISTING plan, go to step 1b (Resume Existing Plan)
+- If NO -> this is a new plan, continue to step 1a (Extract or Gather Idea Details)
 
-**If user doesn't provide a path:**
+**If user doesn't provide a planId:**
 - Continue to step 1a (Extract or Gather Idea Details) to create a new idea
 
 ### 1a. Extract or Gather Idea Details (New Plans Only)
@@ -84,7 +84,7 @@ User says: "explore_idea"
 
 1. **Read the current state** (one tool call):
    ```
-   riotplan_status({ path: "/path/to/plan" })
+   riotplan_status({ planId: "my-plan-id" })
    ```
 
 2. **Give a SHORT summary** (2-3 lines max, not a wall of text):
@@ -102,7 +102,7 @@ User says: "explore_idea"
 
 **Example (good — brief):**
 
-**User**: "explore_idea /Users/me/plans/user-notifications"
+**User**: "explore_idea user-notifications"
 
 **AI**: *Calls riotplan_status*
 
@@ -129,7 +129,7 @@ riotplan_idea_create({
 
 ```
 index_project({
-  path: "/path/to/project"
+  path: "/workspace/project-root"
 })
 ```
 
@@ -142,7 +142,7 @@ This creates a fast, queryable index of:
 
 ```
 query_index({
-  path: "/path/to/project",
+  path: "/workspace/project-root",
   query: "packages"  // or "find file terminal" or "export AgentLoop"
 })
 ```
@@ -547,7 +547,7 @@ riotplan_idea_add_note({
 
 ### Example 5: Resuming an Existing Plan
 
-**User**: "explore_idea /Users/me/plans/riotplan-losing-focus"
+**User**: "explore_idea riotplan-losing-focus"
 
 **AI**: *Calls riotplan_status*
 
@@ -569,7 +569,7 @@ riotplan_idea_add_note({
 ❌ Don't wait for user to ask "where is that thing you found?"
 ❌ Don't skip metadata when capturing evidence (sourceUrl, originalQuery matter)
 ❌ Don't stop after creating the idea—begin exploration immediately
-❌ Don't create a new idea when an existing plan is detected at the provided path
+❌ Don't create a new idea when an existing plan is detected from the provided planId
 
 ✅ Do extract information from the user's message
 ✅ Do ask open questions
@@ -579,7 +579,7 @@ riotplan_idea_add_note({
 ✅ Do capture research findings immediately with full metadata
 ✅ Do use descriptive evidence filenames
 ✅ Do start the conversation immediately after creating the idea
-✅ Do detect existing plans when a path is provided
+✅ Do detect existing plans when a planId is provided
 ✅ Do summarize existing plan state before continuing exploration
 
 ## Transition Criteria

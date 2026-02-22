@@ -71,7 +71,7 @@ export const catalystListTool: McpTool = {
         'Returns catalyst ID, name, description, and which facets are provided. ' +
         'Sources include config-declared catalysts and catalystDirectory contents.',
     schema: {
-        path: z.string().optional().describe('Optional plan directory (defaults to current directory)'),
+        planId: z.string().optional().describe('Optional plan identifier (defaults to current plan context)'),
     },
     execute: executeCatalystList,
 };
@@ -202,7 +202,7 @@ async function executeCatalystAssociate(
         
         return createSuccess(
             {
-                planPath,
+                planId: currentManifest.id || args.planId || 'current',
                 catalysts: updatedCatalysts,
                 action,
             },
@@ -221,7 +221,7 @@ export const catalystAssociateTool: McpTool = {
         'Writes/updates the plan\'s plan.yaml manifest to include the catalyst IDs. ' +
         'Validates that the catalysts exist and can be loaded before associating.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         catalysts: z.array(z.string()).describe('Catalyst IDs or paths to associate with the plan'),
         action: z.enum(['add', 'remove', 'set']).describe('Action to perform: add (append), remove (delete), or set (replace all)'),
     },

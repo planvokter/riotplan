@@ -11,16 +11,16 @@ Follow this workflow to create a comprehensive plan using the riotplan MCP tools
 Check what information has already been provided as prompt arguments:
 - **code**: ${code}
 - **description**: ${description}
-- **directory**: ${directory}
+- **projectId**: ${projectId}
 - **steps**: ${steps}
 
 ## Step 2: Gather Missing Information
 
-For any information marked as "[code]", "[description]", "[directory]", or "[steps]", ask the user to provide it:
+For any information marked as "[code]", "[description]", "[project-id]", or "[steps]", ask the user to provide it:
 
 1. **Plan Code** (if missing) - Ask for a short identifier (e.g., "auth-system", "dark-mode", "refactor-db")
 2. **Plan Description** (if missing) - Ask for a clear, detailed description of what they want to accomplish
-3. **Target Directory** (if missing) - Ask where to create the plan. Suggest using a `plans/` directory if one exists, or offer to create one. If they don't specify, default to current directory.
+3. **Project ID** (if missing) - Ask which project this plan belongs to (optional, e.g., "kjerneverk")
 4. **Number of Steps** (if missing) - Ask how many steps to generate, or let the AI determine automatically
 5. **AI Provider** (optional) - Which provider to use (anthropic, openai, gemini). Default to anthropic if not specified.
 
@@ -28,14 +28,14 @@ For any information marked as "[code]", "[description]", "[directory]", or "[ste
 
 IMPORTANT: Use the `riotplan_create` MCP tool to create the plan. DO NOT shell out to CLI commands.
 
-Once you have all the required information (code, description, directory), call the `riotplan_create` tool:
+Once you have all required information (code and description), call the `riotplan_create` tool:
 
 ```
 {
   "code": "the-plan-code",
   "name": "Human Readable Name (optional)",
   "description": "Detailed description of what to accomplish",
-  "directory": "path/to/parent/directory",
+  "projectId": "kjerneverk",
   "steps": 8,
   "provider": "anthropic",
   "direct": false
@@ -46,7 +46,7 @@ Parameters:
 - `code` (required) - Plan identifier
 - `description` (required) - What to accomplish
 - `name` (optional) - Human-readable name
-- `directory` (optional) - Parent directory for the plan
+- `projectId` (optional) - Project identifier
 - `steps` (optional) - Number of steps to generate
 - `direct` (optional) - Set to true to skip analysis phase
 - `provider` (optional) - AI provider (anthropic, openai, gemini)
@@ -55,11 +55,11 @@ Parameters:
 
 ## Step 4: Review the Generated Plan
 
-After creation, use the `riotplan_status` tool to check the plan:
+After creation, use the returned `planId` with `riotplan_status`:
 
 ```
 {
-  "path": "./path/to/plan",
+  "planId": "new-plan-id",
   "verbose": true
 }
 ```
@@ -75,7 +75,7 @@ Use the `riotplan_validate` tool to ensure the plan structure is correct:
 
 ```
 {
-  "path": "./path/to/plan"
+  "planId": "new-plan-id"
 }
 ```
 
@@ -92,7 +92,7 @@ Inform the user that they can:
 ## Important Guidelines
 
 - **Always use MCP tools** - Never shell out to CLI commands like `riotplan create`
-- **Ask about directory** - Don't assume where the plan should be created
+- **Use plan/project identifiers** - Don't require filesystem paths from the client
 - **Be specific** - Encourage detailed descriptions for better plan generation
 - **Right-size steps** - Suggest 5-10 steps for most tasks
 - **Use analysis** - Don't set `direct: true` unless the user specifically requests it
@@ -105,7 +105,7 @@ User: "I want to build a dog behavior tracking system"
 You should:
 1. Ask clarifying questions:
    - "What specific features should the system include?"
-   - "Where would you like me to create the plan? I can create it in a `plans/` directory if you'd like."
+   - "Which project should this plan be associated with? (optional)"
    - "How many steps would you like? I recommend 8-10 for a system like this."
 
 2. Once you have the information, call `riotplan_create`:
@@ -114,7 +114,7 @@ You should:
      "code": "dog-tracker",
      "name": "Dog Behavior and Training Tracking System",
      "description": "Build a comprehensive dog behavior and training tracking system. The system should allow users to log daily behaviors, track training sessions, monitor progress over time, set training goals, and generate insights about patterns. Include features for multiple dogs, behavior categorization, training exercises library, progress visualization, and reporting capabilities.",
-     "directory": "./plans",
+     "projectId": "kjerneverk",
      "steps": 10,
      "provider": "anthropic"
    }

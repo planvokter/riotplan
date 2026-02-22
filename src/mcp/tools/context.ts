@@ -106,7 +106,7 @@ async function executeReadContext(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
         const depth = args.depth || 'full';
         
         // Read all files in parallel
@@ -148,7 +148,7 @@ export const readContextTool: McpTool = {
         'recent history events, and extracted constraints/questions. ' +
         'Use this at stage transitions to ensure you have full context before proceeding.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         depth: z.enum(['summary', 'full']).optional().describe('Level of detail: "summary" for metadata only, "full" for complete file contents (default: full)'),
     },
     execute: executeReadContext,

@@ -16,6 +16,16 @@ import { readEvidenceListResource, readEvidenceResource } from './evidence.js';
 import { readShapingResource } from './shaping.js';
 import { readCheckpointsListResource, readCheckpointResource } from './checkpoints.js';
 import { parseUri } from '../uri.js';
+import { resolveDirectory } from '../tools/shared.js';
+
+/**
+ * Resolve planId to an internal plan path.
+ * In HTTP mode, plansDir is treated as the base directory.
+ */
+function resolveResourcePath(planId: string | undefined, plansDir?: string): string {
+    const baseDir = plansDir || process.cwd();
+    return resolveDirectory({ planId }, { workingDirectory: baseDir });
+}
 
 /**
  * Get all available resources
@@ -24,25 +34,25 @@ export function getResources(): McpResource[] {
     return [
         // Plan execution resources
         {
-            uri: 'riotplan://plan/{path}',
+            uri: 'riotplan://plan/{planId}',
             name: 'Plan',
             description: 'Read plan metadata and structure',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://status/{path}',
+            uri: 'riotplan://status/{planId}',
             name: 'Status',
             description: 'Read plan status and progress',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://steps/{path}',
+            uri: 'riotplan://steps/{planId}',
             name: 'Steps',
             description: 'List all steps in a plan',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://step/{path}/{number}',
+            uri: 'riotplan://step/{planId}?number={number}',
             name: 'Step',
             description: 'Read a specific step with full content',
             mimeType: 'application/json',
@@ -50,55 +60,55 @@ export function getResources(): McpResource[] {
         
         // Ideation context resources
         {
-            uri: 'riotplan://idea/{path}',
+            uri: 'riotplan://idea/{planId}',
             name: 'Idea',
             description: 'Read IDEA.md file with core concept, constraints, questions, and evidence',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://timeline/{path}',
+            uri: 'riotplan://timeline/{planId}',
             name: 'Timeline',
             description: 'Read .history/timeline.jsonl with full evolution of thinking (notes, narratives, decisions)',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://prompts/{path}',
+            uri: 'riotplan://prompts/{planId}',
             name: 'Prompts List',
             description: 'List all prompt files in .history/prompts/ directory',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://prompt/{path}/{file}',
+            uri: 'riotplan://prompt/{planId}?file={file}',
             name: 'Prompt',
             description: 'Read a specific prompt file with conversational context',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://evidence/{path}',
+            uri: 'riotplan://evidence/{planId}',
             name: 'Evidence List',
             description: 'List all evidence files in evidence/ directory',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://evidence-file/{path}/{file}',
+            uri: 'riotplan://evidence-file/{planId}?file={file}',
             name: 'Evidence File',
             description: 'Read a specific evidence file',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://shaping/{path}',
+            uri: 'riotplan://shaping/{planId}',
             name: 'Shaping',
             description: 'Read SHAPING.md with approaches, tradeoffs, and selected approach',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://checkpoints/{path}',
+            uri: 'riotplan://checkpoints/{planId}',
             name: 'Checkpoints List',
             description: 'List all checkpoints in .history/checkpoints/ directory',
             mimeType: 'application/json',
         },
         {
-            uri: 'riotplan://checkpoint/{path}/{name}',
+            uri: 'riotplan://checkpoint/{planId}?name={name}',
             name: 'Checkpoint',
             description: 'Read a specific checkpoint with snapshot and prompt context',
             mimeType: 'application/json',
@@ -108,59 +118,62 @@ export function getResources(): McpResource[] {
 
 /**
  * Read a resource by URI
+ * @param uri - The riotplan:// URI to read
+ * @param plansDir - Optional base directory for plan paths (used in HTTP/remote mode; when set, all paths are resolved relative to this)
  */
-export async function readResource(uri: string): Promise<any> {
+export async function readResource(uri: string, plansDir?: string): Promise<any> {
     const parsed = parseUri(uri);
+    const planPath = resolveResourcePath(parsed.path, plansDir);
 
     switch (parsed.type) {
         // Plan execution resources
         case 'plan':
-            return await readPlanResource(parsed.path || '.');
+            return await readPlanResource(planPath);
         case 'status':
-            return await readStatusResource(parsed.path || '.');
+            return await readStatusResource(planPath);
         case 'steps':
-            return await readStepsResource(parsed.path || '.');
+            return await readStepsResource(planPath);
         case 'step': {
             const stepNumber = parsed.query?.number ? parseInt(parsed.query.number) : undefined;
             if (!stepNumber) {
                 throw new Error('Step number is required for step resource');
             }
-            return await readStepResource(parsed.path || '.', stepNumber);
+            return await readStepResource(planPath, stepNumber);
         }
         
         // Ideation context resources
         case 'idea':
-            return await readIdeaResource(parsed.path || '.');
+            return await readIdeaResource(planPath);
         case 'timeline':
-            return await readTimelineResource(parsed.path || '.');
+            return await readTimelineResource(planPath);
         case 'prompts':
-            return await readPromptsListResource(parsed.path || '.');
+            return await readPromptsListResource(planPath);
         case 'prompt': {
             const file = parsed.query?.file;
             if (!file) {
                 throw new Error('File name is required for prompt resource');
             }
-            return await readPromptResource(parsed.path || '.', file);
+            return await readPromptResource(planPath, file);
         }
         case 'evidence':
-            return await readEvidenceListResource(parsed.path || '.');
+            return await readEvidenceListResource(planPath);
         case 'evidence-file': {
             const file = parsed.query?.file;
             if (!file) {
                 throw new Error('File name is required for evidence resource');
             }
-            return await readEvidenceResource(parsed.path || '.', file);
+            return await readEvidenceResource(planPath, file);
         }
         case 'shaping':
-            return await readShapingResource(parsed.path || '.');
+            return await readShapingResource(planPath);
         case 'checkpoints':
-            return await readCheckpointsListResource(parsed.path || '.');
+            return await readCheckpointsListResource(planPath);
         case 'checkpoint': {
             const name = parsed.query?.name;
             if (!name) {
                 throw new Error('Checkpoint name is required for checkpoint resource');
             }
-            return await readCheckpointResource(parsed.path || '.', name);
+            return await readCheckpointResource(planPath, name);
         }
         
         default:

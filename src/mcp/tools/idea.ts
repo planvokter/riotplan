@@ -85,22 +85,22 @@ export const IdeaCreateSchema = z.object({
 });
 
 export const IdeaAddNoteSchema = z.object({
-    path: z.string().optional().describe("Path to idea directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     note: z.string().describe("Note to add to the idea"),
 });
 
 export const IdeaAddConstraintSchema = z.object({
-    path: z.string().optional().describe("Path to idea directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     constraint: z.string().describe("Constraint to add"),
 });
 
 export const IdeaAddQuestionSchema = z.object({
-    path: z.string().optional().describe("Path to idea directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     question: z.string().describe("Question to add"),
 });
 
 export const IdeaAddEvidenceSchema = z.object({
-    path: z.string().optional().describe("Path to idea directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     evidencePath: z.string().optional().describe("PREFERRED: Path to evidence file. The tool will copy/link the file. Use 'inline' ONLY for very short content (<500 chars)"),
     description: z.string().describe("Description of the evidence and its relevance"),
     content: z.string().optional().describe("ONLY use for very short inline content (<500 chars). For files or long content, use evidencePath instead"),
@@ -113,7 +113,7 @@ export const IdeaAddEvidenceSchema = z.object({
 });
 
 export const IdeaAddNarrativeSchema = z.object({
-    path: z.string().optional().describe("Path to idea directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     content: z.string().describe("Raw narrative content (thoughts, observations, context)"),
     source: z.enum(["typing", "voice", "paste", "import"]).optional().describe("Source of the narrative"),
     context: z.string().optional().describe("Context about what prompted this narrative"),
@@ -121,8 +121,14 @@ export const IdeaAddNarrativeSchema = z.object({
 });
 
 export const IdeaKillSchema = z.object({
-    path: z.string().optional().describe("Path to idea directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     reason: z.string().describe("Reason for killing the idea"),
+});
+
+export const IdeaSetContentSchema = z.object({
+    planId: z.string().optional().describe("Plan identifier"),
+    path: z.string().optional().describe("Plan path (legacy alias for planId)"),
+    content: z.string().describe("Full IDEA.md content to persist"),
 });
 
 // Tool implementations
@@ -226,7 +232,7 @@ _Add notes as you think about this..._
 }
 
 export async function ideaAddNote(args: z.infer<typeof IdeaAddNoteSchema>): Promise<string> {
-    const ideaPath = args.path || process.cwd();
+    const ideaPath = args.planId || process.cwd();
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let content = await readFile(ideaFile, "utf-8");
@@ -260,7 +266,7 @@ export async function ideaAddNote(args: z.infer<typeof IdeaAddNoteSchema>): Prom
 }
 
 export async function ideaAddConstraint(args: z.infer<typeof IdeaAddConstraintSchema>): Promise<string> {
-    const ideaPath = args.path || process.cwd();
+    const ideaPath = args.planId || process.cwd();
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let content = await readFile(ideaFile, "utf-8");
@@ -291,7 +297,7 @@ export async function ideaAddConstraint(args: z.infer<typeof IdeaAddConstraintSc
 }
 
 export async function ideaAddQuestion(args: z.infer<typeof IdeaAddQuestionSchema>): Promise<string> {
-    const ideaPath = args.path || process.cwd();
+    const ideaPath = args.planId || process.cwd();
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let content = await readFile(ideaFile, "utf-8");
@@ -322,7 +328,7 @@ export async function ideaAddQuestion(args: z.infer<typeof IdeaAddQuestionSchema
 }
 
 export async function ideaAddEvidence(args: z.infer<typeof IdeaAddEvidenceSchema>): Promise<string> {
-    const ideaPath = args.path || process.cwd();
+    const ideaPath = args.planId || process.cwd();
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let evidencePath = args.evidencePath;
@@ -396,7 +402,7 @@ export async function ideaAddEvidence(args: z.infer<typeof IdeaAddEvidenceSchema
 }
 
 export async function ideaAddNarrative(args: z.infer<typeof IdeaAddNarrativeSchema>): Promise<string> {
-    const ideaPath = args.path || process.cwd();
+    const ideaPath = args.planId || process.cwd();
     const timestamp = formatTimestamp();
   
     // Log narrative chunk to timeline (not to IDEA.md)
@@ -460,7 +466,7 @@ ${args.content}
 }
 
 export async function ideaKill(args: z.infer<typeof IdeaKillSchema>): Promise<string> {
-    const ideaPath = args.path || process.cwd();
+    const ideaPath = args.planId || process.cwd();
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let content = await readFile(ideaFile, "utf-8");
@@ -487,6 +493,21 @@ export async function ideaKill(args: z.infer<typeof IdeaKillSchema>): Promise<st
     });
   
     return `✅ Idea killed: ${args.reason}`;
+}
+
+export async function ideaSetContent(args: z.infer<typeof IdeaSetContentSchema>): Promise<string> {
+    const ideaPath = args.planId || process.cwd();
+    const ideaFile = join(ideaPath, "IDEA.md");
+
+    await writeFile(ideaFile, args.content, "utf-8");
+
+    await logEvent(ideaPath, {
+        timestamp: formatTimestamp(),
+        type: 'idea_content_set',
+        data: { length: args.content.length },
+    });
+
+    return "✅ IDEA.md updated";
 }
 
 // Tool executors for MCP
@@ -516,9 +537,8 @@ export async function executeIdeaCreate(args: any, context: ToolExecutionContext
 export async function executeIdeaAddNote(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddNoteSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await ideaAddNote({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await ideaAddNote({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -528,9 +548,8 @@ export async function executeIdeaAddNote(args: any, context: ToolExecutionContex
 export async function executeIdeaAddConstraint(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddConstraintSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await ideaAddConstraint({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await ideaAddConstraint({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -540,9 +559,8 @@ export async function executeIdeaAddConstraint(args: any, context: ToolExecution
 export async function executeIdeaAddQuestion(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddQuestionSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await ideaAddQuestion({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await ideaAddQuestion({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -552,9 +570,8 @@ export async function executeIdeaAddQuestion(args: any, context: ToolExecutionCo
 export async function executeIdeaAddEvidence(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddEvidenceSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await ideaAddEvidence({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await ideaAddEvidence({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -564,9 +581,8 @@ export async function executeIdeaAddEvidence(args: any, context: ToolExecutionCo
 export async function executeIdeaAddNarrative(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaAddNarrativeSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await ideaAddNarrative({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await ideaAddNarrative({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -576,9 +592,25 @@ export async function executeIdeaAddNarrative(args: any, context: ToolExecutionC
 export async function executeIdeaKill(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = IdeaKillSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await ideaKill({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await ideaKill({ ...validated, planId: resolvedPath });
+        return { success: true, data: { message: result } };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function executeIdeaSetContent(args: any, context: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const validated = IdeaSetContentSchema.parse(args);
+        const resolvedPath = resolveDirectory(args, context);
+        if (resolvedPath.endsWith('.plan')) {
+            return {
+                success: false,
+                error: 'Saving IDEA.md is only supported for directory-based plans.',
+            };
+        }
+        const result = await ideaSetContent({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -635,4 +667,11 @@ export const ideaKillTool: McpTool = {
     description: "Kill an idea with a reason. Use when deciding not to pursue it.",
     schema: IdeaKillSchema.shape,
     execute: executeIdeaKill,
+};
+
+export const ideaSetContentTool: McpTool = {
+    name: "riotplan_idea_set_content",
+    description: "Replace IDEA.md content for a plan. Supports planId and path.",
+    schema: IdeaSetContentSchema.shape,
+    execute: executeIdeaSetContent,
 };

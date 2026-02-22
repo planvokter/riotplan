@@ -317,7 +317,7 @@ The user may want to refine the plan. Use the same narrative capture approach:
 ```typescript
 // Capture user feedback
 riotplan_idea_add_narrative({
-  path: "./path/to/plan",
+  planId: "${planId}",
   content: "[User's feedback about the plan]",
   speaker: "user",
   context: "Feedback on generated plan"
@@ -328,7 +328,7 @@ riotplan_idea_add_narrative({
 
 // Capture what changed
 riotplan_idea_add_narrative({
-  path: "./path/to/plan",
+  planId: "${planId}",
   content: "Updated [X] based on feedback because [reasoning]",
   speaker: "assistant",
   context: "Plan refinement"
@@ -341,7 +341,7 @@ Once the user approves the plan, create a checkpoint:
 
 ```typescript
 riotplan_checkpoint_create({
-  path: "./path/to/plan",
+  planId: "${planId}",
   name: "plan-approved",
   message: "Plan approved and ready for execution. Synthesized from [N] timeline events, [M] evidence files, and selected approach from shaping phase."
 })

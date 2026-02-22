@@ -31,7 +31,6 @@ export async function readCheckpointsListResource(planPath: string): Promise<any
         checkpointFiles.sort((a, b) => b.created.getTime() - a.created.getTime());
         
         return {
-            path: checkpointsDir,
             checkpoints: checkpointFiles,
             count: checkpointFiles.length,
             type: 'checkpoints_list',
@@ -39,7 +38,6 @@ export async function readCheckpointsListResource(planPath: string): Promise<any
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             return {
-                path: checkpointsDir,
                 checkpoints: [],
                 count: 0,
                 type: 'checkpoints_list',
@@ -67,7 +65,6 @@ export async function readCheckpointResource(planPath: string, checkpointName: s
         }
         
         return {
-            path: checkpointPath,
             name: checkpointName,
             checkpoint,
             prompt: promptContent,

@@ -15,28 +15,28 @@ export type { CheckpointMetadata };
 
 // Tool schemas
 export const CheckpointCreateSchema = z.object({
-    path: z.string().optional().describe("Path to plan directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     name: z.string().describe("Checkpoint name (kebab-case)"),
     message: z.string().describe("Description of why checkpoint created"),
     capturePrompt: z.boolean().optional().default(true).describe("Capture conversation context"),
 });
 
 export const CheckpointListSchema = z.object({
-    path: z.string().optional().describe("Path to plan directory"),
+    planId: z.string().optional().describe("Plan identifier"),
 });
 
 export const CheckpointShowSchema = z.object({
-    path: z.string().optional().describe("Path to plan directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     checkpoint: z.string().describe("Checkpoint name"),
 });
 
 export const CheckpointRestoreSchema = z.object({
-    path: z.string().optional().describe("Path to plan directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     checkpoint: z.string().describe("Checkpoint name"),
 });
 
 export const HistoryShowSchema = z.object({
-    path: z.string().optional().describe("Path to plan directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     since: z.string().optional().describe("Show events since this ISO timestamp"),
     eventType: z.string().optional().describe("Filter by event type"),
     limit: z.number().optional().describe("Maximum number of events to show"),
@@ -274,7 +274,7 @@ You can restore to this checkpoint using: \`riotplan_checkpoint_restore({ checkp
 // Tool implementations
 
 export async function checkpointCreate(args: z.infer<typeof CheckpointCreateSchema>): Promise<string> {
-    const planPath = args.path || process.cwd();
+    const planPath = args.planId || process.cwd();
     const { name, message, capturePrompt } = args;
   
     // 1. Create checkpoint directory
@@ -329,7 +329,7 @@ export async function checkpointCreate(args: z.infer<typeof CheckpointCreateSche
 }
 
 export async function checkpointList(args: z.infer<typeof CheckpointListSchema>): Promise<string> {
-    const planPath = args.path || process.cwd();
+    const planPath = args.planId || process.cwd();
     const checkpointDir = join(planPath, '.history', 'checkpoints');
   
     try {
@@ -362,7 +362,7 @@ export async function checkpointList(args: z.infer<typeof CheckpointListSchema>)
 }
 
 export async function checkpointShow(args: z.infer<typeof CheckpointShowSchema>): Promise<string> {
-    const planPath = args.path || process.cwd();
+    const planPath = args.planId || process.cwd();
     const checkpointPath = join(planPath, '.history', 'checkpoints', `${args.checkpoint}.json`);
   
     const content = await readFile(checkpointPath, 'utf-8');
@@ -387,7 +387,7 @@ export async function checkpointShow(args: z.infer<typeof CheckpointShowSchema>)
 }
 
 export async function checkpointRestore(args: z.infer<typeof CheckpointRestoreSchema>): Promise<string> {
-    const planPath = args.path || process.cwd();
+    const planPath = args.planId || process.cwd();
     const checkpointPath = join(planPath, '.history', 'checkpoints', `${args.checkpoint}.json`);
   
     const content = await readFile(checkpointPath, 'utf-8');
@@ -421,7 +421,7 @@ export async function checkpointRestore(args: z.infer<typeof CheckpointRestoreSc
 }
 
 export async function historyShow(args: z.infer<typeof HistoryShowSchema>): Promise<string> {
-    const planPath = args.path || process.cwd();
+    const planPath = args.planId || process.cwd();
     let events = await readTimeline(planPath);
   
     if (events.length === 0) {
@@ -461,9 +461,8 @@ export async function historyShow(args: z.infer<typeof HistoryShowSchema>): Prom
 export async function executeCheckpointCreate(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = CheckpointCreateSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await checkpointCreate({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await checkpointCreate({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -473,9 +472,8 @@ export async function executeCheckpointCreate(args: any, context: ToolExecutionC
 export async function executeCheckpointList(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = CheckpointListSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await checkpointList({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await checkpointList({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -485,9 +483,8 @@ export async function executeCheckpointList(args: any, context: ToolExecutionCon
 export async function executeCheckpointShow(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = CheckpointShowSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await checkpointShow({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await checkpointShow({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -497,9 +494,8 @@ export async function executeCheckpointShow(args: any, context: ToolExecutionCon
 export async function executeCheckpointRestore(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = CheckpointRestoreSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await checkpointRestore({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await checkpointRestore({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -509,9 +505,8 @@ export async function executeCheckpointRestore(args: any, context: ToolExecution
 export async function executeHistoryShow(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = HistoryShowSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await historyShow({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await historyShow({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };

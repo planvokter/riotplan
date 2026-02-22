@@ -13,14 +13,12 @@ export async function readShapingResource(planPath: string): Promise<any> {
     try {
         const content = await readFile(shapingPath, 'utf-8');
         return {
-            path: shapingPath,
             content,
             type: 'shaping',
         };
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             return {
-                path: shapingPath,
                 content: null,
                 type: 'shaping',
                 note: 'No shaping file found - idea may not have been shaped yet',

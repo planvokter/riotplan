@@ -17,7 +17,7 @@ async function executeStepReflect(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
         const plan = await loadPlan(planPath);
 
         // Validate that the step exists
@@ -46,7 +46,7 @@ async function executeStepReflect(
 
         return createSuccess(
             {
-                planPath,
+                planId: plan.metadata.code,
                 step: args.step,
                 reflectionFile: filepath,
             },
@@ -65,7 +65,7 @@ export const stepReflectTool: McpTool = {
         'what surprised you, what took longer than expected, what could be done differently, ' +
         'and what the next step should know. This creates the inter-step learning channel.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         step: z.number().describe('Step number to reflect on (must be completed)'),
         reflection: z.string().describe(
             'The reflection content. Be honest, specific, and creative. ' +

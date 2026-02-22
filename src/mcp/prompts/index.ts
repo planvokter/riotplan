@@ -79,8 +79,8 @@ export function getPrompts(): McpPrompt[] {
             description: 'Compare different approaches and make decisions before building detailed plans. Surface tradeoffs and gather evidence.',
             arguments: [
                 {
-                    name: 'path',
-                    description: 'Path to idea or shaping directory',
+                    name: 'planId',
+                    description: 'Plan identifier to shape',
                     required: false,
                 },
             ],
@@ -100,8 +100,8 @@ export function getPrompts(): McpPrompt[] {
                     required: false,
                 },
                 {
-                    name: 'directory',
-                    description: 'Parent directory where the plan should be created (e.g., "./plans")',
+                    name: 'projectId',
+                    description: 'Optional project identifier for the new plan',
                     required: false,
                 },
                 {
@@ -116,8 +116,8 @@ export function getPrompts(): McpPrompt[] {
             description: 'Refine a generated plan through conversational feedback. Captures full narrative of plan evolution with checkpoints.',
             arguments: [
                 {
-                    name: 'path',
-                    description: 'Path to the plan directory to develop',
+                    name: 'planId',
+                    description: 'Plan identifier to develop',
                     required: false,
                 },
             ],
@@ -127,8 +127,8 @@ export function getPrompts(): McpPrompt[] {
             description: 'Execute a plan with intelligent state management. Automatically determines next step, guides through tasks, and manages execution state.',
             arguments: [
                 {
-                    name: 'path',
-                    description: 'Path to the plan directory to execute',
+                    name: 'planId',
+                    description: 'Plan identifier to execute',
                     required: false,
                 },
             ],
@@ -138,8 +138,8 @@ export function getPrompts(): McpPrompt[] {
             description: 'Execute a single step from a plan with proper status tracking',
             arguments: [
                 {
-                    name: 'path',
-                    description: 'Plan directory path',
+                    name: 'planId',
+                    description: 'Plan identifier',
                     required: false,
                 },
             ],
@@ -149,8 +149,8 @@ export function getPrompts(): McpPrompt[] {
             description: 'Monitor plan progress and maintain status tracking',
             arguments: [
                 {
-                    name: 'path',
-                    description: 'Plan directory path',
+                    name: 'planId',
+                    description: 'Plan identifier',
                     required: false,
                 },
             ],
@@ -159,11 +159,23 @@ export function getPrompts(): McpPrompt[] {
 }
 
 /**
+ * Options for getPrompt (used in HTTP/remote mode)
+ */
+export interface GetPromptOptions {
+    /** Base plans directory - used only for internal defaults when needed */
+    plansDir?: string;
+}
+
+/**
  * Get a prompt by name
+ * @param name - Prompt name
+ * @param args - Prompt arguments (code, description, planId, etc.)
+ * @param options - Optional plansDir for HTTP/remote mode
  */
 export async function getPrompt(
     name: string,
-    args: Record<string, string>
+    args: Record<string, string>,
+    options?: GetPromptOptions
 ): Promise<McpPromptMessage[]> {
     // Validate prompt exists
     const prompts = getPrompts();
@@ -177,24 +189,25 @@ export async function getPrompt(
 
     // Set default values for common arguments if missing
     const filledArgs = { ...args };
-    
+    void options;
+
     // For explore_idea, mark missing fields
     if (name === 'explore_idea') {
         if (!filledArgs.code) filledArgs.code = '[idea-code]';
         if (!filledArgs.description) filledArgs.description = '[initial concept]';
     }
-    
-    // For create_plan, mark missing required fields
+
+    // For create_plan, keep placeholders for optional fields.
     if (name === 'create_plan') {
         if (!filledArgs.code) filledArgs.code = '[code]';
         if (!filledArgs.description) filledArgs.description = '[description]';
-        if (!filledArgs.directory) filledArgs.directory = '[directory]';
+        if (!filledArgs.projectId) filledArgs.projectId = '[project-id]';
         if (!filledArgs.steps) filledArgs.steps = '[steps]';
     }
-    
-    // For other prompts, use defaults
-    if (!filledArgs.path) {
-        filledArgs.path = 'current directory';
+
+    // For plan-oriented prompts, default to current plan context.
+    if (!filledArgs.planId) {
+        filledArgs.planId = '[current-plan-id]';
     }
 
     const content = fillTemplate(template, filledArgs);

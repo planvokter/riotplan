@@ -181,6 +181,7 @@ Plan metadata and structure.
 **Returns:**
 - Plan code and name
 - Metadata (created date, author, etc.)
+- Optional `metadata.projectPath` when present in `plan.yaml`
 - Current state
 
 ### `riotplan://status/{path}`

@@ -18,7 +18,7 @@ async function executeGenerateRetrospective(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
 
         // Generate the retrospective context and prompt
         const { context: retroContext, prompt } = await generateRetrospective(
@@ -71,7 +71,7 @@ ${prompt}
 
         return createSuccess(
             {
-                planPath,
+                planId: retroContext.plan.metadata.code,
                 retrospectivePath,
                 reflectionsCount: retroContext.reflections.length,
                 stepsAnalyzed: retroContext.plan.steps.length,
@@ -96,7 +96,7 @@ export const generateRetrospectiveTool: McpTool = {
         '(e.g., Claude Opus, GPT-4). Retrospectives require creative analysis and pattern recognition. ' +
         'Lower-tier models tend to produce generic observations rather than surprising insights.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         force: z.boolean().optional().describe('Generate retrospective even if plan is not completed (default: false)'),
     },
     execute: executeGenerateRetrospective,
