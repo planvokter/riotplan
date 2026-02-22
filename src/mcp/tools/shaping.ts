@@ -10,11 +10,11 @@ import { logEvent } from "./history.js";
 
 // Tool schemas
 export const ShapingStartSchema = z.object({
-    path: z.string().optional().describe("Path to idea directory"),
+    planId: z.string().optional().describe("Plan identifier"),
 });
 
 export const ShapingAddApproachSchema = z.object({
-    path: z.string().optional().describe("Path to shaping directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     name: z.string().describe("Name of the approach"),
     description: z.string().describe("Description of the approach"),
     tradeoffs: z.array(z.string()).optional().describe("List of tradeoffs (pros/cons)"),
@@ -22,23 +22,23 @@ export const ShapingAddApproachSchema = z.object({
 });
 
 export const ShapingAddFeedbackSchema = z.object({
-    path: z.string().optional().describe("Path to shaping directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     feedback: z.string().describe("Feedback about the current shaping"),
 });
 
 export const ShapingAddEvidenceSchema = z.object({
-    path: z.string().optional().describe("Path to shaping directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     evidencePath: z.string().describe("Path to evidence file"),
     description: z.string().optional().describe("Description of the evidence"),
     relatedTo: z.string().optional().describe("Which approach this evidence relates to"),
 });
 
 export const ShapingCompareSchema = z.object({
-    path: z.string().optional().describe("Path to shaping directory"),
+    planId: z.string().optional().describe("Plan identifier"),
 });
 
 export const ShapingSelectSchema = z.object({
-    path: z.string().optional().describe("Path to shaping directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     approach: z.string().describe("Name of the selected approach"),
     reason: z.string().describe("Reason for selecting this approach"),
 });
@@ -46,7 +46,7 @@ export const ShapingSelectSchema = z.object({
 // Tool implementations
 
 export async function shapingStart(args: z.infer<typeof ShapingStartSchema>): Promise<string> {
-    const shapingPath = args.path || process.cwd();
+    const shapingPath = args.planId || process.cwd();
   
     // Ensure plan has manifest
     await ensurePlanManifest(shapingPath);
@@ -122,7 +122,7 @@ _Decisions will be tracked here_
 }
 
 export async function shapingAddApproach(args: z.infer<typeof ShapingAddApproachSchema>): Promise<string> {
-    const shapingPath = args.path || process.cwd();
+    const shapingPath = args.planId || process.cwd();
     const shapingFile = join(shapingPath, "SHAPING.md");
   
     let content = await readFile(shapingFile, "utf-8");
@@ -176,7 +176,7 @@ export async function shapingAddApproach(args: z.infer<typeof ShapingAddApproach
 }
 
 export async function shapingAddFeedback(args: z.infer<typeof ShapingAddFeedbackSchema>): Promise<string> {
-    const shapingPath = args.path || process.cwd();
+    const shapingPath = args.planId || process.cwd();
     const shapingFile = join(shapingPath, "SHAPING.md");
   
     let content = await readFile(shapingFile, "utf-8");
@@ -207,7 +207,7 @@ export async function shapingAddFeedback(args: z.infer<typeof ShapingAddFeedback
 }
 
 export async function shapingAddEvidence(args: z.infer<typeof ShapingAddEvidenceSchema>): Promise<string> {
-    const shapingPath = args.path || process.cwd();
+    const shapingPath = args.planId || process.cwd();
     const shapingFile = join(shapingPath, "SHAPING.md");
   
     let content = await readFile(shapingFile, "utf-8");
@@ -250,7 +250,7 @@ export async function shapingAddEvidence(args: z.infer<typeof ShapingAddEvidence
 }
 
 export async function shapingCompare(args: z.infer<typeof ShapingCompareSchema>): Promise<string> {
-    const shapingPath = args.path || process.cwd();
+    const shapingPath = args.planId || process.cwd();
     const shapingFile = join(shapingPath, "SHAPING.md");
   
     const content = await readFile(shapingFile, "utf-8");
@@ -300,7 +300,7 @@ export async function shapingCompare(args: z.infer<typeof ShapingCompareSchema>)
 }
 
 export async function shapingSelect(args: z.infer<typeof ShapingSelectSchema>): Promise<string> {
-    const shapingPath = args.path || process.cwd();
+    const shapingPath = args.planId || process.cwd();
     const shapingFile = join(shapingPath, "SHAPING.md");
   
     let content = await readFile(shapingFile, "utf-8");
@@ -329,7 +329,7 @@ export async function shapingSelect(args: z.infer<typeof ShapingSelectSchema>): 
         },
     });
   
-    return `✅ Approach selected: ${args.approach}\n\n⚠️  IMPORTANT: You must now call riotplan_build to generate the detailed execution plan.\n\nThis will:\n- Create PROVENANCE.md (tracing how artifacts shaped the plan)\n- Create EXECUTION_PLAN.md (detailed step-by-step strategy)\n- Create SUMMARY.md (high-level overview)\n- Create STATUS.md (progress tracking)\n- Generate step files in plan/ directory\n- Transition to 'built' stage\n\nCall: riotplan_build({ path: "${shapingPath}" })`;
+    return `✅ Approach selected: ${args.approach}\n\n⚠️  IMPORTANT: You must now call riotplan_build to generate the detailed execution plan.\n\nThis will:\n- Create PROVENANCE.md (tracing how artifacts shaped the plan)\n- Create EXECUTION_PLAN.md (detailed step-by-step strategy)\n- Create SUMMARY.md (high-level overview)\n- Create STATUS.md (progress tracking)\n- Generate step files in plan/ directory\n- Transition to 'built' stage\n\nCall: riotplan_build({ planId: "${shapingPath}" })`;
 }
 
 // Tool executors for MCP
@@ -338,9 +338,8 @@ import type { ToolResult, ToolExecutionContext } from '../types.js';
 export async function executeShapingStart(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingStartSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await shapingStart({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await shapingStart({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -350,9 +349,8 @@ export async function executeShapingStart(args: any, context: ToolExecutionConte
 export async function executeShapingAddApproach(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingAddApproachSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await shapingAddApproach({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await shapingAddApproach({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -362,9 +360,8 @@ export async function executeShapingAddApproach(args: any, context: ToolExecutio
 export async function executeShapingAddFeedback(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingAddFeedbackSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await shapingAddFeedback({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await shapingAddFeedback({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -374,9 +371,8 @@ export async function executeShapingAddFeedback(args: any, context: ToolExecutio
 export async function executeShapingAddEvidence(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingAddEvidenceSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await shapingAddEvidence({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await shapingAddEvidence({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -386,9 +382,8 @@ export async function executeShapingAddEvidence(args: any, context: ToolExecutio
 export async function executeShapingCompare(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingCompareSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await shapingCompare({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await shapingCompare({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -398,9 +393,8 @@ export async function executeShapingCompare(args: any, context: ToolExecutionCon
 export async function executeShapingSelect(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ShapingSelectSchema.parse(args);
-        // Use directory resolution logic when no explicit path is provided
-        const resolvedPath = validated.path || resolveDirectory(args, context);
-        const result = await shapingSelect({ ...validated, path: resolvedPath });
+        const resolvedPath = resolveDirectory(args, context);
+        const result = await shapingSelect({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
         return { success: false, error: error.message };

@@ -11,7 +11,7 @@ import type { McpTool, ToolResult, ToolExecutionContext } from "../types.js";
 
 // Tool schema
 export const TransitionSchema = z.object({
-    path: z.string().optional().describe("Path to plan/idea/shaping directory"),
+    planId: z.string().optional().describe("Plan identifier"),
     stage: z.string().describe("Target stage (idea, shaping, built, executing, completed, cancelled)"),
     reason: z.string().describe("Reason for transitioning"),
 });
@@ -103,7 +103,7 @@ export const transitionTool: McpTool = {
         'Updates LIFECYCLE.md and logs transition to timeline. ' +
         'Allows any transitions without validation.',
     schema: {
-        path: z.string().optional().describe('Path to plan/idea/shaping directory (optional, defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (optional, defaults to current plan context)'),
         stage: z.string().describe('Target stage: idea, shaping, built, executing, completed, cancelled'),
         reason: z.string().describe('Reason for transitioning'),
     },

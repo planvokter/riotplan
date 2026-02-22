@@ -87,7 +87,7 @@ Read the step files to understand the execution plan:
 
 ```typescript
 riotplan_status({
-  path: "./path/to/plan"
+  planId: "${planId}"
 })
 ```
 
@@ -198,7 +198,7 @@ Prior reflections contain:
 
 ```typescript
 riotplan_step_start({
-  path: "./path/to/plan",
+  planId: "${planId}",
   step: N
 })
 ```
@@ -249,7 +249,7 @@ When all tasks and criteria are met:
 
 ```typescript
 riotplan_step_complete({
-  path: "./path/to/plan",
+  planId: "${planId}",
   step: N
 })
 ```
@@ -262,7 +262,7 @@ This updates STATUS.md and advances the plan. **Never skip this step** - complet
 
 ```typescript
 riotplan_step_reflect({
-  path: "./path/to/plan",
+  planId: "${planId}",
   step: N,
   reflection: "Your genuine reflection here"
 })
@@ -308,7 +308,7 @@ Create checkpoints during execution:
 **Before risky changes:**
 ```typescript
 riotplan_checkpoint_create({
-  path: "./path/to/plan",
+  planId: "${planId}",
   name: "before-step-5",
   message: "Checkpoint before implementing database migration (Step 5)"
 })
@@ -317,7 +317,7 @@ riotplan_checkpoint_create({
 **After completing major phases:**
 ```typescript
 riotplan_checkpoint_create({
-  path: "./path/to/plan",
+  planId: "${planId}",
   name: "phase-1-complete",
   message: "Completed Phase 1: Data model and core types (Steps 1-4)"
 })
@@ -326,7 +326,7 @@ riotplan_checkpoint_create({
 **When user wants to pause:**
 ```typescript
 riotplan_checkpoint_create({
-  path: "./path/to/plan",
+  planId: "${planId}",
   name: "pause-after-step-7",
   message: "Pausing execution after Step 7. Ready to resume with Step 8."
 })
@@ -339,7 +339,7 @@ As you work, capture the narrative of execution:
 **When starting a step:**
 ```typescript
 riotplan_idea_add_narrative({
-  path: "./path/to/plan",
+  planId: "${planId}",
   content: "Starting Step 3: Implement Narrative Capture. The objective is to create MCP tool for capturing raw conversational input. This builds on the timeline extensions from Step 2.",
   speaker: "assistant",
   context: "Beginning step execution"
@@ -349,7 +349,7 @@ riotplan_idea_add_narrative({
 **When encountering challenges:**
 ```typescript
 riotplan_idea_add_narrative({
-  path: "./path/to/plan",
+  planId: "${planId}",
   content: "Ran into an issue with the timeline event types - the NarrativeChunkEvent interface wasn't exported. Fixed by adding export to types.ts. This is a common pattern we should watch for in future steps.",
   speaker: "assistant",
   context: "Problem solving during execution"
@@ -359,7 +359,7 @@ riotplan_idea_add_narrative({
 **When making decisions:**
 ```typescript
 riotplan_idea_add_narrative({
-  path: "./path/to/plan",
+  planId: "${planId}",
   content: "Decided to store inline evidence in .history/evidence/ rather than embedding in timeline. This keeps the timeline lean and makes evidence files easier to browse. User can view evidence directly as markdown files.",
   speaker: "assistant",
   context: "Implementation decision"
@@ -383,7 +383,7 @@ Continue the execution loop:
 **Always check status first** - never assume where you are in execution:
 ```typescript
 // Start every interaction with status check
-riotplan_status({ path: "./path/to/plan" })
+riotplan_status({ planId: "${planId}" })
 ```
 
 ### 2. Conversational Execution
@@ -427,7 +427,7 @@ This is **pair programming**, not automation:
 
 **AI**: *Checks status*
 ```typescript
-riotplan_status({ path: "./plans/narrative-evolution" })
+riotplan_status({ planId: "${planId}" })
 ```
 
 **AI**: "This plan has 13 steps for implementing Narrative Evolution with Checkpoints and Evidence. No steps have been started yet.
@@ -447,7 +447,7 @@ Ready to start?"
 
 **AI**: *Starts step*
 ```typescript
-riotplan_step_start({ path: "./plans/narrative-evolution", step: 1 })
+riotplan_step_start({ planId: "${planId}", step: 1 })
 ```
 
 **AI**: *Reads step file and begins work*
@@ -477,7 +477,7 @@ Let me also add the TypeScript types to src/types.ts..."
 All criteria met! Marking Step 01 complete."
 
 ```typescript
-riotplan_step_complete({ path: "./plans/narrative-evolution", step: 1 })
+riotplan_step_complete({ planId: "${planId}", step: 1 })
 ```
 
 **AI**: "Step 01 complete! We've defined the complete data model for narrative evolution.
@@ -500,7 +500,7 @@ Ready to move to Step 02: Extend Timeline Format?"
 
 **AI**: *Checks status*
 ```typescript
-riotplan_status({ path: "./plans/narrative-evolution" })
+riotplan_status({ planId: "${planId}" })
 ```
 
 **AI**: "Welcome back! We're currently working on Step 05: Implement Checkpoint Creation. We've completed steps 1-4 (31% progress).
@@ -565,7 +565,7 @@ The retrospective is the final deliverable of plan execution. It's worth using t
 
 **Agent completes final step:**
 ```typescript
-riotplan_step_complete({ path: "./plan", step: 8 })
+riotplan_step_complete({ planId: "${planId}", step: 8 })
 ```
 
 **System response:**
@@ -574,7 +574,7 @@ riotplan_step_complete({ path: "./plan", step: 8 })
 **Agent writes final reflection:**
 ```typescript
 riotplan_step_reflect({ 
-  path: "./plan", 
+  planId: "${planId}", 
   step: 8,
   reflection: "Final step reflection..."
 })
@@ -582,7 +582,7 @@ riotplan_step_reflect({
 
 **Agent (or user after model switch) generates retrospective:**
 ```typescript
-riotplan_generate_retrospective({ path: "./plan" })
+riotplan_generate_retrospective({ planId: "${planId}" })
 ```
 
 **Result:** `retrospective.md` is created with high-value analysis of the entire execution.

@@ -9,7 +9,7 @@
 import { build } from 'vite';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { copyFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,6 +40,7 @@ async function buildMcpServer() {
                     '@kjerneverk/execution-openai',
                     '@kjerneverk/execution-gemini',
                     '@kjerneverk/riotprompt',
+                    '@kjerneverk/riotplan-format',
                     '@kjerneverk/agentic',
                     /^node:/,
                 ],
@@ -87,6 +88,9 @@ async function buildMcpHttpServer() {
             },
         },
     });
+
+    const httpOutputPath = resolve(rootDir, 'dist/mcp-server-http.js');
+    chmodSync(httpOutputPath, 0o755);
 
     console.log('MCP HTTP server built successfully');
 }

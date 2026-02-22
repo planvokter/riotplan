@@ -14,7 +14,7 @@ export async function readStatusResource(path: string): Promise<StatusResource> 
         const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
         return {
-            planPath: plan.metadata.path,
+            planId: plan.metadata.code,
             status: plan.state.status,
             currentStep: plan.state.currentStep,
             lastCompleted: plan.state.lastCompletedStep,
@@ -31,6 +31,6 @@ export async function readStatusResource(path: string): Promise<StatusResource> 
             ),
         };
     } catch (error) {
-        throw new Error(`Failed to read status at ${path}: ${error}`);
+        throw new Error(`Failed to read status: ${error}`);
     }
 }

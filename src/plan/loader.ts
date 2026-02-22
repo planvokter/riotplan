@@ -21,6 +21,7 @@ import type {
 } from "../types.js";
 import { PLAN_CONVENTIONS } from "../types.js";
 import { parseDependenciesFromContent } from "../dependencies/index.js";
+import { readPlanManifestMetadata } from "./manifest.js";
 
 // ===== OPTIONS =====
 
@@ -355,6 +356,7 @@ async function extractMetadata(
     planPath: string,
     files: PlanFiles
 ): Promise<PlanMetadata> {
+    const manifestMetadata = await readPlanManifestMetadata(planPath);
     const code = basename(planPath);
     let name = formatCode(code);
     let description: string | undefined;
@@ -380,6 +382,7 @@ async function extractMetadata(
         code,
         name,
         description,
+        projectPath: manifestMetadata.projectPath,
         path: planPath,
     };
 }

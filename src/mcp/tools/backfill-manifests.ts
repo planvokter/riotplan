@@ -72,7 +72,7 @@ async function executeBackfillManifests(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const basePath = args.path ? args.path : resolveDirectory(args, context);
+        const basePath = resolveDirectory(args, context);
         
         // Find all plan directories
         const planDirs = await findPlanDirectories(basePath);
@@ -130,7 +130,7 @@ export const backfillManifestsTool: McpTool = {
         'Recursively scans a directory tree for plan directories and ensures each has a manifest. ' +
         'Safe to run multiple times - only creates manifests for plans that lack them.',
     schema: {
-        path: z.string().optional().describe('Base directory to scan (defaults to current directory)'),
+        planId: z.string().optional().describe('Optional scope identifier (defaults to current context)'),
         verbose: z.boolean().optional().describe('Include detailed results for each plan (default: false)'),
         dryRun: z.boolean().optional().describe('Show what would be done without making changes (default: false)'),
     },

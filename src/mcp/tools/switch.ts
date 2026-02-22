@@ -8,12 +8,48 @@
 import { z } from 'zod';
 import { resolve, join, basename } from 'node:path';
 import { readdir } from 'node:fs/promises';
+import { readdirSync, statSync } from 'node:fs';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+import {
+    getProjectMatchKeys,
+    inferProjectBindingFromPath,
+    readProjectBinding,
+    type ProjectBinding,
+} from './project-binding-shared.js';
 
 // Schema for switch plan
 export const SwitchPlanSchema = z.object({
-    plan: z.string().describe("Plan path or code to switch to. Can be a relative path, absolute path, or plan code (e.g., 'my-plan' or './plans/my-plan')"),
+    planId: z.string().describe("Plan identifier to switch to (from riotplan_list_plans)"),
 });
+
+/**
+ * Find all .plan (SQLite) files recursively in a directory
+ */
+function findAllPlanFiles(dir: string): string[] {
+    const planFiles: string[] = [];
+    function scan(d: string): void {
+        try {
+            for (const entry of readdirSync(d)) {
+                const fullPath = join(d, entry);
+                try {
+                    const s = statSync(fullPath);
+                    if (s.isDirectory() && !entry.startsWith('.')) {
+                        scan(fullPath);
+                    } else if (entry.endsWith('.plan')) {
+                        planFiles.push(fullPath);
+                    }
+                } catch {
+                    /* skip */
+                }
+            }
+        } catch {
+            /* skip */
+        }
+    }
+    scan(dir);
+    return planFiles;
+}
 
 /**
  * Check if a directory is a valid plan directory
@@ -34,17 +70,17 @@ async function isPlanDirectory(dirPath: string): Promise<boolean> {
 /**
  * Resolve a plan reference to an absolute path
  */
-async function resolvePlanPath(plan: string, context: ToolExecutionContext): Promise<string | null> {
-    // Try as absolute path
-    if (plan.startsWith('/')) {
-        if (await isPlanDirectory(plan)) {
-            return plan;
+async function resolvePlanPath(planId: string, context: ToolExecutionContext): Promise<string | null> {
+    // Legacy fallback: allow absolute path inputs from older clients.
+    if (planId.startsWith('/')) {
+        if (await isPlanDirectory(planId)) {
+            return planId;
         }
         return null;
     }
     
     // Try as relative path from current working directory
-    const fromCwd = resolve(context.workingDirectory, plan);
+    const fromCwd = resolve(context.workingDirectory, planId);
     if (await isPlanDirectory(fromCwd)) {
         return fromCwd;
     }
@@ -58,13 +94,13 @@ async function resolvePlanPath(plan: string, context: ToolExecutionContext): Pro
     
     for (const basePath of basePaths) {
         // Try direct child
-        const directPath = join(basePath, plan);
+        const directPath = join(basePath, planId);
         if (await isPlanDirectory(directPath)) {
             return directPath;
         }
         
         // Try in plans/ subdirectory
-        const plansPath = join(basePath, 'plans', plan);
+        const plansPath = join(basePath, 'plans', planId);
         if (await isPlanDirectory(plansPath)) {
             return plansPath;
         }
@@ -84,12 +120,12 @@ async function executeSwitchPlan(
         const validated = SwitchPlanSchema.parse(args);
         
         // Resolve the plan path
-        const planPath = await resolvePlanPath(validated.plan, context);
+        const planPath = await resolvePlanPath(validated.planId, context);
         
         if (!planPath) {
             return {
                 success: false,
-                error: `Could not find plan: ${validated.plan}. Make sure the plan exists and contains LIFECYCLE.md, STATUS.md, IDEA.md, or a plan/ directory.`,
+                error: `Could not find plan: ${validated.planId}. Use riotplan_list_plans to discover available plan identifiers.`,
             };
         }
         
@@ -108,8 +144,8 @@ async function executeSwitchPlan(
         return {
             success: true,
             data: {
-                message: `✅ Switched to plan: ${planName}\nPath: ${planPath}`,
-                planPath,
+                message: `✅ Switched to plan: ${planName}`,
+                planId: planName,
                 planName,
             },
         };
@@ -122,13 +158,18 @@ async function executeSwitchPlan(
  * List available plans in the current context
  */
 export const ListPlansSchema = z.object({
-    directory: z.string().optional().describe("Directory to search for plans (defaults to current context)"),
+    // Legacy compatibility only; clients should not send filesystem paths.
+    directory: z.string().optional().describe("Optional legacy search scope"),
+    projectId: z
+        .string()
+        .optional()
+        .describe('Optional project filter (matches project.id, owner/repo, or provider:owner/repo)'),
 });
 
 /**
  * Read plan.yaml manifest to get metadata
  */
-async function readPlanManifest(planPath: string): Promise<{ id?: string; title?: string; stage?: string } | null> {
+async function readPlanManifest(planPath: string): Promise<{ id?: string; title?: string; stage?: string; project?: ProjectBinding } | null> {
     try {
         const { readFile } = await import('node:fs/promises');
         const yaml = await import('yaml');
@@ -170,17 +211,30 @@ async function executeListPlans(
         const searchDir = validated.directory || context.workingDirectory;
         
         // Find all plan directories
-        const plans: Array<{ name: string; path: string; type: string; title?: string; stage?: string }> = [];
+        const plans: Array<{
+            id: string;
+            name: string;
+            path: string;
+            type: string;
+            title?: string;
+            stage?: string;
+            project?: ProjectBinding | null;
+            projectSource?: 'manifest' | 'inferred' | 'none';
+        }> = [];
         
         // Check if current directory is a plan
         if (await isPlanDirectory(searchDir)) {
             const manifest = await readPlanManifest(searchDir);
+            const binding = await readProjectBinding(searchDir);
             plans.push({
+                id: basename(searchDir),
                 name: basename(searchDir),
                 path: searchDir,
                 type: 'current',
                 title: manifest?.title,
                 stage: manifest?.stage,
+                project: binding.project,
+                projectSource: binding.source,
             });
         }
         
@@ -192,12 +246,16 @@ async function executeListPlans(
                     const subPath = join(searchDir, entry.name);
                     if (await isPlanDirectory(subPath)) {
                         const manifest = await readPlanManifest(subPath);
+                        const binding = await readProjectBinding(subPath);
                         plans.push({
+                            id: entry.name,
                             name: entry.name,
                             path: subPath,
                             type: 'subdirectory',
                             title: manifest?.title,
                             stage: manifest?.stage,
+                            project: binding.project,
+                            projectSource: binding.source,
                         });
                     }
                 }
@@ -215,12 +273,16 @@ async function executeListPlans(
                     const subPath = join(plansDir, entry.name);
                     if (await isPlanDirectory(subPath)) {
                         const manifest = await readPlanManifest(subPath);
+                        const binding = await readProjectBinding(subPath);
                         plans.push({
+                            id: entry.name,
                             name: entry.name,
                             path: subPath,
                             type: 'plans/',
                             title: manifest?.title,
                             stage: manifest?.stage,
+                            project: binding.project,
+                            projectSource: binding.source,
                         });
                     }
                 }
@@ -228,28 +290,76 @@ async function executeListPlans(
         } catch {
             // Ignore errors reading plans directory
         }
-        
-        if (plans.length === 0) {
+
+        // Scan for .plan (SQLite) files
+        for (const planFile of findAllPlanFiles(searchDir)) {
+            try {
+                const provider = createSqliteProvider(planFile);
+                const exists = await provider.exists();
+                if (!exists) {
+                    await provider.close();
+                    continue;
+                }
+                const metaResult = await provider.getMetadata();
+                await provider.close();
+                if (metaResult.success && metaResult.data) {
+                    const m = metaResult.data;
+                    const inferred = await inferProjectBindingFromPath(planFile);
+                    plans.push({
+                        id: m.id || basename(planFile, '.plan'),
+                        name: basename(planFile, '.plan'),
+                        path: planFile,
+                        type: 'sqlite',
+                        title: m.name,
+                        stage: m.stage,
+                        project: inferred,
+                        projectSource: inferred ? 'inferred' : 'none',
+                    });
+                }
+            } catch {
+                /* skip unreadable .plan files */
+            }
+        }
+
+        const filteredPlans = validated.projectId
+            ? plans.filter((plan) => {
+                const matchKeys = getProjectMatchKeys(plan.project);
+                return matchKeys.includes(validated.projectId!.toLowerCase());
+            })
+            : plans;
+
+        if (filteredPlans.length === 0) {
             return {
                 success: true,
                 data: {
-                    message: 'No plans found in the current context.',
+                    message: validated.projectId
+                        ? `No plans found for project '${validated.projectId}'.`
+                        : 'No plans found in the current context.',
                     plans: [],
                 },
             };
         }
         
-        const planList = plans.map(p => {
-            const displayName = p.title || p.name;
+        const planList = filteredPlans.map(p => {
+            const displayName = p.title || p.name || p.id;
             const stage = p.stage ? ` (${p.stage})` : '';
-            return `- ${displayName}${stage}: ${p.path}`;
+            return `- ${displayName}${stage} [id: ${p.id}]`;
         }).join('\n');
         
         return {
             success: true,
             data: {
-                message: `Found ${plans.length} plan(s):\n${planList}`,
-                plans,
+                message: `Found ${filteredPlans.length} plan(s):\n${planList}`,
+                plans: filteredPlans.map(({ id, name, type, title, stage, project, projectSource }) => ({
+                    id,
+                    name,
+                    type,
+                    title,
+                    stage,
+                    project,
+                    projectSource,
+                })),
+                filter: validated.projectId ? { projectId: validated.projectId } : undefined,
             },
         };
     } catch (error: any) {

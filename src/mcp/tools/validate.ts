@@ -12,13 +12,13 @@ async function executeValidate(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = args.path ? args.path : resolveDirectory(args, context);
+        const planPath = resolveDirectory(args, context);
         
         const result = await validatePlan(planPath);
 
         return createSuccess(
             {
-                planPath,
+                planId: args.planId || 'current',
                 valid: result.valid,
                 errors: result.errors || [],
                 warnings: result.warnings || [],
@@ -40,7 +40,7 @@ export const validateTool: McpTool = {
         'Checks for required files, valid STATUS.md, step numbering, and dependencies. ' +
         'Can optionally attempt to fix issues.',
     schema: {
-        path: z.string().optional().describe('Plan directory path (defaults to current directory)'),
+        planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
         fix: z.boolean().optional().describe('Attempt to fix issues (default: false)'),
     },
     execute: executeValidate,

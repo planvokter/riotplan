@@ -86,7 +86,10 @@ function zodTypeToParameter(zodType: any): ToolParameter {
         };
     }
     if (innerTypeName.includes('Object')) {
-        const shape = innerType?._def?.shape?.() || innerType?.shape || {};
+        const defShape = innerType?._def?.shape;
+        const shape = typeof defShape === 'function'
+            ? defShape()
+            : (defShape || innerType?.shape || {});
         const props: Record<string, ToolParameter> = {};
         const req: string[] = [];
         

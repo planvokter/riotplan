@@ -4,6 +4,7 @@
 
 import { resolve, join, basename } from 'node:path';
 import { access, readFile } from 'node:fs/promises';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import type { ToolResult, ToolExecutionContext } from '../types.js';
 
 export function formatTimestamp(): string {
@@ -18,29 +19,114 @@ export function formatDate(): string {
  * Resolve directory from args or context
  *
  * Resolution precedence:
- * 1. Explicit path parameter (args.path) - highest priority, backward compatible
- * 2. Context working directory (context.workingDirectory) - uses four-tier resolver:
- *    - Environment variable (RIOTPLAN_PLAN_DIRECTORY)
- *    - Configuration file (riotplan.config.*, .riotplan/config.*, etc.)
- *    - Walk-up detection (find existing plans/ directory)
- *    - Fallback to ./plans in current directory
+ * 1. Explicit path parameter (args.path) - resolved relative to working directory
+ * 2. Context working directory (context.workingDirectory)
  * 3. process.cwd() - final fallback
  *
+ * Path is always resolved relative to workingDirectory when both are present,
+ * ensuring consistent behavior for both stdio (config-derived) and HTTP (plansDir-configured) modes.
+ *
  * @param args - Tool arguments, may contain explicit `path` parameter
- * @param context - Tool execution context with workingDirectory from resolver
+ * @param context - Tool execution context with workingDirectory
  * @returns Resolved absolute path to the directory
  */
+function isPlanDirectorySync(dirPath: string): boolean {
+    try {
+        const entries = readdirSync(dirPath);
+        return (
+            entries.includes('LIFECYCLE.md') ||
+            entries.includes('STATUS.md') ||
+            entries.includes('IDEA.md') ||
+            entries.includes('plan.yaml') ||
+            entries.includes('plan')
+        );
+    } catch {
+        return false;
+    }
+}
+
+function findPlanById(baseDir: string, planId: string, maxDepth = 4): string | null {
+    const normalized = planId.trim();
+    if (!normalized) return null;
+
+    const directCandidates = [
+        resolve(baseDir, normalized),
+        resolve(baseDir, 'plans', normalized),
+        resolve(baseDir, 'done', normalized),
+        resolve(baseDir, 'hold', normalized),
+        resolve(baseDir, `${normalized}.plan`),
+    ];
+
+    for (const candidate of directCandidates) {
+        if (existsSync(candidate)) {
+            try {
+                const stats = statSync(candidate);
+                if (stats.isDirectory() && isPlanDirectorySync(candidate)) {
+                    return candidate;
+                }
+                if (stats.isFile() && candidate.endsWith('.plan')) {
+                    return candidate;
+                }
+            } catch {
+                // ignore unreadable candidate
+            }
+        }
+    }
+
+    function walk(dir: string, depth: number): string | null {
+        if (depth > maxDepth) return null;
+        let entries: string[] = [];
+        try {
+            entries = readdirSync(dir);
+        } catch {
+            return null;
+        }
+
+        for (const entry of entries) {
+            if (entry.startsWith('.')) continue;
+            const fullPath = join(dir, entry);
+            let stats;
+            try {
+                stats = statSync(fullPath);
+            } catch {
+                continue;
+            }
+
+            if (stats.isFile() && entry.endsWith('.plan')) {
+                const name = basename(entry, '.plan');
+                if (name === normalized || name.startsWith(`${normalized}-`) || name.endsWith(`-${normalized}`)) {
+                    return fullPath;
+                }
+            }
+
+            if (stats.isDirectory()) {
+                if (entry === normalized && isPlanDirectorySync(fullPath)) {
+                    return fullPath;
+                }
+                const nested = walk(fullPath, depth + 1);
+                if (nested) return nested;
+            }
+        }
+        return null;
+    }
+
+    return walk(baseDir, 0);
+}
+
 export function resolveDirectory(args: any, context: ToolExecutionContext): string {
-    // Explicit path parameter takes highest precedence (backward compatibility)
+    const base = context.workingDirectory || process.cwd();
+    if (args.planId) {
+        const resolvedById = findPlanById(base, String(args.planId));
+        if (!resolvedById) {
+            throw new Error(`Plan not found for planId: ${args.planId}`);
+        }
+        return resolvedById;
+    }
+    // Legacy fallback; kept for backward compatibility.
     if (args.path) {
-        return resolve(args.path);
+        return resolve(base, args.path);
     }
-    // Use context working directory (now resolved via four-tier strategy)
-    if (context.workingDirectory) {
-        return context.workingDirectory;
-    }
-    // Final fallback to current working directory
-    return process.cwd();
+    return base;
 }
 
 /**

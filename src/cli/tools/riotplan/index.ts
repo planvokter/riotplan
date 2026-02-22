@@ -36,6 +36,7 @@ import { readContextTool } from '../../../mcp/tools/context.js';
 import { checkpointCreateTool, checkpointListTool, historyShowTool } from '../../../mcp/tools/history.js';
 import { validateTool } from '../../../mcp/tools/validate.js';
 import { switchPlanTool, listPlansTool } from '../../../mcp/tools/switch.js';
+import { bindProjectTool, getProjectBindingTool, resolveProjectContextTool } from '../../../mcp/tools/project.js';
 
 // ===== IDEA TOOLS =====
 
@@ -113,6 +114,9 @@ export const rpHistoryShow = wrapMcpTool(historyShowTool, { category: 'utility' 
 export const rpValidate = wrapMcpTool(validateTool, { category: 'utility' });
 export const rpSwitchPlan = wrapMcpTool(switchPlanTool, { category: 'utility' });
 export const rpListPlans = wrapMcpTool(listPlansTool, { category: 'utility' });
+export const rpBindProject = wrapMcpTool(bindProjectTool, { category: 'utility' });
+export const rpGetProjectBinding = wrapMcpTool(getProjectBindingTool, { category: 'utility' });
+export const rpResolveProjectContext = wrapMcpTool(resolveProjectContextTool, { category: 'utility' });
 
 export const utilityTools: Tool[] = [
     rpTransition,
@@ -122,6 +126,9 @@ export const utilityTools: Tool[] = [
     rpValidate,
     rpSwitchPlan,
     rpListPlans,
+    rpBindProject,
+    rpGetProjectBinding,
+    rpResolveProjectContext,
 ];
 
 // ===== COMBINED TOOL SETS =====
@@ -162,6 +169,9 @@ export const exploreRiotPlanTools: Tool[] = [
     rpTransition,
     rpSwitchPlan,
     rpListPlans,
+    rpBindProject,
+    rpGetProjectBinding,
+    rpResolveProjectContext,
 ];
 
 /**

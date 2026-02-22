@@ -164,12 +164,24 @@ export interface ToolResult {
  * Result of reading a plan
  */
 export interface PlanResource {
-    path: string;
+    planId: string | null;
     code: string;
     name: string;
     exists: boolean;
-    metadata?: any;
-    state?: any;
+    metadata?: {
+        code: string;
+        name: string;
+        description?: string;
+        created?: Date;
+        projectPath?: string;
+    };
+    state?: {
+        status: string;
+        currentStep?: number;
+        lastCompleted?: number;
+        startedAt?: Date;
+        lastUpdated?: Date;
+    };
 }
 
 /**
@@ -177,7 +189,7 @@ export interface PlanResource {
  * Result of reading plan status
  */
 export interface StatusResource {
-    planPath: string;
+    planId: string;
     status: string;
     currentStep?: number;
     lastCompleted?: number;
@@ -195,7 +207,7 @@ export interface StatusResource {
  * Result of reading plan steps
  */
 export interface StepsResource {
-    planPath: string;
+    planId: string;
     steps: Array<{
         number: number;
         title: string;
@@ -209,7 +221,7 @@ export interface StepsResource {
  * Result of reading a single step
  */
 export interface StepResource {
-    planPath: string;
+    planId: string;
     number: number;
     title: string;
     status: string;
@@ -222,7 +234,7 @@ export interface StepResource {
  * Result of reading feedback records
  */
 export interface FeedbackResource {
-    planPath: string;
+    planId: string;
     feedbackRecords: Array<{
         id: string;
         date: string;
@@ -235,7 +247,7 @@ export interface FeedbackResource {
  * Result of reading analysis
  */
 export interface AnalysisResource {
-    planPath: string;
+    planId: string;
     analysisFiles: Array<{
         name: string;
         path: string;

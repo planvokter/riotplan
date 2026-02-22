@@ -27,6 +27,7 @@ import {
     ideaAddEvidenceTool,
     ideaAddNarrativeTool,
     ideaKillTool,
+    ideaSetContentTool,
 } from './idea.js';
 import {
     shapingStartTool,
@@ -56,6 +57,7 @@ import { stepReflectTool } from './reflect.js';
 import { generateRetrospectiveTool } from './retrospective.js';
 import { backfillManifestsTool } from './backfill-manifests.js';
 import { switchPlanTool, listPlansTool } from './switch.js';
+import { bindProjectTool, getProjectBindingTool, resolveProjectContextTool } from './project.js';
 
 /**
  * Tool definitions array
@@ -79,6 +81,7 @@ export const tools: McpTool[] = [
     ideaAddEvidenceTool,
     ideaAddNarrativeTool,
     ideaKillTool,
+    ideaSetContentTool,
     // Shaping tools
     shapingStartTool,
     shapingAddApproachTool,
@@ -113,6 +116,10 @@ export const tools: McpTool[] = [
     // Plan switching tools
     switchPlanTool,
     listPlansTool,
+    // Project binding tools
+    bindProjectTool,
+    getProjectBindingTool,
+    resolveProjectContextTool,
 ];
 
 /**

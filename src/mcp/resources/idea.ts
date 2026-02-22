@@ -13,13 +13,12 @@ export async function readIdeaResource(planPath: string): Promise<any> {
     try {
         const content = await readFile(ideaPath, 'utf-8');
         return {
-            path: ideaPath,
             content,
             type: 'idea',
         };
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            throw new Error(`IDEA.md not found at ${ideaPath}. This may not be an idea/plan directory.`);
+            throw new Error('IDEA.md not found. This plan may not be in idea mode.');
         }
         throw error;
     }

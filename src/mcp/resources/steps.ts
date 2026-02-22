@@ -10,7 +10,7 @@ export async function readStepsResource(path: string): Promise<StepsResource> {
         const plan = await loadPlan(path);
         
         return {
-            planPath: plan.metadata.path,
+            planId: plan.metadata.code,
             steps: plan.steps.map(s => ({
                 number: s.number,
                 title: s.title,
@@ -19,6 +19,6 @@ export async function readStepsResource(path: string): Promise<StepsResource> {
             })),
         };
     } catch (error) {
-        throw new Error(`Failed to read steps at ${path}: ${error}`);
+        throw new Error(`Failed to read steps: ${error}`);
     }
 }

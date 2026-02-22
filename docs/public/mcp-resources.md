@@ -11,6 +11,7 @@ Plan metadata and structure.
 **Returns:**
 - Plan code and name
 - Metadata (created date, author, etc.)
+- Optional `metadata.projectPath` when set in `plan.yaml`
 - Current state
 - List of steps
 

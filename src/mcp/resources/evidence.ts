@@ -25,7 +25,6 @@ export async function readEvidenceListResource(planPath: string): Promise<any> {
         );
         
         return {
-            path: evidenceDir,
             evidence: evidenceFiles,
             count: evidenceFiles.length,
             type: 'evidence_list',
@@ -33,7 +32,6 @@ export async function readEvidenceListResource(planPath: string): Promise<any> {
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             return {
-                path: evidenceDir,
                 evidence: [],
                 count: 0,
                 type: 'evidence_list',
@@ -52,7 +50,6 @@ export async function readEvidenceResource(planPath: string, evidenceFile: strin
         const stats = await stat(evidencePath);
         
         return {
-            path: evidencePath,
             file: evidenceFile,
             content,
             size: stats.size,

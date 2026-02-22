@@ -19,14 +19,13 @@ export async function readTimelineResource(planPath: string): Promise<any> {
             .map(line => JSON.parse(line));
         
         return {
-            path: timelinePath,
             events,
             count: events.length,
             type: 'timeline',
         };
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            throw new Error(`Timeline not found at ${timelinePath}. This may not have history tracking enabled.`);
+            throw new Error('Timeline not found. This plan may not have history tracking enabled.');
         }
         throw error;
     }

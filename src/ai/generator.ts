@@ -382,7 +382,9 @@ Your plan serves two audiences: (1) a human reviewer who will read the plan and 
 
 5. **Be concrete, not generic**: Reference specific files, functions, code patterns from the evidence. Don't generate generic steps that could apply to any project.
 
-6. **Show, don't tell**: Every task that introduces an interface, schema, config, or significant function MUST include a code sketch in its description — key method signatures, table schemas, type definitions. Not the full implementation, just enough for a human to evaluate the design and say "yes" or "change X."
+6. **Use portable file paths**: In \`filesChanged\`, always use repository/project-root-relative paths (e.g., \`src/module/file.ts\`), never absolute machine-specific paths.
+
+7. **Show, don't tell**: Every task that introduces an interface, schema, config, or significant function MUST include a code sketch in its description — key method signatures, table schemas, type definitions. Not the full implementation, just enough for a human to evaluate the design and say "yes" or "change X."
 
 ## Output Requirements
 

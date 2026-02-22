@@ -17,7 +17,6 @@ export async function readPromptsListResource(planPath: string): Promise<any> {
             .sort();
         
         return {
-            path: promptsDir,
             prompts: promptFiles,
             count: promptFiles.length,
             type: 'prompts_list',
@@ -25,7 +24,6 @@ export async function readPromptsListResource(planPath: string): Promise<any> {
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             return {
-                path: promptsDir,
                 prompts: [],
                 count: 0,
                 type: 'prompts_list',
@@ -42,7 +40,6 @@ export async function readPromptResource(planPath: string, promptFile: string): 
     try {
         const content = await readFile(promptPath, 'utf-8');
         return {
-            path: promptPath,
             file: promptFile,
             content,
             type: 'prompt',

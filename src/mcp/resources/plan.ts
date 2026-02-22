@@ -11,7 +11,7 @@ export async function readPlanResource(path: string): Promise<PlanResource> {
     
     if (!exists) {
         return {
-            path,
+            planId: null,
             code: '',
             name: '',
             exists: false,
@@ -22,7 +22,7 @@ export async function readPlanResource(path: string): Promise<PlanResource> {
         const plan = await loadPlan(path);
         
         return {
-            path: plan.metadata.path,
+            planId: plan.metadata.code,
             code: plan.metadata.code,
             name: plan.metadata.name,
             exists: true,
@@ -31,6 +31,7 @@ export async function readPlanResource(path: string): Promise<PlanResource> {
                 name: plan.metadata.name,
                 description: plan.metadata.description,
                 created: plan.metadata.createdAt,
+                projectPath: plan.metadata.projectPath,
             },
             state: {
                 status: plan.state.status,
@@ -41,6 +42,6 @@ export async function readPlanResource(path: string): Promise<PlanResource> {
             },
         };
     } catch (error) {
-        throw new Error(`Failed to read plan at ${path}: ${error}`);
+        throw new Error(`Failed to read plan: ${error}`);
     }
 }
