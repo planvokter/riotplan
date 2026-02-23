@@ -2,6 +2,8 @@
 
 Complete reference for all MCP resources available in RiotPlan. Resources provide read-only access to plan data.
 
+For caller-side build workflows, use resources to read context and use MCP tools (`riotplan_build`, `riotplan_build_write_*`, `riotplan_transition`) to generate and persist plan artifacts.
+
 ## Plan Execution Resources
 
 ### riotplan://plan/{path}
@@ -67,7 +69,7 @@ steps.forEach(step => {
 });
 ```
 
-### riotplan://step/{path}/{number}
+### riotplan://step/{path}?number={number}
 
 Specific step with full content.
 
@@ -81,7 +83,7 @@ Specific step with full content.
 **Example:**
 
 ```typescript
-const step = await fetch("riotplan://step/my-feature/3");
+const step = await fetch("riotplan://step/my-feature?number=3");
 console.log(step.title);              // "Implementation"
 console.log(step.content);            // Full markdown content
 console.log(step.acceptanceCriteria); // [...]
@@ -199,6 +201,8 @@ Read a specific evidence file.
 - Content
 - Type
 - Metadata
+- `record.referenceSources` (normalized structured source references when available)
+- `record.sources` (compatibility string list mirrored from references)
 
 **Example:**
 
@@ -289,7 +293,7 @@ const status = await fetch("riotplan://status/my-plan");
 
 if (status.status === "in_progress") {
   // Get current step details
-  const step = await fetch(`riotplan://step/my-plan/${status.currentStep}`);
+  const step = await fetch(`riotplan://step/my-plan?number=${status.currentStep}`);
   console.log(`Working on: ${step.title}`);
   console.log(`Tasks remaining: ${step.tasks.filter(t => !t.completed).length}`);
 }
@@ -360,7 +364,7 @@ riotplan://{type}/{path}[/{identifier}]
 Where:
 - `{type}` - Resource type (plan, status, steps, step, idea, etc.)
 - `{path}` - Plan or idea directory path
-- `{identifier}` - Optional specific item (step number, checkpoint name, etc.)
+- Query/path identifiers - Optional resource-specific selectors (for example `?number=3` for `step`)
 
 ## Notes
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatSummary, formatStep } from "../../src/ai/generator.js";
+import { formatSummary, formatStep, parsePlanResponse } from "../../src/ai/generator.js";
 import type { GeneratedStep } from "../../src/ai/generator.js";
 
 describe("AI Generator", () => {
@@ -82,6 +82,28 @@ describe("AI Generator", () => {
             const result = formatStep(step);
 
             expect(result).toContain("# Step 05: Test");
+        });
+    });
+
+    describe("parsePlanResponse", () => {
+        it("parses fenced JSON responses", () => {
+            const content = [
+                "```json",
+                "{",
+                '  "analysis": { "constraintAnalysis": [] },',
+                '  "summary": "Test summary",',
+                '  "approach": "Test approach",',
+                '  "successCriteria": "Test criteria",',
+                '  "steps": []',
+                "}",
+                "```",
+            ].join("\n");
+
+            const parsed = parsePlanResponse(content, 5);
+            expect(parsed.summary).toBe("Test summary");
+            expect(parsed.approach).toBe("Test approach");
+            expect(parsed.successCriteria).toBe("Test criteria");
+            expect(parsed.steps).toEqual([]);
         });
     });
 });

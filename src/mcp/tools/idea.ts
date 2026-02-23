@@ -3,11 +3,19 @@
  */
 
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
-import { formatTimestamp, resolveDirectory, ensurePlanManifest } from "./shared.js";
+import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
+import { formatTimestamp, resolveDirectory } from "./shared.js";
 import { logEvent } from "./history.js";
 import type { EvidenceType } from "../../types.js";
+import {
+    createSqliteProvider,
+    formatPlanFilename,
+    generatePlanUuid,
+    type PlanFile,
+    type PlanFileType,
+} from "@kjerneverk/riotplan-format";
 
 /**
  * Generate a descriptive filename for evidence based on description and type
@@ -46,6 +54,97 @@ function generateEvidenceFilename(description: string, type?: EvidenceType): str
     
     const prefix = type ? typePrefix[type] : '';
     return `${prefix}${slug}`;
+}
+
+function defaultIdeaContent(code: string, description?: string): string {
+    return `# Idea: ${code}
+
+## Core Concept
+
+${description || "_Describe the core concept_"}
+
+## Why This Matters
+
+_Why pursue this idea?_
+
+## Initial Thoughts
+
+## Constraints
+
+## Questions
+
+## Evidence
+
+## Status
+
+**Stage**: idea
+**Updated**: ${formatTimestamp()}
+`;
+}
+
+function appendBulletToSection(content: string, sectionHeading: string, bullet: string): string {
+    const sectionIndex = content.indexOf(sectionHeading);
+    if (sectionIndex === -1) {
+        return `${content.trim()}\n\n${sectionHeading}\n\n- ${bullet}\n`;
+    }
+
+    const nextSectionIndex = content.indexOf("\n## ", sectionIndex + sectionHeading.length);
+    const insertPoint = nextSectionIndex === -1 ? content.length : nextSectionIndex;
+    return `${content.slice(0, insertPoint)}- ${bullet}\n${content.slice(insertPoint)}`;
+}
+
+async function readTypedFileFromSqlite(planPath: string, fileType: PlanFileType): Promise<PlanFile | null> {
+    const provider = createSqliteProvider(planPath);
+    const filesResult = await provider.getFiles();
+    await provider.close();
+    if (!filesResult.success || !filesResult.data) {
+        return null;
+    }
+
+    const matches = filesResult.data
+        .filter((file) => file.type === fileType)
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    return matches[0] || null;
+}
+
+async function saveTypedFileToSqlite(
+    planPath: string,
+    fileType: PlanFileType,
+    filename: string,
+    content: string
+): Promise<void> {
+    const existing = await readTypedFileFromSqlite(planPath, fileType);
+    const now = formatTimestamp();
+    const provider = createSqliteProvider(planPath);
+    const saveResult = await provider.saveFile({
+        type: fileType,
+        filename: existing?.filename || filename,
+        content,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+    });
+    await provider.close();
+    if (!saveResult.success) {
+        throw new Error(saveResult.error || `Failed saving ${fileType} file`);
+    }
+}
+
+async function addTimelineEventToSqlite(
+    planPath: string,
+    type: string,
+    data: Record<string, unknown>
+): Promise<void> {
+    const provider = createSqliteProvider(planPath);
+    const result = await provider.addTimelineEvent({
+        id: randomUUID(),
+        timestamp: formatTimestamp(),
+        type: type as any,
+        data,
+    });
+    await provider.close();
+    if (!result.success) {
+        throw new Error(result.error || "Failed to add timeline event");
+    }
 }
 
 /**
@@ -133,106 +232,113 @@ export const IdeaSetContentSchema = z.object({
 
 // Tool implementations
 
-export async function ideaCreate(args: z.infer<typeof IdeaCreateSchema>): Promise<string> {
+type IdeaCreateResult = {
+    message: string;
+    planId: string;
+    planUuid: string;
+    planPath: string;
+    storage: "sqlite";
+    stage: "idea";
+};
+
+async function ensureNoLegacyDirectoryConflict(parentDir: string, code: string): Promise<void> {
+    const legacyPath = join(parentDir, code);
+    try {
+        const legacyStats = await stat(legacyPath);
+        if (legacyStats.isDirectory()) {
+            throw new Error(
+                `Legacy directory plan conflict detected at "${legacyPath}". ` +
+                `riotplan_idea(action: "create") now only creates SQLite plans (.plan). ` +
+                `Please rename or migrate the legacy directory plan first, then retry.`
+            );
+        }
+    } catch (error: any) {
+        if (error?.code !== "ENOENT") {
+            throw error;
+        }
+    }
+}
+
+export async function ideaCreate(args: z.infer<typeof IdeaCreateSchema>): Promise<IdeaCreateResult> {
     const { code, description, directory } = args;
-    const basePath = directory || process.cwd();
-    const ideaPath = join(basePath, code);
-  
-    // Create directory
-    await mkdir(ideaPath, { recursive: true });
-  
-    // Create IDEA.md
-    const ideaContent = `# Idea: ${code}
+    const parentDir = directory || process.cwd();
+    await ensureNoLegacyDirectoryConflict(parentDir, code);
 
-## Core Concept
+    const planUuid = generatePlanUuid();
+    const planFilename = formatPlanFilename(planUuid, code);
+    const planPath = join(parentDir, planFilename);
+    const now = formatTimestamp();
+    const provider = createSqliteProvider(planPath);
 
-${description}
-
-## Why This Matters
-
-_Why pursue this idea?_
-
-## Initial Thoughts
-
-- _Add your thoughts..._
-
-## Constraints
-
-- _Add constraints..._
-
-## Questions
-
-- _Add questions..._
-
-## Evidence
-
-_Attach relevant documents, images, or files_
-
-## Related Ideas
-
-- _Link to related ideas..._
-
-## Status
-
-**Stage**: idea
-**Created**: ${formatTimestamp()}
-**Next**: Decide if worth shaping
-
-## Notes
-
-_Add notes as you think about this..._
-`;
-
-    await writeFile(join(ideaPath, "IDEA.md"), ideaContent, "utf-8");
-  
-    // Create LIFECYCLE.md
-    const lifecycleContent = `# Lifecycle
-
-## Current Stage
-
-**Stage**: \`idea\`
-**Since**: ${formatTimestamp()}
-
-## State History
-
-| From | To | When | Reason |
-|------|-----|------|--------|
-| - | idea | ${formatTimestamp()} | Initial creation |
-
-## Stage-Specific Data
-
-### Idea
-- Core concept: ${description}
-- Notes: []
-- Constraints: []
-- Questions: []
-- Evidence: []
-`;
-
-    await writeFile(join(ideaPath, "LIFECYCLE.md"), lifecycleContent, "utf-8");
-  
-    // Create plan.yaml manifest
-    const manifestCreated = await ensurePlanManifest(ideaPath, {
+    const initResult = await provider.initialize({
         id: code,
-        title: code.split('-').map(word => 
-            word.charAt(0).toUpperCase() + word.slice(1)
-        ).join(' '),
+        uuid: planUuid,
+        name: code,
+        description,
+        createdAt: now,
+        updatedAt: now,
+        stage: "idea",
+        schemaVersion: 1,
     });
-  
-    // Log event to history
-    await logEvent(ideaPath, {
-        timestamp: formatTimestamp(),
-        type: 'idea_created',
-        data: { code, description },
+    if (!initResult.success) {
+        await provider.close();
+        throw new Error(initResult.error || "Failed to initialize sqlite plan");
+    }
+
+    const ideaFileResult = await provider.saveFile({
+        type: "idea",
+        filename: "IDEA.md",
+        content: defaultIdeaContent(code, description),
+        createdAt: now,
+        updatedAt: now,
     });
-  
-    const manifestInfo = manifestCreated ? '\n- Created plan.yaml manifest' : '';
-  
-    return `✅ Idea created: ${ideaPath}${manifestInfo}\n\nNext steps:\n- Add notes: riotplan_idea_add_note\n- Add constraints: riotplan_idea_add_constraint\n- Add questions: riotplan_idea_add_question\n- Add evidence: riotplan_idea_add_evidence\n- When ready: riotplan_transition to 'shaping'`;
+    if (!ideaFileResult.success) {
+        await provider.close();
+        throw new Error(ideaFileResult.error || "Failed to create IDEA.md in sqlite plan");
+    }
+
+    const timelineResult = await provider.addTimelineEvent({
+        id: randomUUID(),
+        timestamp: now,
+        type: "idea_created",
+        data: { code, description, storage: "sqlite", stage: "idea" },
+    });
+    await provider.close();
+    if (!timelineResult.success) {
+        throw new Error(timelineResult.error || "Failed to log idea creation event");
+    }
+
+    return {
+        message:
+            `✅ Idea created: ${planPath}\n` +
+            `Storage: sqlite\n\n` +
+            `Next steps:\n` +
+            `- Add notes: riotplan_idea({ action: "add_note", ... })\n` +
+            `- Add constraints: riotplan_idea({ action: "add_constraint", ... })\n` +
+            `- Add questions: riotplan_idea({ action: "add_question", ... })\n` +
+            `- Add evidence: riotplan_idea({ action: "add_evidence", ... })\n` +
+            `- When ready: riotplan_transition to 'shaping'`,
+        planId: code,
+        planUuid,
+        planPath,
+        storage: "sqlite",
+        stage: "idea",
+    };
 }
 
 export async function ideaAddNote(args: z.infer<typeof IdeaAddNoteSchema>): Promise<string> {
     const ideaPath = args.planId || process.cwd();
+    if (ideaPath.endsWith(".plan")) {
+        const metaProvider = createSqliteProvider(ideaPath);
+        const metadataResult = await metaProvider.getMetadata();
+        await metaProvider.close();
+        const currentIdea = await readTypedFileFromSqlite(ideaPath, "idea");
+        const base = currentIdea?.content || defaultIdeaContent(metadataResult.data?.id || "idea");
+        const updated = appendBulletToSection(base, "## Initial Thoughts", args.note);
+        await saveTypedFileToSqlite(ideaPath, "idea", "IDEA.md", updated);
+        await addTimelineEventToSqlite(ideaPath, "note_added", { note: args.note });
+        return `✅ Note added to idea`;
+    }
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let content = await readFile(ideaFile, "utf-8");
@@ -267,6 +373,17 @@ export async function ideaAddNote(args: z.infer<typeof IdeaAddNoteSchema>): Prom
 
 export async function ideaAddConstraint(args: z.infer<typeof IdeaAddConstraintSchema>): Promise<string> {
     const ideaPath = args.planId || process.cwd();
+    if (ideaPath.endsWith(".plan")) {
+        const metaProvider = createSqliteProvider(ideaPath);
+        const metadataResult = await metaProvider.getMetadata();
+        await metaProvider.close();
+        const currentIdea = await readTypedFileFromSqlite(ideaPath, "idea");
+        const base = currentIdea?.content || defaultIdeaContent(metadataResult.data?.id || "idea");
+        const updated = appendBulletToSection(base, "## Constraints", args.constraint);
+        await saveTypedFileToSqlite(ideaPath, "idea", "IDEA.md", updated);
+        await addTimelineEventToSqlite(ideaPath, "constraint_added", { constraint: args.constraint });
+        return `✅ Constraint added to idea`;
+    }
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let content = await readFile(ideaFile, "utf-8");
@@ -298,6 +415,17 @@ export async function ideaAddConstraint(args: z.infer<typeof IdeaAddConstraintSc
 
 export async function ideaAddQuestion(args: z.infer<typeof IdeaAddQuestionSchema>): Promise<string> {
     const ideaPath = args.planId || process.cwd();
+    if (ideaPath.endsWith(".plan")) {
+        const metaProvider = createSqliteProvider(ideaPath);
+        const metadataResult = await metaProvider.getMetadata();
+        await metaProvider.close();
+        const currentIdea = await readTypedFileFromSqlite(ideaPath, "idea");
+        const base = currentIdea?.content || defaultIdeaContent(metadataResult.data?.id || "idea");
+        const updated = appendBulletToSection(base, "## Questions", args.question);
+        await saveTypedFileToSqlite(ideaPath, "idea", "IDEA.md", updated);
+        await addTimelineEventToSqlite(ideaPath, "question_added", { question: args.question });
+        return `✅ Question added to idea`;
+    }
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let content = await readFile(ideaFile, "utf-8");
@@ -329,6 +457,55 @@ export async function ideaAddQuestion(args: z.infer<typeof IdeaAddQuestionSchema
 
 export async function ideaAddEvidence(args: z.infer<typeof IdeaAddEvidenceSchema>): Promise<string> {
     const ideaPath = args.planId || process.cwd();
+    if (ideaPath.endsWith(".plan")) {
+        const provider = createSqliteProvider(ideaPath);
+        const evidenceId = generateEvidenceFilename(args.description);
+        const now = formatTimestamp();
+        const evidenceResult = await provider.addEvidence({
+            id: evidenceId,
+            description: args.description,
+            source: args.source,
+            sourceUrl: args.sourceUrl,
+            gatheringMethod: args.gatheringMethod,
+            content: args.content,
+            filePath: args.evidencePath,
+            relevanceScore: args.relevanceScore,
+            originalQuery: args.originalQuery,
+            summary: args.summary,
+            createdAt: now,
+        });
+        if (!evidenceResult.success) {
+            await provider.close();
+            throw new Error(evidenceResult.error || "Failed to add evidence");
+        }
+
+        const currentIdea = await readTypedFileFromSqlite(ideaPath, "idea");
+        if (currentIdea) {
+            const link = `${args.description}${args.source ? ` (${args.source})` : ""}`;
+            const updated = appendBulletToSection(currentIdea.content, "## Evidence", link);
+            await provider.saveFile({
+                type: "idea",
+                filename: currentIdea.filename || "IDEA.md",
+                content: updated,
+                createdAt: currentIdea.createdAt || now,
+                updatedAt: now,
+            });
+        }
+
+        await provider.addTimelineEvent({
+            id: randomUUID(),
+            timestamp: now,
+            type: "evidence_added",
+            data: {
+                description: args.description,
+                source: args.source,
+                sourceUrl: args.sourceUrl,
+                originalQuery: args.originalQuery,
+            },
+        });
+        await provider.close();
+        return `✅ Evidence added: ${args.description}`;
+    }
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let evidencePath = args.evidencePath;
@@ -404,6 +581,59 @@ export async function ideaAddEvidence(args: z.infer<typeof IdeaAddEvidenceSchema
 export async function ideaAddNarrative(args: z.infer<typeof IdeaAddNarrativeSchema>): Promise<string> {
     const ideaPath = args.planId || process.cwd();
     const timestamp = formatTimestamp();
+    if (ideaPath.endsWith(".plan")) {
+        const provider = createSqliteProvider(ideaPath);
+        const timelineResult = await provider.addTimelineEvent({
+            id: randomUUID(),
+            timestamp,
+            type: "narrative_added",
+            data: {
+                content: args.content,
+                source: args.source,
+                context: args.context,
+                speaker: args.speaker || "user",
+            },
+        });
+        if (!timelineResult.success) {
+            await provider.close();
+            throw new Error(timelineResult.error || "Failed to add narrative event");
+        }
+
+        const filesResult = await provider.getFiles();
+        const promptFiles = (filesResult.success ? filesResult.data || [] : [])
+            .filter((f) => f.type === "prompt" && /^\d{3}-.*\.md$/.test(f.filename))
+            .sort((a, b) => a.filename.localeCompare(b.filename));
+        const nextNum = promptFiles.length > 0
+            ? parseInt(promptFiles[promptFiles.length - 1].filename.substring(0, 3), 10) + 1
+            : 1;
+
+        const baseFilename = args.context
+            ? args.context.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50)
+            : 'narrative';
+        const filename = `${String(nextNum).padStart(3, '0')}-${baseFilename}.md`;
+        const promptContent = `# Narrative: ${args.context || 'User Input'}
+
+**Date**: ${timestamp}
+**Source**: ${args.source || 'unknown'}
+**Speaker**: ${args.speaker || 'user'}
+
+---
+
+${args.content}
+`;
+        const fileResult = await provider.saveFile({
+            type: "prompt",
+            filename,
+            content: promptContent,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+        });
+        await provider.close();
+        if (!fileResult.success) {
+            throw new Error(fileResult.error || "Failed to save narrative prompt file");
+        }
+        return `✅ Narrative saved to timeline and ${filename} (${args.content.length} characters)`;
+    }
   
     // Log narrative chunk to timeline (not to IDEA.md)
     // Narrative chunks are kept in the timeline for full-fidelity context
@@ -497,6 +727,11 @@ export async function ideaKill(args: z.infer<typeof IdeaKillSchema>): Promise<st
 
 export async function ideaSetContent(args: z.infer<typeof IdeaSetContentSchema>): Promise<string> {
     const ideaPath = args.planId || process.cwd();
+    if (ideaPath.endsWith(".plan")) {
+        await saveTypedFileToSqlite(ideaPath, "idea", "IDEA.md", args.content);
+        await addTimelineEventToSqlite(ideaPath, "note_added", { action: "idea_content_set", length: args.content.length });
+        return "✅ IDEA.md updated";
+    }
     const ideaFile = join(ideaPath, "IDEA.md");
 
     await writeFile(ideaFile, args.content, "utf-8");
@@ -523,12 +758,21 @@ export async function executeIdeaCreate(args: any, context: ToolExecutionContext
         
         // Automatically switch context to the newly created plan
         // This ensures subsequent tool calls operate on the new plan
-        const newPlanPath = join(resolvedDirectory, validated.code);
         if (context.updateContext) {
-            context.updateContext({ workingDirectory: newPlanPath });
+            context.updateContext({ workingDirectory: result.planPath });
         }
         
-        return { success: true, data: { message: result } };
+        return {
+            success: true,
+            data: {
+                message: result.message,
+                planId: result.planId,
+                planUuid: result.planUuid,
+                planPath: result.planPath,
+                storage: result.storage,
+                stage: result.stage,
+            },
+        };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -604,12 +848,6 @@ export async function executeIdeaSetContent(args: any, context: ToolExecutionCon
     try {
         const validated = IdeaSetContentSchema.parse(args);
         const resolvedPath = resolveDirectory(args, context);
-        if (resolvedPath.endsWith('.plan')) {
-            return {
-                success: false,
-                error: 'Saving IDEA.md is only supported for directory-based plans.',
-            };
-        }
         const result = await ideaSetContent({ ...validated, planId: resolvedPath });
         return { success: true, data: { message: result } };
     } catch (error: any) {
@@ -620,58 +858,126 @@ export async function executeIdeaSetContent(args: any, context: ToolExecutionCon
 // Tool definitions for MCP
 import type { McpTool } from '../types.js';
 
-export const ideaCreateTool: McpTool = {
-    name: "riotplan_idea_create",
-    description: "Create a new idea (lightweight, no commitment). Use this when you have an initial concept that needs exploration before becoming a full plan.",
-    schema: IdeaCreateSchema.shape,
-    execute: executeIdeaCreate,
-};
+const IdeaActionSchema = z.discriminatedUnion("action", [
+    z.object({
+        action: z.literal("create"),
+        code: z.string(),
+        description: z.string(),
+        directory: z.string().optional(),
+    }),
+    z.object({
+        action: z.literal("add_note"),
+        planId: z.string().optional(),
+        note: z.string(),
+    }),
+    z.object({
+        action: z.literal("add_constraint"),
+        planId: z.string().optional(),
+        constraint: z.string(),
+    }),
+    z.object({
+        action: z.literal("add_question"),
+        planId: z.string().optional(),
+        question: z.string(),
+    }),
+    z.object({
+        action: z.literal("add_evidence"),
+        planId: z.string().optional(),
+        evidencePath: z.string().optional(),
+        description: z.string(),
+        content: z.string().optional(),
+        source: z.string().optional(),
+        sourceUrl: z.string().optional(),
+        originalQuery: z.string().optional(),
+        gatheringMethod: z.enum(["manual", "model-assisted"]).optional(),
+        relevanceScore: z.number().min(0).max(1).optional(),
+        summary: z.string().optional(),
+    }),
+    z.object({
+        action: z.literal("add_narrative"),
+        planId: z.string().optional(),
+        content: z.string(),
+        source: z.enum(["typing", "voice", "paste", "import"]).optional(),
+        context: z.string().optional(),
+        speaker: z.string().optional(),
+    }),
+    z.object({
+        action: z.literal("set_content"),
+        planId: z.string().optional(),
+        path: z.string().optional(),
+        content: z.string(),
+    }),
+    z.object({
+        action: z.literal("kill"),
+        planId: z.string().optional(),
+        reason: z.string(),
+    }),
+]);
 
-export const ideaAddNoteTool: McpTool = {
-    name: "riotplan_idea_add_note",
-    description: "Add a note or thought to an existing idea. Use this to capture thinking as it evolves.",
-    schema: IdeaAddNoteSchema.shape,
-    execute: executeIdeaAddNote,
-};
+const IdeaToolSchema = {
+    action: z
+        .enum([
+            "create",
+            "add_note",
+            "add_constraint",
+            "add_question",
+            "add_evidence",
+            "add_narrative",
+            "set_content",
+            "kill",
+        ])
+        .describe("Idea action to perform"),
+    code: z.string().optional().describe("Plan identifier when action=create"),
+    description: z.string().optional().describe("Description when action=create|add_evidence"),
+    directory: z.string().optional().describe("Parent directory for action=create"),
+    planId: z.string().optional().describe("Plan identifier"),
+    note: z.string().optional().describe("Note when action=add_note"),
+    constraint: z.string().optional().describe("Constraint when action=add_constraint"),
+    question: z.string().optional().describe("Question when action=add_question"),
+    evidencePath: z.string().optional().describe("Evidence path when action=add_evidence"),
+    content: z.string().optional().describe("Content when action=add_narrative|set_content|add_evidence(inline)"),
+    source: z.string().optional().describe("Source metadata for action=add_evidence|add_narrative"),
+    sourceUrl: z.string().optional().describe("Source URL for action=add_evidence"),
+    originalQuery: z.string().optional().describe("Original query for action=add_evidence"),
+    gatheringMethod: z.enum(["manual", "model-assisted"]).optional().describe("Gathering method for action=add_evidence"),
+    relevanceScore: z.number().min(0).max(1).optional().describe("Relevance score for action=add_evidence"),
+    summary: z.string().optional().describe("Short summary for action=add_evidence"),
+    context: z.string().optional().describe("Narrative context when action=add_narrative"),
+    speaker: z.string().optional().describe("Speaker when action=add_narrative"),
+    reason: z.string().optional().describe("Reason when action=kill"),
+    path: z.string().optional().describe("Legacy alias for planId when action=set_content"),
+} satisfies z.ZodRawShape;
 
-export const ideaAddConstraintTool: McpTool = {
-    name: "riotplan_idea_add_constraint",
-    description: "Add a constraint to an idea (e.g., 'Must work on mobile', 'No external dependencies')",
-    schema: IdeaAddConstraintSchema.shape,
-    execute: executeIdeaAddConstraint,
-};
+async function executeIdea(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const validated = IdeaActionSchema.parse(args);
+        switch (validated.action) {
+            case "create":
+                return executeIdeaCreate(validated, context);
+            case "add_note":
+                return executeIdeaAddNote(validated, context);
+            case "add_constraint":
+                return executeIdeaAddConstraint(validated, context);
+            case "add_question":
+                return executeIdeaAddQuestion(validated, context);
+            case "add_evidence":
+                return executeIdeaAddEvidence(validated, context);
+            case "add_narrative":
+                return executeIdeaAddNarrative(validated, context);
+            case "set_content":
+                return executeIdeaSetContent(validated, context);
+            case "kill":
+                return executeIdeaKill(validated, context);
+        }
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
 
-export const ideaAddQuestionTool: McpTool = {
-    name: "riotplan_idea_add_question",
-    description: "Add a question that needs answering before the idea can progress",
-    schema: IdeaAddQuestionSchema.shape,
-    execute: executeIdeaAddQuestion,
-};
-
-export const ideaAddEvidenceTool: McpTool = {
-    name: "riotplan_idea_add_evidence",
-    description: "Attach evidence to an idea. YOU (the model) should gather evidence using your own capabilities (web search, file reading, analysis), then use this tool to capture and organize it. Supports both file references and inline content (for pasted text, transcripts, web research findings, etc.).",
-    schema: IdeaAddEvidenceSchema.shape,
-    execute: executeIdeaAddEvidence,
-};
-
-export const ideaAddNarrativeTool: McpTool = {
-    name: "riotplan_idea_add_narrative",
-    description: "Add raw narrative content to the timeline. Use this to capture conversational context, thinking-out-loud, or any free-form input that doesn't fit structured categories. Narrative chunks preserve full-fidelity context.",
-    schema: IdeaAddNarrativeSchema.shape,
-    execute: executeIdeaAddNarrative,
-};
-
-export const ideaKillTool: McpTool = {
-    name: "riotplan_idea_kill",
-    description: "Kill an idea with a reason. Use when deciding not to pursue it.",
-    schema: IdeaKillSchema.shape,
-    execute: executeIdeaKill,
-};
-
-export const ideaSetContentTool: McpTool = {
-    name: "riotplan_idea_set_content",
-    description: "Replace IDEA.md content for a plan. Supports planId and path.",
-    schema: IdeaSetContentSchema.shape,
-    execute: executeIdeaSetContent,
+export const ideaTool: McpTool = {
+    name: "riotplan_idea",
+    description:
+        "Manage idea-stage operations with action=create|add_note|add_constraint|add_question|add_evidence|add_narrative|set_content|kill.",
+    schema: IdeaToolSchema,
+    execute: executeIdea,
 };

@@ -15,6 +15,7 @@ import { readPromptsListResource, readPromptResource } from './prompts.js';
 import { readEvidenceListResource, readEvidenceResource } from './evidence.js';
 import { readShapingResource } from './shaping.js';
 import { readCheckpointsListResource, readCheckpointResource } from './checkpoints.js';
+import { readArtifactResource } from './artifact.js';
 import { parseUri } from '../uri.js';
 import { resolveDirectory } from '../tools/shared.js';
 
@@ -66,9 +67,39 @@ export function getResources(): McpResource[] {
             mimeType: 'application/json',
         },
         {
+            uri: 'riotplan://execution-plan/{planId}',
+            name: 'Execution Plan',
+            description: 'Read EXECUTION_PLAN.md as a first-class artifact resource',
+            mimeType: 'application/json',
+        },
+        {
+            uri: 'riotplan://summary/{planId}',
+            name: 'Summary',
+            description: 'Read SUMMARY.md as a first-class artifact resource',
+            mimeType: 'application/json',
+        },
+        {
+            uri: 'riotplan://provenance/{planId}',
+            name: 'Provenance',
+            description: 'Read PROVENANCE.md as a first-class artifact resource',
+            mimeType: 'application/json',
+        },
+        {
+            uri: 'riotplan://artifact/{planId}?type={type}',
+            name: 'Artifact',
+            description: 'Read an artifact by type (idea, shaping, summary, execution_plan, status, provenance)',
+            mimeType: 'application/json',
+        },
+        {
             uri: 'riotplan://timeline/{planId}',
             name: 'Timeline',
             description: 'Read .history/timeline.jsonl with full evolution of thinking (notes, narratives, decisions)',
+            mimeType: 'application/json',
+        },
+        {
+            uri: 'riotplan://history/{planId}',
+            name: 'History',
+            description: 'Alias for timeline events for history-focused UIs',
             mimeType: 'application/json',
         },
         {
@@ -144,7 +175,22 @@ export async function readResource(uri: string, plansDir?: string): Promise<any>
         // Ideation context resources
         case 'idea':
             return await readIdeaResource(planPath);
+        case 'execution-plan':
+            return await readArtifactResource(planPath, 'execution_plan');
+        case 'summary':
+            return await readArtifactResource(planPath, 'summary');
+        case 'provenance':
+            return await readArtifactResource(planPath, 'provenance');
+        case 'artifact': {
+            const type = parsed.query?.type;
+            if (!type) {
+                throw new Error('Artifact type is required for artifact resource');
+            }
+            return await readArtifactResource(planPath, type);
+        }
         case 'timeline':
+            return await readTimelineResource(planPath);
+        case 'history':
             return await readTimelineResource(planPath);
         case 'prompts':
             return await readPromptsListResource(planPath);

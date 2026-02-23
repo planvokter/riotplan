@@ -63,7 +63,7 @@ export async function loadProvider(config: ProviderConfig): Promise<Provider> {
         '   - GOOGLE_API_KEY for Gemini models',
         '',
         '3. Create plan steps manually:',
-        '   - Use riotplan_step_add to add steps without AI',
+        '   - Use riotplan_step with action=add to add steps without AI',
         '',
         'For more information: https://github.com/kjerneverk/riotplan#ai-providers',
     ].join('\n');
@@ -137,7 +137,7 @@ async function loadDirectProvider(name: string, apiKey?: string): Promise<Provid
                 'Alternative options:',
                 '  1. Use a different provider (anthropic, openai, gemini)',
                 '  2. Use RiotPlan via MCP with a sampling-enabled client',
-                '  3. Create plan steps manually with riotplan_step_add',
+                '  3. Create plan steps manually with riotplan_step(action=add)',
             ].join('\n');
             throw new Error(errorMessage);
         }

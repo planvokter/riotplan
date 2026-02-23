@@ -326,7 +326,7 @@ Each checkpoint includes a Markdown file with full context for resuming work:
 ---
 
 This checkpoint captures the state of the plan at this moment in time.
-You can restore to this checkpoint using: `riotplan_checkpoint_restore({ checkpoint: "{name}" })`
+You can restore to this checkpoint using: `riotplan_checkpoint({ action: "restore", checkpoint: "{name}" })`
 ```
 
 ## Checkpoint Restoration Strategy

@@ -7,6 +7,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 
 export interface StepReflection {
     step: number;
@@ -24,6 +25,22 @@ export async function readStepReflection(
     planPath: string,
     stepNumber: number
 ): Promise<string | null> {
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const filesResult = await provider.getFiles();
+            if (!filesResult.success || !filesResult.data) {
+                return null;
+            }
+            const stepNum = String(stepNumber).padStart(2, '0');
+            const filename = `reflections/${stepNum}-reflection.md`;
+            const match = filesResult.data.find((file) => file.filename === filename);
+            return match?.content ?? null;
+        } finally {
+            await provider.close();
+        }
+    }
+
     const stepNum = String(stepNumber).padStart(2, '0');
     const filename = `${stepNum}-reflection.md`;
     const filepath = join(planPath, 'reflections', filename);
@@ -50,6 +67,29 @@ export async function readStepReflection(
 export async function readAllReflections(
     planPath: string
 ): Promise<StepReflection[]> {
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const filesResult = await provider.getFiles();
+            if (!filesResult.success || !filesResult.data) {
+                return [];
+            }
+
+            const reflections = filesResult.data
+                .filter((file) => /^reflections\/\d{2}-reflection\.md$/.test(file.filename))
+                .map((file) => ({
+                    step: parseInt(file.filename.match(/(\d{2})-reflection\.md$/)?.[1] || '0', 10),
+                    content: file.content,
+                }))
+                .filter((item) => item.step > 0)
+                .sort((a, b) => a.step - b.step);
+
+            return reflections;
+        } finally {
+            await provider.close();
+        }
+    }
+
     const reflectionsDir = join(planPath, 'reflections');
 
     if (!existsSync(reflectionsDir)) {

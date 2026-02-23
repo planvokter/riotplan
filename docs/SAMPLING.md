@@ -132,7 +132,7 @@ To use RiotPlan's AI generation features, either:
    - GOOGLE_API_KEY for Gemini models
 
 3. Create plan steps manually:
-   - Use riotplan_step_add to add steps without AI
+   - Use riotplan_step with action=add to add steps without AI
 
 For more information: https://github.com/kjerneverk/riotplan#ai-providers
 ```
@@ -212,7 +212,7 @@ const provider = await loadProvider({
 **Solution**: Either:
 1. Set API keys (see "Using Direct API Keys" above)
 2. Use FastMCP for testing
-3. Create plan steps manually with `riotplan_step_add`
+3. Create plan steps manually with `riotplan_step` (`action: "add"`)
 
 ### "User rejected the sampling request"
 

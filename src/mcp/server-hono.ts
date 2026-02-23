@@ -37,6 +37,8 @@ export interface ServerConfig {
     port: number;
     /** Plans directory path - single source of truth for all plan operations */
     plansDir: string;
+    /** Enable debug logging */
+    debug?: boolean;
     /** Enable CORS (default: true) */
     cors?: boolean;
     /** Session timeout in milliseconds (default: 1 hour) */
@@ -59,12 +61,85 @@ interface SessionContext {
     createdAt: Date;
     /** Last activity time */
     lastActivity: Date;
+    /** Subscribed resource URIs */
+    subscriptions: Set<string>;
 }
 
 /**
  * Active sessions map
  */
 const sessions = new Map<string, SessionContext>();
+const TRUTHY_RE = /^(1|true|yes|on)$/i;
+
+function envDebugEnabled(): boolean {
+    return TRUTHY_RE.test(process.env.RIOTPLAN_DEBUG || '') || TRUTHY_RE.test(process.env.RIOTPLAN_HTTP_DEBUG || '');
+}
+
+function debugLog(enabled: boolean, message: string, details?: unknown): void {
+    if (!enabled) {
+        return;
+    }
+    if (details === undefined) {
+        console.error(`[RiotPlan HTTP][debug] ${message}`);
+        return;
+    }
+    try {
+        console.error(`[RiotPlan HTTP][debug] ${message} ${JSON.stringify(details)}`);
+    } catch {
+        console.error(`[RiotPlan HTTP][debug] ${message}`);
+    }
+}
+
+function normalizePlanRef(value: unknown): string | null {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.includes('/')) {
+        return null;
+    }
+    return trimmed;
+}
+
+function isMutatingTool(toolName: string, args?: Record<string, unknown>): boolean {
+    if (toolName === 'riotplan_plan') {
+        const action = typeof args?.action === 'string' ? args.action : '';
+        return action !== 'switch';
+    }
+    const nonMutating = new Set([
+        'riotplan_status',
+        'riotplan_read_context',
+        'riotplan_list_plans',
+        'riotplan_history_show',
+        'riotplan_validate',
+        'riotplan_resolve_project_context',
+        'riotplan_get_project_binding',
+        'riotplan_catalyst',
+        'riotplan_checkpoint',
+    ]);
+    if (nonMutating.has(toolName)) {
+        return false;
+    }
+    return true;
+}
+
+async function notifyPlanResourceChanged(planRef: string): Promise<void> {
+    const uri = `riotplan://plan/${planRef}`;
+    for (const session of sessions.values()) {
+        if (!session.subscriptions.has(uri)) {
+            continue;
+        }
+        try {
+            await session.transport.send({
+                jsonrpc: '2.0',
+                method: 'notifications/resource_changed',
+                params: { uri },
+            } as any);
+        } catch {
+            // Ignore stale transports/sse streams.
+        }
+    }
+}
 
 /**
  * Default session timeout (1 hour)
@@ -95,6 +170,7 @@ function schemaToJsonSchema(schema: z.ZodRawShape): Record<string, unknown> {
  * All operations use plansDir - no config discovery
  */
 function createMcpServer(plansDir: string, sessionId: string, config: ServerConfig): Server {
+    const debugEnabled = config.debug === true || envDebugEnabled();
     const server = new Server(
         {
             name: 'riotplan-http',
@@ -104,8 +180,8 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
             capabilities: {
                 tools: {},
                 resources: {
-                    subscribe: false,
-                    listChanged: false,
+                    subscribe: true,
+                    listChanged: true,
                 },
                 prompts: {
                     listChanged: false,
@@ -121,8 +197,15 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const toolName = request.params.name;
         const tool = tools.find((t) => t.name === toolName);
+        const startedAt = Date.now();
+        debugLog(debugEnabled, 'tool.call.start', {
+            sessionId,
+            tool: toolName,
+            argKeys: Object.keys(request.params.arguments || {}),
+        });
 
         if (!tool) {
+            debugLog(debugEnabled, 'tool.call.unknown', { sessionId, tool: toolName });
             return {
                 content: [{ type: 'text', text: `Unknown tool: ${toolName}` }],
                 isError: true,
@@ -139,6 +222,12 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
             const result = await executeTool(toolName, request.params.arguments || {}, context);
 
             if (!result.success) {
+                debugLog(debugEnabled, 'tool.call.error', {
+                    sessionId,
+                    tool: toolName,
+                    elapsedMs: Date.now() - startedAt,
+                    error: result.error || 'Tool execution failed',
+                });
                 const errorParts: string[] = [result.error || 'Tool execution failed'];
                 if (result.context && typeof result.context === 'object') {
                     errorParts.push('\n=== Context ===');
@@ -158,6 +247,20 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
                 };
             }
 
+            if (isMutatingTool(toolName, request.params.arguments as Record<string, unknown> | undefined)) {
+                const candidateRefs = new Set<string>();
+                const args = request.params.arguments || {};
+                for (const candidate of [args.planId, args.path, result.data?.planId, result.data?.code]) {
+                    const normalized = normalizePlanRef(candidate);
+                    if (normalized) {
+                        candidateRefs.add(normalized);
+                    }
+                }
+                for (const ref of candidateRefs) {
+                    await notifyPlanResourceChanged(ref);
+                }
+            }
+
             const content: Array<{ type: 'text'; text: string }> = [];
             if (result.logs && result.logs.length > 0) {
                 content.push({
@@ -170,10 +273,21 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
                     ? JSON.stringify(result.data, null, 2)
                     : result.message || 'Success';
             content.push({ type: 'text', text: textContent });
+            debugLog(debugEnabled, 'tool.call.success', {
+                sessionId,
+                tool: toolName,
+                elapsedMs: Date.now() - startedAt,
+            });
 
             return { content };
         } catch (error) {
             const msg = error instanceof Error ? error.message : 'Unknown error';
+            debugLog(debugEnabled, 'tool.call.unhandled', {
+                sessionId,
+                tool: toolName,
+                elapsedMs: Date.now() - startedAt,
+                error: msg,
+            });
             return {
                 content: [{ type: 'text', text: `=== Unhandled Error in ${toolName} ===\n\n${msg}` }],
                 isError: true,
@@ -210,6 +324,8 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
 
     server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
         const uri = request.params.uri;
+        const startedAt = Date.now();
+        debugLog(debugEnabled, 'resource.read.start', { sessionId, uri });
         try {
             const data = await readResource(uri, plansDir);
             const resource = resources.find((r) => {
@@ -228,6 +344,12 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
             };
         } catch (error) {
             const msg = error instanceof Error ? error.message : 'Unknown error';
+            debugLog(debugEnabled, 'resource.read.error', {
+                sessionId,
+                uri,
+                elapsedMs: Date.now() - startedAt,
+                error: msg,
+            });
             return {
                 contents: [{ uri, mimeType: 'text/plain', text: `Error: ${msg}` }],
             };
@@ -287,6 +409,7 @@ async function getOrCreateSession(
     plansDir: string,
     config: ServerConfig
 ): Promise<SessionContext> {
+    const debugEnabled = config.debug === true || envDebugEnabled();
     let session = sessions.get(sessionId);
 
     if (!session) {
@@ -302,11 +425,14 @@ async function getOrCreateSession(
             plansDir,
             createdAt: new Date(),
             lastActivity: new Date(),
+            subscriptions: new Set<string>(),
         };
 
         sessions.set(sessionId, session);
+        debugLog(debugEnabled, 'session.created', { sessionId, plansDir });
     } else {
         session.lastActivity = new Date();
+        debugLog(debugEnabled, 'session.reused', { sessionId });
     }
 
     return session;
@@ -366,6 +492,36 @@ export function createApp(config: ServerConfig): Hono {
         try {
             const sessionId = c.req.header('Mcp-Session-Id') || generateSessionId();
             const session = await getOrCreateSession(sessionId, config.plansDir, config);
+
+            const bodyClone = c.req.raw.clone();
+            try {
+                const rawBody = await bodyClone.text();
+                const message = JSON.parse(rawBody) as {
+                    jsonrpc?: string;
+                    method?: string;
+                    id?: string | number | null;
+                    params?: { uri?: string };
+                };
+                if (message.method === 'resources/subscribe') {
+                    const uri = message.params?.uri;
+                    if (uri) {
+                        session.subscriptions.add(uri);
+                    }
+                    return c.json({ jsonrpc: '2.0', result: {}, id: message.id ?? null });
+                }
+                if (message.method === 'resources/unsubscribe') {
+                    const uri = message.params?.uri;
+                    if (uri) {
+                        session.subscriptions.delete(uri);
+                    }
+                    return c.json({ jsonrpc: '2.0', result: {}, id: message.id ?? null });
+                }
+                if (message.method === 'notifications/initialized') {
+                    return c.body(null, 202);
+                }
+            } catch {
+                // If parsing fails, let transport return the protocol-level error.
+            }
 
             const response = await session.transport.handleRequest(c);
 
@@ -461,10 +617,14 @@ export function createApp(config: ServerConfig): Hono {
  */
 export async function startServer(config: ServerConfig): Promise<void> {
     const app = createApp(config);
+    const debugEnabled = config.debug === true || envDebugEnabled();
 
     console.error(`[RiotPlan HTTP] Starting server on port ${config.port}`);
     console.error(`[RiotPlan HTTP] Plans directory: ${config.plansDir} (single source of truth)`);
     console.error(`[RiotPlan HTTP] CORS: ${config.cors !== false ? 'enabled' : 'disabled'}`);
+    if (debugEnabled) {
+        console.error('[RiotPlan HTTP] Debug logging enabled (debug config or RIOTPLAN_DEBUG)');
+    }
 
     const { serve } = await import('@hono/node-server');
 

@@ -1,0 +1,38 @@
+---
+description: Route RiotPlan language to MCP lifecycle actions
+alwaysApply: true
+---
+
+# RiotPlan Workflow Rule
+
+When user intent involves RiotPlan, treat these words as lifecycle actions, not generic prose:
+
+- `evidence` -> use `riotplan_idea`
+- `idea` -> use `riotplan_idea_*` tools (`add_note`, `add_question`, `add_constraint`, `add_evidence`)
+- `shaping` / `approach` -> use `riotplan_shaping_*` tools
+- `plan` / `build` -> use `riotplan_build` or lifecycle/status tools as appropriate
+- `step` execution -> use `riotplan_step` with `action: "start"` before work and `action: "complete"` after work
+
+## Required execution behavior
+
+1. Resolve a RiotPlan path before mutating tools. If path is ambiguous, ask one concise question.
+2. Prefer RiotPlan MCP tools/resources over manual markdown edits for plan state.
+3. Before lifecycle or step updates, check current state with `riotplan_status` (or status resource).
+4. If `riotplan_shaping` is called, immediately follow with `riotplan_build`.
+5. Never claim a step is complete unless acceptance criteria are actually satisfied.
+
+## Evidence capture contract
+
+When user says "add evidence" (or similar), gather and write:
+
+- short evidence description/title
+- source (URL, doc path, commit, or note that source is internal)
+- why it matters to the plan decision
+
+If any field is missing, ask only for the missing field(s), then call `riotplan_idea`.
+
+## Ambiguity defaults
+
+- "Use RiotPlan" means use RiotPlan MCP tools.
+- If user references an open RiotPlan document without explicit path, infer the nearest plan path and confirm once.
+- If not clearly a RiotPlan request, ask: "Should I handle this through RiotPlan tools?"

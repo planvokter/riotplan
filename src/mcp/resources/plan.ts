@@ -5,6 +5,7 @@
 import type { PlanResource } from '../types.js';
 import { loadPlan } from '../../plan/loader.js';
 import { existsSync } from 'node:fs';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 
 export async function readPlanResource(path: string): Promise<PlanResource> {
     const exists = existsSync(path);
@@ -19,6 +20,30 @@ export async function readPlanResource(path: string): Promise<PlanResource> {
     }
 
     try {
+        if (path.endsWith('.plan')) {
+            const provider = createSqliteProvider(path);
+            const metadataResult = await provider.getMetadata();
+            await provider.close();
+            if (!metadataResult.success || !metadataResult.data) {
+                throw new Error(metadataResult.error || 'Failed to read sqlite metadata');
+            }
+            const metadata = metadataResult.data;
+            return {
+                planId: metadata.id,
+                code: metadata.id,
+                name: metadata.name,
+                exists: true,
+                metadata: {
+                    code: metadata.id,
+                    name: metadata.name,
+                    description: metadata.description,
+                },
+                state: {
+                    status: metadata.stage,
+                },
+            };
+        }
+
         const plan = await loadPlan(path);
         
         return {

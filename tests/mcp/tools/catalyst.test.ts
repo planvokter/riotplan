@@ -7,19 +7,17 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  catalystListTool,
-  catalystShowTool,
-  catalystAssociateTool,
+  catalystTool,
 } from '../../../src/mcp/tools/catalyst.js';
 import type { ToolExecutionContext } from '../../../src/mcp/types.js';
 
 // Helper wrappers to call tool.execute
 const executeCatalystList = (args: any, context: ToolExecutionContext) => 
-  catalystListTool.execute(args, context);
+  catalystTool.execute({ ...args, action: 'list' }, context);
 const executeCatalystShow = (args: any, context: ToolExecutionContext) => 
-  catalystShowTool.execute(args, context);
+  catalystTool.execute({ ...args, action: 'show' }, context);
 const executeCatalystAssociate = (args: any, context: ToolExecutionContext) => 
-  catalystAssociateTool.execute(args, context);
+  catalystTool.execute({ ...args, action: 'associate' }, context);
 
 describe('catalyst tools', () => {
   let testDir: string;
@@ -103,7 +101,7 @@ facets:
   describe('executeCatalystAssociate', () => {
     it('should return error when no catalysts specified', async () => {
       const result = await executeCatalystAssociate(
-        { catalysts: [], action: 'add' },
+        { catalysts: [], operation: 'add' },
         mockContext
       );
 
@@ -113,7 +111,7 @@ facets:
 
     it('should return error when catalyst cannot be loaded', async () => {
       const result = await executeCatalystAssociate(
-        { catalysts: ['/non/existent'], action: 'add' },
+        { catalysts: ['/non/existent'], operation: 'add' },
         mockContext
       );
 
@@ -151,7 +149,7 @@ facets:
         {
           path: planDir,
           catalysts: [catalystDir],
-          action: 'add',
+          operation: 'add',
         },
         mockContext
       );
@@ -198,7 +196,7 @@ catalysts: []
         {
           path: planDir,
           catalysts: [catalystDir],
-          action: 'add',
+          operation: 'add',
         },
         mockContext
       );
@@ -250,7 +248,7 @@ catalysts:
         {
           path: planDir,
           catalysts: [catalyst2Dir],
-          action: 'set',
+          operation: 'set',
         },
         mockContext
       );
@@ -297,7 +295,7 @@ catalysts:
         {
           path: planDir,
           catalysts: [catalystDir],
-          action: 'remove',
+          operation: 'remove',
         },
         mockContext
       );

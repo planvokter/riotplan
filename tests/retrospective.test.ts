@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdir, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Plan } from "../src/types.js";
@@ -288,8 +288,7 @@ describe("retrospective", () => {
         let testDir: string;
 
         beforeEach(async () => {
-            testDir = join(tmpdir(), `riotplan-retro-test-${Date.now()}`);
-            await mkdir(testDir, { recursive: true });
+            testDir = await mkdtemp(join(tmpdir(), "riotplan-retro-test-"));
         });
 
         afterEach(async () => {

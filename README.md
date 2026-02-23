@@ -389,13 +389,13 @@ riotplan create my-feature --catalysts ./catalysts/nodejs,./catalysts/testing
 
 ```typescript
 // List configured catalysts
-riotplan_catalyst_list()
+riotplan_catalyst({ action: 'list' })
 
 // Show catalyst details
-riotplan_catalyst_show({ catalyst: '@kjerneverk/catalyst-project' })
+riotplan_catalyst({ action: 'show', catalyst: '@kjerneverk/catalyst-project' })
 
 // Associate catalysts with a plan
-riotplan_catalyst_associate({
+riotplan_catalyst({
   path: './my-plan',
   action: 'add',
   catalysts: ['@kjerneverk/catalyst-project']
@@ -566,39 +566,40 @@ The MCP server includes enhanced error handling and logging for better reliabili
 ### MCP Tools
 
 **Lifecycle Management:**
-- **`riotplan_idea_create`** - Start exploring an idea (Idea stage)
-- **`riotplan_shaping_start`** - Begin shaping approaches (Shaping stage)
-- **`riotplan_build`** - Build plan from idea/shaping with AI generation (→ Built stage)
+- **`riotplan_idea`** - Start exploring an idea (Idea stage)
+- **`riotplan_shaping`** - Begin shaping approaches (Shaping stage)
+- **`riotplan_build`** - Prepare caller-side generation instructions from idea/shaping artifacts
+- **`riotplan_build_validate_plan`** - Validate caller-generated plan JSON against full plan context and issue write stamp
+- **`riotplan_build_write_artifact`** - Persist caller-generated SUMMARY/EXECUTION_PLAN/STATUS/PROVENANCE
+- **`riotplan_build_write_step`** - Persist caller-generated step markdown files
 - **`riotplan_transition`** - Move between lifecycle stages manually
 
 **Plan Management:**
-- **`riotplan_create`** - Create new plan directory with AI-generated steps
+- **`riotplan_plan`** - Unified plan tool with `action: "create" | "switch" | "move"`
 - **`riotplan_status`** - Show plan status and progress
 - **`riotplan_validate`** - Validate plan structure
 - **`riotplan_generate`** - Generate plan content with AI
 
 **Step Management:**
-- **`riotplan_step_list`** - List all steps
-- **`riotplan_step_start`** - Mark step as started
-- **`riotplan_step_complete`** - Mark step as completed
-- **`riotplan_step_add`** - Add new steps dynamically
+- **`riotplan_step`** - Unified step tool with `action: "start" | "complete" | "add" | "remove" | "move"`
 
 **Idea Stage:**
-- **`riotplan_idea_add_note`** - Add notes during exploration
-- **`riotplan_idea_add_constraint`** - Document constraints
-- **`riotplan_idea_add_question`** - Raise questions
-- **`riotplan_idea_add_evidence`** - Attach supporting materials
-- **`riotplan_idea_kill`** - Abandon idea with reason
+- **`riotplan_idea`** - Add notes during exploration
+- **`riotplan_idea`** - Document constraints
+- **`riotplan_idea`** - Raise questions
+- **`riotplan_idea`** - Attach supporting materials
+- **`riotplan_evidence`** - Unified structured evidence tool with `action: "add" | "edit" | "delete"`
+- **`riotplan_idea`** - Abandon idea with reason
 
 **Shaping Stage:**
-- **`riotplan_shaping_add_approach`** - Propose solution approaches
-- **`riotplan_shaping_add_feedback`** - Add feedback on approaches
-- **`riotplan_shaping_compare`** - Compare all approaches
-- **`riotplan_shaping_select`** - Select best approach
+- **`riotplan_shaping`** - Propose solution approaches
+- **`riotplan_shaping`** - Add feedback on approaches
+- **`riotplan_shaping`** - Compare all approaches
+- **`riotplan_shaping`** - Select best approach
 
 **History & Checkpoints:**
-- **`riotplan_checkpoint_create`** - Save state snapshots
-- **`riotplan_checkpoint_restore`** - Restore previous state
+- **`riotplan_checkpoint`** - Save state snapshots
+- **`riotplan_checkpoint`** - Restore previous state
 - **`riotplan_history_show`** - View timeline of events
 
 ### MCP Resources
@@ -622,7 +623,8 @@ Workflow templates for common tasks:
 
 ```typescript
 // AI assistant creates a plan
-riotplan_create({
+riotplan_plan({
+  action: "create",
   code: "user-auth",
   description: "Implement JWT-based authentication",
   steps: 6
@@ -632,9 +634,9 @@ riotplan_create({
 riotplan_status({ path: "./user-auth" })
 
 // Start and complete steps
-riotplan_step_start({ path: "./user-auth", step: 1 })
+riotplan_step({ planId: "./user-auth", action: "start", step: 1 })
 // ... do the work ...
-riotplan_step_complete({ path: "./user-auth", step: 1 })
+riotplan_step({ planId: "./user-auth", action: "complete", step: 1 })
 ```
 
 ### For AI Assistants: Executing Plans with Tracking
@@ -646,9 +648,9 @@ riotplan_step_complete({ path: "./user-auth", step: 1 })
    - Step files (e.g., `01-step.md`, `02-step.md`) are required for tracking
 
 2. **For each step you execute:**
-   - Call `riotplan_step_start({ path, step: N })` **BEFORE** doing any work
+   - Call `riotplan_step({ planId: path, action: "start", step: N })` **BEFORE** doing any work
    - Do the actual work (implement, test, document)
-   - Call `riotplan_step_complete({ path, step: N })` **AFTER** completing the work
+   - Call `riotplan_step({ planId: path, action: "complete", step: N })` **AFTER** completing the work
    - Let RiotPlan update STATUS.md automatically
 
 3. **Use the `execute_plan` prompt** for guided execution:
@@ -659,7 +661,7 @@ riotplan_step_complete({ path: "./user-auth", step: 1 })
 
 **Key Principle**: If you're working on a RiotPlan, RiotPlan should manage the execution, not just the planning. Don't just do the work - use the tracking tools!
 
-**Common Mistake**: Executing steps without using `riotplan_step_start` and `riotplan_step_complete`. This bypasses RiotPlan's execution management and breaks progress tracking.
+**Common Mistake**: Executing steps without using `riotplan_step` start/complete actions. This bypasses RiotPlan's execution management and breaks progress tracking.
 
 See [guide/mcp.md](./guide/mcp.md) for detailed MCP documentation.
 

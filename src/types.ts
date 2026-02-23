@@ -286,6 +286,8 @@ export type TimelineEventType =
     | "constraint_added"
     | "question_added"
     | "evidence_added"
+    | "evidence_deleted"
+    | "evidence_edited"
     | "idea_killed"
     | "shaping_started"
     | "approach_added"
@@ -295,7 +297,8 @@ export type TimelineEventType =
     | "narrative_chunk"
     | "checkpoint_created"
     | "checkpoint_restored"
-    | "stage_transition";
+    | "stage_transition"
+    | "step_reflected";
 
 /**
  * Base timeline event structure

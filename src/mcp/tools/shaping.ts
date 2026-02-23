@@ -3,10 +3,13 @@
  */
 
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { formatTimestamp, resolveDirectory, ensurePlanManifest } from "./shared.js";
 import { logEvent } from "./history.js";
+import { transitionStage } from "./transition.js";
+import { createSqliteProvider, type PlanFile } from "@kjerneverk/riotplan-format";
 
 // Tool schemas
 export const ShapingStartSchema = z.object({
@@ -43,13 +46,89 @@ export const ShapingSelectSchema = z.object({
     reason: z.string().describe("Reason for selecting this approach"),
 });
 
+type ShapingDoc = {
+    content: string;
+    filename: string;
+};
+
+async function readShapingDoc(planPath: string): Promise<ShapingDoc | null> {
+    if (!planPath.endsWith(".plan")) {
+        const shapingFile = join(planPath, "SHAPING.md");
+        try {
+            const content = await readFile(shapingFile, "utf-8");
+            return { content, filename: "SHAPING.md" };
+        } catch {
+            return null;
+        }
+    }
+
+    const provider = createSqliteProvider(planPath);
+    const filesResult = await provider.getFiles();
+    await provider.close();
+    if (!filesResult.success || !filesResult.data) {
+        return null;
+    }
+    const shapingFile = filesResult.data
+        .filter((file) => file.type === "shaping")
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
+    if (!shapingFile) {
+        return null;
+    }
+    return { content: shapingFile.content, filename: shapingFile.filename };
+}
+
+async function saveShapingDoc(planPath: string, content: string, existing?: PlanFile | ShapingDoc | null): Promise<void> {
+    if (!planPath.endsWith(".plan")) {
+        await writeFile(join(planPath, "SHAPING.md"), content, "utf-8");
+        return;
+    }
+
+    const now = formatTimestamp();
+    const provider = createSqliteProvider(planPath);
+    const saveResult = await provider.saveFile({
+        type: "shaping",
+        filename: existing?.filename || "SHAPING.md",
+        content,
+        createdAt: (existing as PlanFile | undefined)?.createdAt || now,
+        updatedAt: now,
+    });
+    await provider.close();
+    if (!saveResult.success) {
+        throw new Error(saveResult.error || "Failed to save SHAPING.md content");
+    }
+}
+
+async function addShapingEvent(planPath: string, type: string, data: Record<string, unknown>): Promise<void> {
+    if (!planPath.endsWith(".plan")) {
+        await logEvent(planPath, {
+            timestamp: formatTimestamp(),
+            type: type as any,
+            data,
+        });
+        return;
+    }
+    const provider = createSqliteProvider(planPath);
+    const result = await provider.addTimelineEvent({
+        id: randomUUID(),
+        timestamp: formatTimestamp(),
+        type: type as any,
+        data,
+    });
+    await provider.close();
+    if (!result.success) {
+        throw new Error(result.error || `Failed to add timeline event '${type}'`);
+    }
+}
+
 // Tool implementations
 
 export async function shapingStart(args: z.infer<typeof ShapingStartSchema>): Promise<string> {
     const shapingPath = args.planId || process.cwd();
   
     // Ensure plan has manifest
-    await ensurePlanManifest(shapingPath);
+    if (!shapingPath.endsWith(".plan")) {
+        await ensurePlanManifest(shapingPath);
+    }
   
     // Create SHAPING.md
     const shapingContent = `# Shaping: [Name]
@@ -60,7 +139,7 @@ _What problem are we solving? What are we trying to achieve?_
 
 ## Approaches Considered
 
-_Add approaches using riotplan_shaping_add_approach_
+_Add approaches using riotplan_shaping({ action: "add_approach", ... })_
 
 ## Feedback
 
@@ -85,47 +164,31 @@ _Decisions will be tracked here_
 **Next**: Select an approach and transition to 'built'
 `;
 
-    await writeFile(join(shapingPath, "SHAPING.md"), shapingContent, "utf-8");
-  
-    // Update LIFECYCLE.md
-    const lifecycleFile = join(shapingPath, "LIFECYCLE.md");
-    let lifecycle = await readFile(lifecycleFile, "utf-8");
-  
-    // Update current stage
-    lifecycle = lifecycle.replace(
-        /\*\*Stage\*\*: `\w+`/,
-        `**Stage**: \`shaping\``
+    await saveShapingDoc(shapingPath, shapingContent, null);
+    await transitionStage(
+        {
+            planId: shapingPath,
+            stage: "shaping",
+            reason: "Ready to explore approaches",
+        },
+        {
+            workingDirectory: shapingPath,
+        } as any
     );
-    lifecycle = lifecycle.replace(
-        /\*\*Since\*\*: .+/,
-        `**Since**: ${formatTimestamp()}`
-    );
-  
-    // Add to state history
-    const historyTable = lifecycle.indexOf("| From | To | When | Reason |");
-    if (historyTable !== -1) {
-        const nextLine = lifecycle.indexOf("\n", historyTable + 50);
-        const newRow = `| idea | shaping | ${formatTimestamp()} | Ready to explore approaches |\n`;
-        lifecycle = lifecycle.slice(0, nextLine + 1) + newRow + lifecycle.slice(nextLine + 1);
-    }
-  
-    await writeFile(lifecycleFile, lifecycle, "utf-8");
   
     // Log event
-    await logEvent(shapingPath, {
-        timestamp: formatTimestamp(),
-        type: 'shaping_started',
-        data: {},
-    });
+    await addShapingEvent(shapingPath, 'shaping_started', {});
   
-    return `✅ Shaping started\n\nNext steps:\n- Add approaches: riotplan_shaping_add_approach\n- Provide feedback: riotplan_shaping_add_feedback\n- Add evidence: riotplan_shaping_add_evidence\n- Compare approaches: riotplan_shaping_compare\n- When ready: riotplan_shaping_select`;
+    return `✅ Shaping started\n\nNext steps:\n- Add approaches: riotplan_shaping({ action: "add_approach", ... })\n- Provide feedback: riotplan_shaping({ action: "add_feedback", ... })\n- Add evidence: riotplan_shaping({ action: "add_evidence", ... })\n- Compare approaches: riotplan_shaping({ action: "compare" })\n- When ready: riotplan_shaping({ action: "select", ... })`;
 }
 
 export async function shapingAddApproach(args: z.infer<typeof ShapingAddApproachSchema>): Promise<string> {
     const shapingPath = args.planId || process.cwd();
-    const shapingFile = join(shapingPath, "SHAPING.md");
-  
-    let content = await readFile(shapingFile, "utf-8");
+    const shapingDoc = await readShapingDoc(shapingPath);
+    if (!shapingDoc) {
+        throw new Error("Could not find SHAPING.md content. Start shaping first with riotplan_shaping({ action: \"start\" })");
+    }
+    let content = shapingDoc.content;
   
     const approachesSection = "## Approaches Considered";
     const approachesIndex = content.indexOf(approachesSection);
@@ -158,18 +221,14 @@ export async function shapingAddApproach(args: z.infer<typeof ShapingAddApproach
   
     content = content.slice(0, insertPoint) + approach + content.slice(insertPoint);
   
-    await writeFile(shapingFile, content, "utf-8");
+    await saveShapingDoc(shapingPath, content, shapingDoc);
   
     // Log event
-    await logEvent(shapingPath, {
-        timestamp: formatTimestamp(),
-        type: 'approach_added',
-        data: {
-            name: args.name,
-            description: args.description,
-            tradeoffs: args.tradeoffs,
-            assumptions: args.assumptions,
-        },
+    await addShapingEvent(shapingPath, 'approach_added', {
+        name: args.name,
+        description: args.description,
+        tradeoffs: args.tradeoffs,
+        assumptions: args.assumptions,
     });
   
     return `✅ Approach added: ${args.name}`;
@@ -177,9 +236,11 @@ export async function shapingAddApproach(args: z.infer<typeof ShapingAddApproach
 
 export async function shapingAddFeedback(args: z.infer<typeof ShapingAddFeedbackSchema>): Promise<string> {
     const shapingPath = args.planId || process.cwd();
-    const shapingFile = join(shapingPath, "SHAPING.md");
-  
-    let content = await readFile(shapingFile, "utf-8");
+    const shapingDoc = await readShapingDoc(shapingPath);
+    if (!shapingDoc) {
+        throw new Error("Could not find SHAPING.md content. Start shaping first with riotplan_shaping({ action: \"start\" })");
+    }
+    let content = shapingDoc.content;
   
     const feedbackSection = "## Feedback";
     const feedbackIndex = content.indexOf(feedbackSection);
@@ -194,23 +255,21 @@ export async function shapingAddFeedback(args: z.infer<typeof ShapingAddFeedback
     const feedback = `\n### ${formatTimestamp()}\n\n${args.feedback}\n`;
     content = content.slice(0, insertPoint) + feedback + content.slice(insertPoint);
   
-    await writeFile(shapingFile, content, "utf-8");
+    await saveShapingDoc(shapingPath, content, shapingDoc);
   
     // Log event
-    await logEvent(shapingPath, {
-        timestamp: formatTimestamp(),
-        type: 'feedback_added',
-        data: { feedback: args.feedback },
-    });
+    await addShapingEvent(shapingPath, 'feedback_added', { feedback: args.feedback });
   
     return `✅ Feedback added`;
 }
 
 export async function shapingAddEvidence(args: z.infer<typeof ShapingAddEvidenceSchema>): Promise<string> {
     const shapingPath = args.planId || process.cwd();
-    const shapingFile = join(shapingPath, "SHAPING.md");
-  
-    let content = await readFile(shapingFile, "utf-8");
+    const shapingDoc = await readShapingDoc(shapingPath);
+    if (!shapingDoc) {
+        throw new Error("Could not find SHAPING.md content. Start shaping first with riotplan_shaping({ action: \"start\" })");
+    }
+    let content = shapingDoc.content;
   
     const evidenceSection = "## Evidence";
     const evidenceIndex = content.indexOf(evidenceSection);
@@ -233,17 +292,13 @@ export async function shapingAddEvidence(args: z.infer<typeof ShapingAddEvidence
   
     content = content.slice(0, insertPoint) + evidence + content.slice(insertPoint);
   
-    await writeFile(shapingFile, content, "utf-8");
+    await saveShapingDoc(shapingPath, content, shapingDoc);
   
     // Log event
-    await logEvent(shapingPath, {
-        timestamp: formatTimestamp(),
-        type: 'evidence_added',
-        data: {
-            evidencePath: args.evidencePath,
-            description: args.description,
-            relatedTo: args.relatedTo,
-        },
+    await addShapingEvent(shapingPath, 'evidence_added', {
+        evidencePath: args.evidencePath,
+        description: args.description,
+        relatedTo: args.relatedTo,
     });
   
     return `✅ Evidence added`;
@@ -251,9 +306,11 @@ export async function shapingAddEvidence(args: z.infer<typeof ShapingAddEvidence
 
 export async function shapingCompare(args: z.infer<typeof ShapingCompareSchema>): Promise<string> {
     const shapingPath = args.planId || process.cwd();
-    const shapingFile = join(shapingPath, "SHAPING.md");
-  
-    const content = await readFile(shapingFile, "utf-8");
+    const shapingDoc = await readShapingDoc(shapingPath);
+    if (!shapingDoc) {
+        return "No shaping content found. Start shaping first using riotplan_shaping({ action: \"start\" })";
+    }
+    const content = shapingDoc.content;
   
     // Extract approaches
     const approachesSection = content.indexOf("## Approaches Considered");
@@ -264,7 +321,7 @@ export async function shapingCompare(args: z.infer<typeof ShapingCompareSchema>)
     const approaches = approachesContent.match(/### Approach: (.+)/g) || [];
   
     if (approaches.length === 0) {
-        return "No approaches found. Add approaches first using riotplan_shaping_add_approach";
+        return "No approaches found. Add approaches first using riotplan_shaping({ action: \"add_approach\", ... })";
     }
   
     let comparison = "## Approach Comparison\n\n";
@@ -290,20 +347,18 @@ export async function shapingCompare(args: z.infer<typeof ShapingCompareSchema>)
     });
   
     // Log event
-    await logEvent(shapingPath, {
-        timestamp: formatTimestamp(),
-        type: 'approach_compared',
-        data: { approachCount: approaches.length },
-    });
+    await addShapingEvent(shapingPath, 'approach_compared', { approachCount: approaches.length });
   
     return comparison;
 }
 
 export async function shapingSelect(args: z.infer<typeof ShapingSelectSchema>): Promise<string> {
     const shapingPath = args.planId || process.cwd();
-    const shapingFile = join(shapingPath, "SHAPING.md");
-  
-    let content = await readFile(shapingFile, "utf-8");
+    const shapingDoc = await readShapingDoc(shapingPath);
+    if (!shapingDoc) {
+        throw new Error("Could not find SHAPING.md content. Start shaping first with riotplan_shaping({ action: \"start\" })");
+    }
+    let content = shapingDoc.content;
   
     // Add selection to Key Decisions
     const decisionsSection = "## Key Decisions";
@@ -316,17 +371,13 @@ export async function shapingSelect(args: z.infer<typeof ShapingSelectSchema>): 
         const decision = `\n**Selected Approach**: ${args.approach}\n\n**Reasoning**: ${args.reason}\n\n**Selected At**: ${formatTimestamp()}\n`;
         content = content.slice(0, insertPoint) + decision + content.slice(insertPoint);
     
-        await writeFile(shapingFile, content, "utf-8");
+        await saveShapingDoc(shapingPath, content, shapingDoc);
     }
   
     // Log event
-    await logEvent(shapingPath, {
-        timestamp: formatTimestamp(),
-        type: 'approach_selected',
-        data: {
-            approach: args.approach,
-            reason: args.reason,
-        },
+    await addShapingEvent(shapingPath, 'approach_selected', {
+        approach: args.approach,
+        reason: args.reason,
     });
   
     return `✅ Approach selected: ${args.approach}\n\n⚠️  IMPORTANT: You must now call riotplan_build to generate the detailed execution plan.\n\nThis will:\n- Create PROVENANCE.md (tracing how artifacts shaped the plan)\n- Create EXECUTION_PLAN.md (detailed step-by-step strategy)\n- Create SUMMARY.md (high-level overview)\n- Create STATUS.md (progress tracking)\n- Generate step files in plan/ directory\n- Transition to 'built' stage\n\nCall: riotplan_build({ planId: "${shapingPath}" })`;
@@ -404,44 +455,85 @@ export async function executeShapingSelect(args: any, context: ToolExecutionCont
 // Tool definitions for MCP
 import type { McpTool } from '../types.js';
 
-export const shapingStartTool: McpTool = {
-    name: "riotplan_shaping_start",
-    description: "Start shaping an idea. Transitions from idea to shaping stage.",
-    schema: ShapingStartSchema.shape,
-    execute: executeShapingStart,
-};
+const ShapingActionSchema = z.discriminatedUnion("action", [
+    z.object({
+        action: z.literal("start"),
+        planId: z.string().optional(),
+    }),
+    z.object({
+        action: z.literal("add_approach"),
+        planId: z.string().optional(),
+        name: z.string(),
+        description: z.string(),
+        tradeoffs: z.array(z.string()).optional(),
+        assumptions: z.array(z.string()).optional(),
+    }),
+    z.object({
+        action: z.literal("add_feedback"),
+        planId: z.string().optional(),
+        feedback: z.string(),
+    }),
+    z.object({
+        action: z.literal("add_evidence"),
+        planId: z.string().optional(),
+        evidencePath: z.string(),
+        description: z.string().optional(),
+        relatedTo: z.string().optional(),
+    }),
+    z.object({
+        action: z.literal("compare"),
+        planId: z.string().optional(),
+    }),
+    z.object({
+        action: z.literal("select"),
+        planId: z.string().optional(),
+        approach: z.string(),
+        reason: z.string(),
+    }),
+]);
 
-export const shapingAddApproachTool: McpTool = {
-    name: "riotplan_shaping_add_approach",
-    description: "Add an approach to consider during shaping. Include tradeoffs and assumptions.",
-    schema: ShapingAddApproachSchema.shape,
-    execute: executeShapingAddApproach,
-};
+const ShapingToolSchema = {
+    action: z
+        .enum(["start", "add_approach", "add_feedback", "add_evidence", "compare", "select"])
+        .describe("Shaping action to perform"),
+    planId: z.string().optional().describe("Plan identifier"),
+    name: z.string().optional().describe("Approach name when action=add_approach"),
+    description: z.string().optional().describe("Approach/evidence description"),
+    tradeoffs: z.array(z.string()).optional().describe("Tradeoffs when action=add_approach"),
+    assumptions: z.array(z.string()).optional().describe("Assumptions when action=add_approach"),
+    feedback: z.string().optional().describe("Feedback when action=add_feedback"),
+    evidencePath: z.string().optional().describe("Evidence path when action=add_evidence"),
+    relatedTo: z.string().optional().describe("Related approach when action=add_evidence"),
+    approach: z.string().optional().describe("Selected approach when action=select"),
+    reason: z.string().optional().describe("Selection reason when action=select"),
+} satisfies z.ZodRawShape;
 
-export const shapingAddFeedbackTool: McpTool = {
-    name: "riotplan_shaping_add_feedback",
-    description: "Add feedback about the current shaping. Use this to capture thoughts, concerns, or refinements.",
-    schema: ShapingAddFeedbackSchema.shape,
-    execute: executeShapingAddFeedback,
-};
+async function executeShaping(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const validated = ShapingActionSchema.parse(args);
+        switch (validated.action) {
+            case "start":
+                return executeShapingStart(validated, context);
+            case "add_approach":
+                return executeShapingAddApproach(validated, context);
+            case "add_feedback":
+                return executeShapingAddFeedback(validated, context);
+            case "add_evidence":
+                return executeShapingAddEvidence(validated, context);
+            case "compare":
+                return executeShapingCompare(validated, context);
+            case "select":
+                return executeShapingSelect(validated, context);
+        }
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
 
-export const shapingAddEvidenceTool: McpTool = {
-    name: "riotplan_shaping_add_evidence",
-    description: "Add evidence (documents, images, diagrams) to support decision-making during shaping.",
-    schema: ShapingAddEvidenceSchema.shape,
-    execute: executeShapingAddEvidence,
-};
-
-export const shapingCompareTool: McpTool = {
-    name: "riotplan_shaping_compare",
-    description: "Compare all approaches side-by-side to help make a decision.",
-    schema: ShapingCompareSchema.shape,
-    execute: executeShapingCompare,
-};
-
-export const shapingSelectTool: McpTool = {
-    name: "riotplan_shaping_select",
-    description: "Select an approach from shaping stage. After calling this, you MUST immediately call riotplan_build to generate the detailed execution plan with PROVENANCE.md, EXECUTION_PLAN.md, SUMMARY.md, and step files.",
-    schema: ShapingSelectSchema.shape,
-    execute: executeShapingSelect,
+export const shapingTool: McpTool = {
+    name: "riotplan_shaping",
+    description:
+        "Manage shaping-stage operations with action=start|add_approach|add_feedback|add_evidence|compare|select.",
+    schema: ShapingToolSchema,
+    execute: executeShaping,
 };

@@ -125,21 +125,24 @@ riotplan step complete 3 --notes "Finished early"
 
 ```typescript
 // Complete step with verification
-await riotplan_step_complete({
-    path: './my-plan',
+await riotplan_step({
+    action: 'complete',
+    planId: './my-plan',
     step: 3
 });
 
 // Force completion
-await riotplan_step_complete({
-    path: './my-plan',
+await riotplan_step({
+    action: 'complete',
+    planId: './my-plan',
     step: 3,
     force: true
 });
 
 // Skip verification
-await riotplan_step_complete({
-    path: './my-plan',
+await riotplan_step({
+    action: 'complete',
+    planId: './my-plan',
     step: 3,
     skipVerification: true
 });

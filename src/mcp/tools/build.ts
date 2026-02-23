@@ -1,27 +1,29 @@
 /**
- * Build Tool - Build plan from idea/shaping directory
- * 
- * Supports two generation modes:
- * - Agent mode: Uses an AgentLoop with read-only codebase tools for higher quality
- * - One-shot mode: Single LLM call (fallback when tools unavailable)
+ * Build Tool - Prepare caller-side generation instructions
+ *
+ * This tool no longer performs server-side AI generation or artifact writes.
+ * It returns deterministic instructions for the calling LLM to:
+ * 1) generate a plan JSON locally
+ * 2) write artifacts via explicit write tools
+ * 3) transition lifecycle to built when writes complete
  */
 
 import { z } from "zod";
-import { join, basename, dirname, resolve, relative, normalize, isAbsolute } from "node:path";
-import { readFile, writeFile, mkdir, rm, readdir as readdirAsync } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { join, dirname, resolve, relative, normalize, isAbsolute } from "node:path";
+import { readFile } from "node:fs/promises";
 import { readdirSync } from "node:fs";
-import { resolveDirectory, formatError, createSuccess, formatDate, ensurePlanManifest } from "./shared.js";
-import { transitionStage } from "./transition.js";
-import { generatePlan } from "../../ai/generator.js";
-import { generatePlanWithAgent } from "../../ai/agent-generator.js";
-import { loadProvider } from "../../ai/provider-loader.js";
+import { resolveDirectory, formatError, createSuccess } from "./shared.js";
 import { loadArtifacts } from "../../ai/artifacts.js";
-import { validatePlan } from "../../ai/validation.js";
-import { generateProvenanceMarkdown } from "../../ai/provenance.js";
-import { checkpointCreate } from "./history.js";
-import type { McpTool, ToolResult, ToolExecutionContext } from "../types.js";
+import {
+    buildPlanPrompt,
+    getPlanGenerationSystemPrompt,
+    PLAN_GENERATION_RESPONSE_SCHEMA,
+} from "../../ai/generator.js";
+import type { McpTool, ToolResult, ToolExecutionContext, BuildInstructionPayload } from "../types.js";
 import type { GenerationContext } from "../../ai/generator.js";
 import { readProjectBinding, resolveProjectContext } from "./project-binding-shared.js";
+import { createSqliteProvider } from "@kjerneverk/riotplan-format";
 
 /**
  * Project root indicator files (language-agnostic).
@@ -80,17 +82,67 @@ export function normalizeStepFilePaths(filesChanged: string[] | undefined, baseP
     return [...new Set(normalized)];
 }
 
-/**
- * Try to load read-only codebase tools for agent mode.
- * Returns null if tools are not available (e.g., in bundled MCP-only context).
- */
-async function loadCodebaseTools(): Promise<any[] | null> {
-    try {
-        const mod = await import('../../cli/tools/environment/index.js');
-        return mod.readOnlyEnvironmentTools || null;
-    } catch {
-        return null;
+function extractSectionContent(markdown: string, heading: string): string | null {
+    const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sectionMatch = markdown.match(new RegExp(`##\\s+${escapedHeading}\\s+([\\s\\S]+?)(?=\\n##\\s+|$)`));
+    const content = sectionMatch?.[1]?.trim() || '';
+    return content.length > 0 ? content : null;
+}
+
+function extractFirstSubstantialHeadingSection(markdown: string): string | null {
+    const headingPattern = /^##\s+(.+)$/gm;
+    let headingMatch = headingPattern.exec(markdown);
+    while (headingMatch) {
+        const heading = headingMatch[1].trim();
+        const sectionContent = extractSectionContent(markdown, heading);
+        if (sectionContent && sectionContent.length >= 20 && !/^_.*_$/.test(sectionContent)) {
+            return sectionContent;
+        }
+        headingMatch = headingPattern.exec(markdown);
     }
+    return null;
+}
+
+function extractFirstParagraph(markdown: string): string | null {
+    const lines = markdown
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+
+    const paragraphLines: string[] = [];
+    for (const line of lines) {
+        if (line.startsWith('#') || line.startsWith('- ') || line.startsWith('* ') || line.startsWith('|')) {
+            if (paragraphLines.length > 0) break;
+            continue;
+        }
+        if (/^_.*_$/.test(line)) continue;
+        paragraphLines.push(line);
+        if (paragraphLines.join(' ').length >= 20) {
+            return paragraphLines.join(' ').trim();
+        }
+    }
+    return paragraphLines.length > 0 ? paragraphLines.join(' ').trim() : null;
+}
+
+function extractDescriptionFromIdea(ideaContent: string): string | null {
+    return (
+        extractSectionContent(ideaContent, 'Core Concept') ||
+        extractSectionContent(ideaContent, 'Problem') ||
+        extractFirstSubstantialHeadingSection(ideaContent) ||
+        extractFirstParagraph(ideaContent)
+    );
+}
+
+function formatIdeaDiagnostic(planPath: string, artifacts: Awaited<ReturnType<typeof loadArtifacts>>): string {
+    const diagnostics = artifacts.artifactDiagnostics;
+    const names = (diagnostics?.detectedArtifacts || [])
+        .map((item) => `${item.type}:${item.filename}`)
+        .join(', ');
+    return (
+        `planId=${diagnostics?.planId || planPath}; ` +
+        `ideaArtifactFound=${diagnostics?.hasIdeaArtifact ?? Boolean(artifacts.ideaContent)}; ` +
+        `detectedArtifacts=${names || 'none'}`
+    );
 }
 
 // Tool schema
@@ -98,31 +150,113 @@ export const BuildSchema = z.object({
     planId: z.string().optional().describe("Plan identifier"),
     description: z.string().optional().describe("Optional plan description (defaults to IDEA.md content)"),
     steps: z.number().optional().describe("Optional number of steps to generate"),
-    provider: z.string().optional().describe("AI provider (anthropic, openai, gemini)"),
-    model: z.string().optional().describe("Specific model to use"),
-    agentMode: z.boolean().optional().describe("Use agent-powered generation (auto-detected if not specified)"),
+    includeCodebaseContext: z
+        .boolean()
+        .optional()
+        .describe("Include project-root context hints for caller-side model prompting (default: true)"),
 });
 
+function createWriteProtocol(isSqlitePlan: boolean): BuildInstructionPayload["writeProtocol"] {
+    return {
+        mode: isSqlitePlan ? "sqlite" : "directory",
+        requiredArtifacts: ["summary", "execution_plan", "status", "provenance", "steps"],
+        requiredTools: {
+            validate: "riotplan_build_validate_plan",
+            artifact: "riotplan_build_write_artifact",
+            step: "riotplan_build_write_step",
+            transition: "riotplan_transition",
+        },
+        sequence: [
+            "Call riotplan_build_validate_plan with generated plan JSON and capture validationStamp.",
+            "Call riotplan_build_write_artifact for SUMMARY.md (type=summary) with validationStamp.",
+            "Call riotplan_build_write_artifact for EXECUTION_PLAN.md (type=execution_plan) with validationStamp.",
+            "Call riotplan_build_write_artifact for STATUS.md (type=status) with validationStamp.",
+            "Write steps using riotplan_build_write_step in number order (set clearExisting=true on first step) with validationStamp.",
+            "Call riotplan_build_write_artifact for PROVENANCE.md (type=provenance) with validationStamp.",
+            "After all writes succeed, call riotplan_transition with stage='built'.",
+        ],
+        constraints: [
+            "All writes are explicit; riotplan_build never writes files.",
+            "Use project-relative paths in steps[*].filesChanged.",
+            "Do not transition to built before artifact and step writes complete.",
+            "Do not write any artifact unless riotplan_build_validate_plan returned success with a validationStamp.",
+        ],
+    };
+}
+
+function createValidationProtocol(projectRoot: string): BuildInstructionPayload["validationProtocol"] {
+    return {
+        requiredTopLevelFields: ["analysis", "summary", "approach", "successCriteria", "steps"],
+        requiredStepFields: [
+            "number",
+            "title",
+            "objective",
+            "background",
+            "tasks",
+            "acceptanceCriteria",
+            "testing",
+            "filesChanged",
+            "notes",
+        ],
+        filesChangedRule:
+            "Normalize all filesChanged entries as repository-relative paths before writing step files.",
+        filesChangedExamples: normalizeStepFilePaths(
+            ["./src/mcp/tools/build.ts", `${projectRoot}/src/ai/generator.ts`],
+            projectRoot,
+        ),
+        requiredGrounding: [
+            "Every IDEA constraint must appear in analysis.constraintAnalysis and in step-level provenance or notes.",
+            "If a selected approach exists, generated plan must explicitly implement that approach (analysis.approachAnalysis.selectedApproach).",
+            "Every evidence item should be referenced in analysis.evidenceAnalysis or step provenance.evidenceUsed.",
+        ],
+        preWriteGate: {
+            required: true,
+            tool: "riotplan_build_validate_plan",
+            stampField: "validationStamp",
+            reason: "Ensures generated output is grounded in all available plan context before persistence.",
+        },
+    };
+}
+
+function sha256(value: string): string {
+    return createHash("sha256").update(value, "utf-8").digest("hex");
+}
+
 // Tool implementation
-export async function buildPlan(args: z.infer<typeof BuildSchema>, context: ToolExecutionContext): Promise<string> {
+export async function buildPlan(
+    args: z.infer<typeof BuildSchema>,
+    context: ToolExecutionContext,
+): Promise<BuildInstructionPayload> {
     const planPath = resolveDirectory(args, context);
-    const lifecycleFile = join(planPath, "LIFECYCLE.md");
-    
-    // Read and verify LIFECYCLE.md
-    let lifecycle: string;
-    try {
-        lifecycle = await readFile(lifecycleFile, "utf-8");
-    } catch {
-        throw new Error(
-            `Could not read LIFECYCLE.md at ${lifecycleFile}. ` +
-            `This doesn't appear to be a valid idea/shaping directory. ` +
-            `Use 'riotplan_create' to create a new plan instead.`
-        );
+    const isSqlitePlan = planPath.endsWith(".plan");
+    let currentStage = "unknown";
+    let planName: string | undefined;
+
+    if (isSqlitePlan) {
+        const provider = createSqliteProvider(planPath);
+        const metadataResult = await provider.getMetadata();
+        await provider.close();
+        if (!metadataResult.success || !metadataResult.data) {
+            throw new Error(metadataResult.error || "Failed to read SQLite plan metadata");
+        }
+        currentStage = metadataResult.data.stage;
+        planName = metadataResult.data.name;
+    } else {
+        const lifecycleFile = join(planPath, "LIFECYCLE.md");
+        let lifecycle: string;
+        try {
+            lifecycle = await readFile(lifecycleFile, "utf-8");
+        } catch {
+            throw new Error(
+                `Could not read LIFECYCLE.md at ${lifecycleFile}. ` +
+                `This doesn't appear to be a valid idea/shaping directory. ` +
+                `Use 'riotplan_plan' with action='create' to create a new plan instead.`
+            );
+        }
+        const stageMatch = lifecycle.match(/\*\*Stage\*\*: `(\w+)`/);
+        currentStage = stageMatch ? stageMatch[1] : "unknown";
+        planName = planPath.split("/").pop() || "Plan";
     }
-    
-    // Extract current stage
-    const stageMatch = lifecycle.match(/\*\*Stage\*\*: `(\w+)`/);
-    const currentStage = stageMatch ? stageMatch[1] : "unknown";
     
     // Verify we're in idea or shaping stage
     if (currentStage !== "idea" && currentStage !== "shaping") {
@@ -144,16 +278,24 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
     // Prepare description for AI generation
     let description = args.description;
     if (!description) {
-        // Extract core concept from IDEA.md
+        // Extract description from idea artifact with fallbacks.
         if (artifacts.ideaContent) {
-            const conceptMatch = artifacts.ideaContent.match(/## Core Concept\s+([\s\S]+?)(?=\n## |$)/);
-            if (conceptMatch) {
-                description = conceptMatch[1].trim();
+            const extracted = extractDescriptionFromIdea(artifacts.ideaContent);
+            if (extracted) {
+                description = extracted;
             } else {
-                throw new Error("Could not extract description from IDEA.md and no description provided");
+                throw new Error(
+                    "Could not extract description from idea artifact and no description provided. " +
+                    `Diagnostics: ${formatIdeaDiagnostic(planPath, artifacts)}`
+                );
             }
         } else {
-            throw new Error("IDEA.md not found and no description provided");
+            throw new Error(
+                "Idea artifact not found and no description provided. " +
+                "Add idea content (IDEA.md for directory plans or idea file in SQLite) " +
+                "or pass description explicitly. " +
+                `Diagnostics: ${formatIdeaDiagnostic(planPath, artifacts)}`
+            );
         }
     }
     
@@ -165,30 +307,14 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
     if (artifacts.shapingContent) {
         fullContext += "\n\n--- SHAPING CONTEXT ---\n" + artifacts.shapingContent;
     }
-    
-    // Generate plan using AI
-    // Session-aware provider loading: will use sampling if available, otherwise direct API
-    const providerName = args.provider || 'anthropic';
-    let provider;
-    try {
-        provider = await loadProvider({
-            name: providerName,
-            apiKey: process.env[`${providerName.toUpperCase()}_API_KEY`],
-            session: context.session, // Pass session context for sampling detection
-        });
-    } catch {
-        throw new Error(
-            `AI provider not available. ` +
-            `Install @kjerneverk/execution-${providerName} and set ${providerName.toUpperCase()}_API_KEY environment variable. ` +
-            `Alternatively, use 'riotplan_step_add' to manually create plan steps.`
-        );
+    if (artifacts.lifecycleContent) {
+        fullContext += "\n\n--- LIFECYCLE CONTEXT ---\n" + artifacts.lifecycleContent;
     }
-    
+
     const generationContext: GenerationContext = {
-        planName: planPath.split('/').pop() || 'Plan',
+        planName: planName || "Plan",
         description: fullContext,
         stepCount: args.steps,
-        // Structured artifact fields for artifact-aware generation
         constraints: artifacts.constraints,
         questions: artifacts.questions,
         selectedApproach: artifacts.selectedApproach || undefined,
@@ -196,10 +322,9 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
         historyContext: artifacts.historyContext,
         ideaContent: artifacts.ideaContent || undefined,
         shapingContent: artifacts.shapingContent || undefined,
+        catalystContent: artifacts.catalystContent,
     };
-    
-    // Resolve project root for path portability and codebase context.
-    // Prefer explicit bound project context, then fall back to root detection from plan path.
+
     const binding = await readProjectBinding(planPath);
     const resolvedContext = await resolveProjectContext({
         planPath,
@@ -210,345 +335,155 @@ export async function buildPlan(args: z.infer<typeof BuildSchema>, context: Tool
     const projectRoot = resolvedContext.resolved && resolvedContext.projectRoot
         ? resolvedContext.projectRoot
         : findProjectRoot(planPath);
-    try {
-        const { queryIndexImpl, indexProjectImpl } = await import('../../cli/tools/environment/project-index.js');
-        // Ensure index exists (cache hit if explore already built it)
-        await indexProjectImpl({ path: projectRoot }, projectRoot);
-        // Get a summary of packages and key files
-        const packagesSummary = await queryIndexImpl({ path: projectRoot, query: 'packages' }, projectRoot);
-        generationContext.codebaseContext = `Project root: ${projectRoot}\n\n${packagesSummary}`;
-    } catch {
-        // Index not available — agent can still use tools to explore
+
+    const includeCodebaseContext = args.includeCodebaseContext ?? true;
+    if (includeCodebaseContext) {
+        generationContext.codebaseContext =
+            `Project root: ${projectRoot}\n` +
+            `Plan path: ${planPath}\n` +
+            `Use repository-relative file paths in filesChanged.`;
     }
-    
-    // Progress callback to show generation status
-    // Uses the terminal spinner's sub-message if available (CLI context),
-    // otherwise falls back to stderr dots (MCP context)
-    const hasSpinner = typeof context.progressCallback === 'function';
-    const onProgress = (event: { type: string; charsReceived?: number; message?: string }) => {
-        if (hasSpinner && event.message) {
-            // Update the terminal spinner's sub-message (no direct writes)
-            context.progressCallback!(0, null, event.message);
-        } else if (!hasSpinner && event.type === 'streaming' && event.charsReceived) {
-            process.stderr.write('.');
-        }
-    };
-    
-    // Determine whether to use agent mode
-    // Agent mode uses an AgentLoop with read-only codebase tools for higher quality plans
-    let useAgentMode = args.agentMode;
-    let codebaseTools: any[] | null = null;
-    
-    if (useAgentMode !== false) {
-        // Try to load codebase tools for agent mode
-        codebaseTools = await loadCodebaseTools();
-        if (useAgentMode === undefined) {
-            // Auto-detect: use agent mode if tools are available
-            useAgentMode = codebaseTools !== null && codebaseTools.length > 0;
-        }
-    }
-    
-    let generationResult;
-    let generationMode: string;
-    
-    if (useAgentMode && codebaseTools && codebaseTools.length > 0) {
-        // Agent-powered generation: multi-turn agent with codebase exploration
-        generationMode = 'agent';
-        onProgress({ type: 'started', message: `agent mode — exploring ${projectRoot}` });
-        
-        try {
-            generationResult = await generatePlanWithAgent(
-                generationContext,
-                provider,
-                codebaseTools,
-                { model: args.model, onProgress },
-                projectRoot,
-            );
-        } catch {
-            // Fall back to one-shot if agent fails
-            onProgress({ type: 'streaming', message: `agent failed, falling back to one-shot` });
-            generationMode = 'one-shot (agent fallback)';
-            generationResult = await generatePlan(generationContext, provider, {
-                model: args.model,
-                onProgress,
-            });
-        }
-    } else {
-        // One-shot generation: single LLM call (original behavior)
-        generationMode = 'one-shot';
-        generationResult = await generatePlan(generationContext, provider, {
-            model: args.model,
-            onProgress,
+
+    const systemPrompt = getPlanGenerationSystemPrompt();
+    const userPrompt = buildPlanPrompt(generationContext);
+    const coverage = {
+        planStage: currentStage,
+        includedArtifacts: [
+            {
+                id: "idea",
+                present: Boolean(artifacts.ideaContent),
+                includedInPrompt: Boolean(artifacts.ideaContent),
+                sizeBytes: artifacts.ideaContent ? Buffer.byteLength(artifacts.ideaContent, "utf-8") : 0,
+            },
+            {
+                id: "shaping",
+                present: Boolean(artifacts.shapingContent),
+                includedInPrompt: Boolean(artifacts.shapingContent),
+                sizeBytes: artifacts.shapingContent ? Buffer.byteLength(artifacts.shapingContent, "utf-8") : 0,
+            },
+            {
+                id: "lifecycle",
+                present: Boolean(artifacts.lifecycleContent),
+                includedInPrompt: Boolean(artifacts.lifecycleContent),
+                sizeBytes: artifacts.lifecycleContent ? Buffer.byteLength(artifacts.lifecycleContent, "utf-8") : 0,
+            },
+            {
+                id: "constraints",
+                present: artifacts.constraints.length > 0,
+                includedInPrompt: artifacts.constraints.length > 0,
+                itemCount: artifacts.constraints.length,
+            },
+            {
+                id: "questions",
+                present: artifacts.questions.length > 0,
+                includedInPrompt: artifacts.questions.length > 0,
+                itemCount: artifacts.questions.length,
+            },
+            {
+                id: "selectedApproach",
+                present: Boolean(artifacts.selectedApproach),
+                includedInPrompt: Boolean(artifacts.selectedApproach),
+            },
+            {
+                id: "evidence",
+                present: artifacts.evidence.length > 0,
+                includedInPrompt: artifacts.evidence.length > 0,
+                itemCount: artifacts.evidence.length,
+                sizeBytes: artifacts.evidence.reduce((acc, entry) => acc + Buffer.byteLength(entry.content || "", "utf-8"), 0),
+            },
+            {
+                id: "history",
+                present: artifacts.historyContext.totalEvents > 0,
+                includedInPrompt: artifacts.historyContext.totalEvents > 0,
+                itemCount: artifacts.historyContext.totalEvents,
+            },
+            {
+                id: "catalysts",
+                present: Boolean(artifacts.catalystContent?.appliedCatalysts?.length),
+                includedInPrompt: Boolean(artifacts.catalystContent?.appliedCatalysts?.length),
+                itemCount: artifacts.catalystContent?.appliedCatalysts?.length || 0,
+            },
+            {
+                id: "codebaseContext",
+                present: includeCodebaseContext,
+                includedInPrompt: includeCodebaseContext,
+                sizeBytes: generationContext.codebaseContext
+                    ? Buffer.byteLength(generationContext.codebaseContext, "utf-8")
+                    : 0,
+            },
+        ],
+        coverageCounts: {
+            constraints: artifacts.constraints.length,
+            questions: artifacts.questions.length,
+            evidence: artifacts.evidence.length,
+            historyEvents: artifacts.historyContext.totalEvents,
+            catalysts: artifacts.catalystContent?.appliedCatalysts?.length || 0,
+        },
+    } satisfies BuildInstructionPayload["contextCoverage"];
+
+    const missingContext: BuildInstructionPayload["missingContext"] = [];
+    if (!artifacts.ideaContent) {
+        missingContext.push({
+            artifact: "idea",
+            severity: "required",
+            reason: "IDEA context is required to ground plan generation.",
         });
     }
-    
-    const { plan: result, tiering } = generationResult;
-    
-    // Run validation
-    const validation = validatePlan(result, generationContext);
-    
-    // Build tiering summary for return message
-    const tieringSummary: string[] = [];
-    if (tiering) {
-        tieringSummary.push(`Token budget: ${tiering.totalEstimatedTokens} estimated${tiering.budgetExceeded ? ' (exceeded)' : ''}`);
-        if (tiering.evidenceTiered.full.length > 0) {
-            tieringSummary.push(`Evidence (full): ${tiering.evidenceTiered.full.join(', ')}`);
-        }
-        if (tiering.evidenceTiered.summarized.length > 0) {
-            tieringSummary.push(`Evidence (summarized): ${tiering.evidenceTiered.summarized.join(', ')}`);
-        }
-        if (tiering.evidenceTiered.listOnly.length > 0) {
-            tieringSummary.push(`Evidence (preview only): ${tiering.evidenceTiered.listOnly.join(', ')}`);
-        }
-        if (tiering.historyAbbreviated) {
-            tieringSummary.push(`History: abbreviated`);
-        }
+    if (currentStage === "shaping" && !artifacts.shapingContent) {
+        missingContext.push({
+            artifact: "shaping",
+            severity: "required",
+            reason: "SHAPING context is required when lifecycle stage is shaping.",
+        });
     }
-    
-    // Create plan files in existing directory
-    
-    // 1. Create SUMMARY.md
-    let summaryContent = `# ${generationContext.planName}
-
-## Overview
-
-${result.summary}
-
-## Goals
-
-${description}
-
-## Scope
-
-### In Scope
-
-- Implementation of planned features
-- Testing and validation
-- Documentation updates
-
-### Out of Scope
-
-- (To be determined during execution)
-
-## Success Criteria
-
-${result.steps.map((s, i) => `- [ ] Step ${i + 1}: ${s.title}`).join('\n')}`;
-
-    // Add catalyst section if artifacts contain catalyst info
-    if (artifacts.catalystContent?.appliedCatalysts && artifacts.catalystContent.appliedCatalysts.length > 0) {
-        summaryContent += `
-
-## Catalysts Applied
-
-The following catalysts shaped this plan:
-
-${artifacts.catalystContent.appliedCatalysts.map(id => `- ${id}`).join('\n')}`;
+    if (!artifacts.lifecycleContent) {
+        missingContext.push({
+            artifact: "lifecycle",
+            severity: "recommended",
+            reason: "Lifecycle history helps preserve decision context.",
+        });
     }
 
-    summaryContent += `
-
----
-
-*Plan created: ${formatDate()}*
-`;
-    
-    await writeFile(join(planPath, "SUMMARY.md"), summaryContent, "utf-8");
-    
-    // 2. Create EXECUTION_PLAN.md
-    const executionContent = `# Execution Plan: ${generationContext.planName}
-
-## Strategy
-
-${result.approach}
-
-## Prerequisites
-
-- [ ] Understanding of requirements from IDEA.md
-${artifacts.shapingContent ? '- [ ] Review selected approach from SHAPING.md\n' : ''}
-## Steps
-
-| Step | Name | Description |
-|------|------|-------------|
-${result.steps.map(s => `| ${s.number.toString().padStart(2, '0')} | ${s.title} | ${s.objective} |`).join('\n')}
-
-## Quality Gates
-
-After each step:
-- [ ] Code compiles/runs
-- [ ] Tests pass
-- [ ] Documentation updated
-
-## Notes
-
-- Follow the step-by-step approach
-- Update STATUS.md as you progress
-- Use riotplan_step_start and riotplan_step_complete for tracking
-
----
-
-*Last updated: ${formatDate()}*
-`;
-    
-    await writeFile(join(planPath, "EXECUTION_PLAN.md"), executionContent, "utf-8");
-    
-    // 3. Create STATUS.md
-    const statusContent = `# ${generationContext.planName} Status
-
-## Current State
-
-| Field | Value |
-|-------|-------|
-| **Status** | ⬜ PLANNING |
-| **Current Step** | - |
-| **Last Completed** | - |
-| **Started** | - |
-| **Last Updated** | ${formatDate()} |
-| **Progress** | 0% (0/${result.steps.length} steps) |
-
-## Step Progress
-
-| Step | Name | Status | Started | Completed | Notes |
-|------|------|--------|---------|-----------|-------|
-${result.steps.map(s => `| ${s.number.toString().padStart(2, '0')} | ${s.title} | ⬜ | - | - | |`).join('\n')}
-
-## Blockers
-
-None currently.
-
-## Issues
-
-None currently.
-
-## Notes
-
-This plan was built from ${currentStage} stage.
-
----
-
-## Execution Tracking
-
-**To execute this plan with RiotPlan tracking:**
-
-1. Use \`riotplan_step_start({ path, step: N })\` **before** starting each step
-2. Complete the work for the step
-3. Use \`riotplan_step_complete({ path, step: N })\` **after** completing each step
-
-**For AI Assistants:** When executing this plan, always use RiotPlan's tracking tools. Don't just do the work - use \`riotplan_step_start\` and \`riotplan_step_complete\` to track progress. This ensures STATUS.md stays up-to-date and the plan can be resumed later.
-
----
-
-*Last updated: ${formatDate()}*
-`;
-    
-    await writeFile(join(planPath, "STATUS.md"), statusContent, "utf-8");
-    
-    // 4. Create plan/ directory with step files
-    // Checkpoint previous build before replacing (so it's recoverable)
-    const planDir = join(planPath, "plan");
-    let checkpointName: string | undefined;
-    try {
-        const existingSteps = await readdirAsync(planDir).catch(() => []);
-        if (existingSteps.length > 0) {
-            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            checkpointName = `pre-build-${ts}`;
-            await checkpointCreate({
-                planId: planPath,
-                name: checkpointName,
-                message: `Auto-checkpoint before rebuild (${existingSteps.length} step files)`,
-                capturePrompt: false,
-            });
-        }
-    } catch { /* checkpoint is best-effort */ }
-    // Now clean and recreate
-    try {
-        await rm(planDir, { recursive: true, force: true });
-    } catch { /* directory may not exist yet */ }
-    await mkdir(planDir, { recursive: true });
-    
-    for (const step of result.steps) {
-        const stepNum = step.number.toString().padStart(2, '0');
-        const stepFile = join(planDir, `${stepNum}-${step.title.toLowerCase().replace(/\s+/g, '-')}.md`);
-        const filesChanged = normalizeStepFilePaths(step.filesChanged, projectRoot);
-        
-        const stepContent = `# Step ${stepNum}: ${step.title}
-
-## Objective
-
-${step.objective}
-
-## Background
-
-${step.background || '_Add background context..._'}
-
-## Tasks
-
-${step.tasks && step.tasks.length > 0 ? step.tasks.map((t, i) => `### ${i + 1}. ${t.id}\n\n${t.description || '_Add task details..._'}`).join('\n\n') : '_Add specific tasks..._'}
-
-## Acceptance Criteria
-
-${step.acceptanceCriteria && step.acceptanceCriteria.length > 0 ? step.acceptanceCriteria.map(c => `- [ ] ${c}`).join('\n') : '- [ ] _Add acceptance criteria..._'}
-
-## Testing
-
-${step.testing || '_Add testing approach..._'}
-
-## Files Changed
-
-${filesChanged.length > 0 ? filesChanged.map(f => `- \`${f}\``).join('\n') : '- _List files that will be modified..._'}
-
-## Notes
-
-${step.notes || '_Add any additional notes..._'}
-`;
-        
-        await writeFile(stepFile, stepContent, "utf-8");
+    const artifactSha256: Record<string, string> = {};
+    if (artifacts.ideaContent) artifactSha256.idea = sha256(artifacts.ideaContent);
+    if (artifacts.shapingContent) artifactSha256.shaping = sha256(artifacts.shapingContent);
+    if (artifacts.lifecycleContent) artifactSha256.lifecycle = sha256(artifacts.lifecycleContent);
+    artifactSha256.constraints = sha256(JSON.stringify(artifacts.constraints));
+    artifactSha256.questions = sha256(JSON.stringify(artifacts.questions));
+    artifactSha256.selectedApproach = sha256(JSON.stringify(artifacts.selectedApproach || null));
+    artifactSha256.evidence = sha256(
+        JSON.stringify(
+            artifacts.evidence.map((entry) => ({ name: entry.name, size: entry.size, content: entry.content })),
+        ),
+    );
+    artifactSha256.history = sha256(JSON.stringify(artifacts.historyContext));
+    artifactSha256.catalysts = sha256(JSON.stringify(artifacts.catalystContent || null));
+    if (generationContext.codebaseContext) {
+        artifactSha256.codebaseContext = sha256(generationContext.codebaseContext);
     }
-    
-    // 5. Create PROVENANCE.md
-    const provenanceContent = generateProvenanceMarkdown({
-        plan: result,
-        context: generationContext,
-        validation,
-        tiering,
-        generatedAt: new Date(),
-    });
-    await writeFile(join(planPath, "PROVENANCE.md"), provenanceContent, "utf-8");
-    
-    // 6. Ensure plan.yaml manifest exists
-    const planDirName = basename(planPath);
-    const manifestCreated = await ensurePlanManifest(planPath, {
-        id: planDirName,
-        title: generationContext.planName,
-        catalysts: artifacts.catalystContent?.appliedCatalysts,
-    });
-    
-    // 7. Transition to "built" stage
-    await transitionStage({
+
+    return {
         planId: planPath,
-        stage: "built",
-        reason: `Plan built from ${currentStage} stage with ${result.steps.length} steps`,
-    }, context);
-    
-    const validationSummary = validation.allWarnings.length > 0 
-        ? `⚠️  Validation warnings: ${validation.allWarnings.length} (see PROVENANCE.md)`
-        : `✅ Validation: all checks passed`;
-    
-    const tieringInfo = tieringSummary.length > 0 
-        ? `\n\nToken Budget:\n${tieringSummary.map(s => `  - ${s}`).join('\n')}`
-        : '';
-    
-    const manifestInfo = manifestCreated ? `- Created plan.yaml manifest\n` : '';
-    
-    return `✅ Plan built successfully!\n\n` +
-        `- Generated ${result.steps.length} steps (${generationMode} mode)\n` +
-        `- Created SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md\n` +
-        `- Created plan/ directory with step files\n` +
-        (checkpointName ? `- Previous build checkpointed as "${checkpointName}"\n` : '') +
-        manifestInfo +
-        `- Transitioned to 'built' stage\n` +
-        `- Preserved existing IDEA.md, SHAPING.md, and history\n` +
-        `- ${validationSummary}${tieringInfo}\n\n` +
-        `Next: Use 'riotplan_step_start' to begin execution`;
+        planName: generationContext.planName,
+        currentStage,
+        generationInstructions: {
+            systemPrompt,
+            userPrompt,
+            responseSchema: PLAN_GENERATION_RESPONSE_SCHEMA,
+            expectedStepCount: generationContext.stepCount || 5,
+        },
+        generationContext,
+        contextCoverage: coverage,
+        missingContext,
+        inclusionProof: {
+            planId: planPath,
+            generatedAt: new Date().toISOString(),
+            promptSha256: sha256(`${systemPrompt}\n\n${userPrompt}`),
+            artifactSha256,
+        },
+        writeProtocol: createWriteProtocol(isSqlitePlan),
+        validationProtocol: createValidationProtocol(projectRoot),
+    };
 }
 
 // Tool executor
@@ -558,8 +493,11 @@ async function executeBuild(
 ): Promise<ToolResult> {
     try {
         const validated = BuildSchema.parse(args);
-        const message = await buildPlan(validated, context);
-        return createSuccess({ built: true }, message);
+        const instructions = await buildPlan(validated, context);
+        return createSuccess(
+            instructions,
+            "Build instructions prepared. No files were written. Generate plan JSON locally, write artifacts via build-write tools, then call riotplan_transition to move to built.",
+        );
     } catch (error) {
         return formatError(error);
     }
@@ -569,19 +507,18 @@ async function executeBuild(
 export const buildTool: McpTool = {
     name: 'riotplan_build',
     description:
-        '[RiotPlan] You are in plan development mode. Capture insights using RiotPlan tools—do not implement code changes. Ask before transitioning stages. ' +
-        'Build a detailed plan from idea/shaping artifacts using AI generation. ' +
-        'Reads ALL plan artifacts (IDEA.md, SHAPING.md, evidence, history, constraints) ' +
-        'and generates steps grounded in the artifacts. Produces PROVENANCE.md showing ' +
-        'how artifacts shaped the plan. Uses smart tiering for large artifact sets. ' +
-        'Creates SUMMARY.md, EXECUTION_PLAN.md, STATUS.md, PROVENANCE.md, and plan/ directory with steps.',
+        '[RiotPlan] Prepare caller-side plan generation instructions from idea/shaping artifacts. ' +
+        'This tool does not run server-side AI, does not write plan files, and does not transition lifecycle. ' +
+        'It returns a canonical system prompt, user prompt, JSON schema, generation context, context coverage proof, and write/validation protocols ' +
+        'so the calling LLM can generate steps locally, prove grounding, and persist artifacts explicitly through gated writes.',
     schema: {
         planId: z.string().optional().describe('Plan identifier (optional, defaults to current plan context)'),
         description: z.string().optional().describe('Optional plan description (defaults to IDEA.md content)'),
         steps: z.number().optional().describe('Optional number of steps to generate'),
-        provider: z.string().optional().describe('AI provider (anthropic, openai, gemini)'),
-        model: z.string().optional().describe('Specific model to use'),
-        agentMode: z.boolean().optional().describe('Use agent-powered generation with codebase exploration (auto-detected if not specified)'),
+        includeCodebaseContext: z
+            .boolean()
+            .optional()
+            .describe('Include project-root context hints for caller-side prompting (default: true)'),
     },
     execute: executeBuild,
 };

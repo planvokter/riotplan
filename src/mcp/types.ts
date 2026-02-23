@@ -82,7 +82,12 @@ export interface RiotplanUri {
         | 'analysis'
         // Ideation context resources
         | 'idea'
+        | 'artifact'
+        | 'execution-plan'
+        | 'summary'
+        | 'provenance'
         | 'timeline'
+        | 'history'
         | 'prompts'
         | 'prompt'
         | 'evidence'
@@ -153,6 +158,72 @@ export interface ToolResult {
         completedSteps: string[];
     };
     logs?: string[];
+}
+
+export interface BuildInstructionPayload {
+    planId: string;
+    planName: string;
+    currentStage: string;
+    generationInstructions: {
+        systemPrompt: string;
+        userPrompt: string;
+        responseSchema: unknown;
+        expectedStepCount: number;
+    };
+    generationContext: unknown;
+    contextCoverage: {
+        planStage: string;
+        includedArtifacts: Array<{
+            id: string;
+            present: boolean;
+            includedInPrompt: boolean;
+            sizeBytes?: number;
+            itemCount?: number;
+        }>;
+        coverageCounts: {
+            constraints: number;
+            questions: number;
+            evidence: number;
+            historyEvents: number;
+            catalysts: number;
+        };
+    };
+    missingContext: Array<{
+        artifact: string;
+        severity: "required" | "recommended";
+        reason: string;
+    }>;
+    inclusionProof: {
+        planId: string;
+        generatedAt: string;
+        promptSha256: string;
+        artifactSha256: Record<string, string>;
+    };
+    writeProtocol: {
+        mode: "directory" | "sqlite";
+        requiredArtifacts: Array<"summary" | "execution_plan" | "status" | "provenance" | "steps">;
+        requiredTools: {
+            validate: string;
+            artifact: string;
+            step: string;
+            transition: string;
+        };
+        sequence: string[];
+        constraints: string[];
+    };
+    validationProtocol: {
+        requiredTopLevelFields: string[];
+        requiredStepFields: string[];
+        filesChangedRule: string;
+        filesChangedExamples: string[];
+        requiredGrounding: string[];
+        preWriteGate: {
+            required: boolean;
+            tool: string;
+            stampField: string;
+            reason: string;
+        };
+    };
 }
 
 // ============================================================================

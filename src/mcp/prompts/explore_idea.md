@@ -117,7 +117,7 @@ A response with headers like "### Current State", "### Core Concept", "### Selec
 Once you have both code and description, create the idea immediately:
 
 ```
-riotplan_idea_create({
+riotplan_idea({
   code: "extracted-or-provided-code",
   description: "extracted or provided description"
 })
@@ -238,7 +238,7 @@ As the user responds, capture their thinking in TWO ways:
 When the user provides detailed responses, especially voice transcriptions or long explanations, capture the FULL TEXT as narrative:
 
 ```
-riotplan_idea_add_narrative({
+riotplan_idea({
   content: "[User's complete response, verbatim or paraphrased if spoken]",
   source: "voice",  // or "typing", "paste", "import"
   context: "User explaining document type requirements"
@@ -251,28 +251,28 @@ After capturing the narrative, extract key points into structured categories:
 
 **For thoughts/notes:**
 ```
-riotplan_idea_add_note({
+riotplan_idea({
   note: "User's thought or observation"
 })
 ```
 
 **For constraints:**
 ```
-riotplan_idea_add_constraint({
+riotplan_idea({
   constraint: "Must work on mobile"
 })
 ```
 
 **For questions:**
 ```
-riotplan_idea_add_question({
+riotplan_idea({
   question: "How will this integrate with existing API?"
 })
 ```
 
 **For evidence:**
 ```
-riotplan_idea_add_evidence({
+riotplan_idea({
   evidencePath: "./path/to/diagram.png",
   description: "Architecture diagram showing current state"
 })
@@ -303,10 +303,10 @@ When you see these, the user is asking for research. Your findings MUST be captu
 
 #### Capturing Research Findings
 
-After you investigate and find information, immediately capture it using `riotplan_idea_add_evidence` with **full metadata**:
+After you investigate and find information, immediately capture it using `riotplan_idea` with **full metadata**:
 
 ```
-riotplan_idea_add_evidence({
+riotplan_idea({
   description: "Clear description of what was found",
   content: "The actual findings - code snippets, documentation text, analysis, etc.",
   source: "Where it came from (e.g., 'codebase analysis', 'web search', 'documentation')",
@@ -332,7 +332,7 @@ riotplan_idea_add_evidence({
 
 **You**: *Immediately captures evidence:*
 ```
-riotplan_idea_add_evidence({
+riotplan_idea({
   description: "Microsoft Writing Style Guide - Voice and Tone",
   content: "Key principles from Microsoft Writing Style Guide:\n\n- Use conversational, natural language\n- Be warm and relaxed without being frivolous\n- Use contractions (it's, you're, we're)\n- Address the reader directly (you, your)\n- Avoid jargon and overly technical terms\n- Be brief and get to the point\n\nSource: https://learn.microsoft.com/en-us/style-guide/brand-voice-above-all-simple-human",
   source: "web search",
@@ -417,12 +417,12 @@ After exploration, ask:
 
 **If ready to shape:**
 ```
-riotplan_shaping_start()
+riotplan_shaping({ action: "start" })
 ```
 
 **If not viable:**
 ```
-riotplan_idea_kill({
+riotplan_idea({
   reason: "Not feasible due to X"
 })
 ```
@@ -493,7 +493,7 @@ Which resonates with you? Or should we explore other directions?
 **User**: `/riotplan/explore_idea real-time-notifications Add push notifications for important updates`
 
 **AI**: *Extracts code="real-time-notifications", description="Add push notifications for important updates"*
-*Calls riotplan_idea_create immediately*
+*Calls riotplan_idea immediately*
 
 **AI**: "Let's explore this idea. What's driving the need for push notifications? What constraints should we consider?"
 
@@ -502,7 +502,7 @@ Which resonates with you? Or should we explore other directions?
 **User**: `/riotplan/explore_idea I want to add notifications`
 
 **AI**: *Extracts description="I want to add notifications", derives code="add-notifications"*
-*Calls riotplan_idea_create immediately*
+*Calls riotplan_idea immediately*
 
 **AI**: "Let's explore this notification idea. What's driving this? What problem does it solve?"
 
@@ -515,7 +515,7 @@ Which resonates with you? Or should we explore other directions?
 **User**: "I'm thinking about real-time notifications for users"
 
 **AI**: *Extracts code="real-time-notifications", description="real-time notifications for users"*
-*Calls riotplan_idea_create*
+*Calls riotplan_idea*
 
 **AI**: "Great! Let's explore this. What's driving the need for real-time notifications?"
 
@@ -525,7 +525,7 @@ Which resonates with you? Or should we explore other directions?
 
 **AI**: *Captures full narrative first:*
 ```
-riotplan_idea_add_narrative({
+riotplan_idea({
   content: "Users miss important updates. They have to refresh constantly. It's frustrating for them and we're getting complaints. I think we need some kind of push notification system but I'm not sure if it should be in-app only or also email.",
   source: "typing",
   context: "User explaining the problem driving this idea"
@@ -534,7 +534,7 @@ riotplan_idea_add_narrative({
 
 *Then adds structured note:*
 ```
-riotplan_idea_add_note({
+riotplan_idea({
   note: "Problem: Users missing updates, forced to refresh manually. Considering push notifications (in-app vs email unclear)"
 })
 ```
@@ -556,7 +556,7 @@ riotplan_idea_add_note({
 **User**: "I want to add more notes about the heartbeat design"
 
 **AI**: "Sure, tell me about the heartbeat design."
-*Uses riotplan_idea_add_note to add new notes as the user discusses*
+*Uses riotplan_idea to add new notes as the user discusses*
 
 ## Anti-Patterns
 

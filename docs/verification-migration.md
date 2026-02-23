@@ -36,8 +36,9 @@ riotplan step complete 3 --skip-verification  # Skip entirely
 ### New MCP Tool Parameters
 
 ```typescript
-riotplan_step_complete({
-    path: './plan',
+riotplan_step({
+    action: 'complete',
+    planId: './plan',
     step: 3,
     force: true,              // New: bypass verification
     skipVerification: true    // New: skip verification

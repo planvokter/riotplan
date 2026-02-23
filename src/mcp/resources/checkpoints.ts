@@ -6,8 +6,35 @@
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 
 export async function readCheckpointsListResource(planPath: string): Promise<any> {
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        const checkpointsResult = await provider.getCheckpoints();
+        await provider.close();
+        if (!checkpointsResult.success || !checkpointsResult.data) {
+            return {
+                checkpoints: [],
+                count: 0,
+                type: 'checkpoints_list',
+                note: 'No checkpoints found',
+            };
+        }
+        const checkpoints = checkpointsResult.data
+            .map((checkpoint) => ({
+                name: checkpoint.name,
+                file: `${checkpoint.name}.json`,
+                created: checkpoint.createdAt,
+            }))
+            .sort((a, b) => Date.parse(String(b.created)) - Date.parse(String(a.created)));
+        return {
+            checkpoints,
+            count: checkpoints.length,
+            type: 'checkpoints_list',
+        };
+    }
+
     const checkpointsDir = join(planPath, '.history', 'checkpoints');
     
     try {
@@ -49,6 +76,21 @@ export async function readCheckpointsListResource(planPath: string): Promise<any
 }
 
 export async function readCheckpointResource(planPath: string, checkpointName: string): Promise<any> {
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        const checkpointResult = await provider.getCheckpoint(checkpointName);
+        await provider.close();
+        if (!checkpointResult.success || !checkpointResult.data) {
+            throw new Error(`Checkpoint not found: ${checkpointName}`);
+        }
+        return {
+            name: checkpointName,
+            checkpoint: checkpointResult.data,
+            prompt: null,
+            type: 'checkpoint',
+        };
+    }
+
     const checkpointPath = join(planPath, '.history', 'checkpoints', `${checkpointName}.json`);
     const promptPath = join(planPath, '.history', 'prompts', `${checkpointName}.md`);
     

@@ -48,13 +48,14 @@ function isPlanDirectorySync(dirPath: string): boolean {
 function findPlanById(baseDir: string, planId: string, maxDepth = 4): string | null {
     const normalized = planId.trim();
     if (!normalized) return null;
+    const normalizedLower = normalized.toLowerCase();
 
     const directCandidates = [
+        resolve(baseDir, `${normalized}.plan`),
         resolve(baseDir, normalized),
         resolve(baseDir, 'plans', normalized),
         resolve(baseDir, 'done', normalized),
         resolve(baseDir, 'hold', normalized),
-        resolve(baseDir, `${normalized}.plan`),
     ];
 
     for (const candidate of directCandidates) {
@@ -94,7 +95,12 @@ function findPlanById(baseDir: string, planId: string, maxDepth = 4): string | n
 
             if (stats.isFile() && entry.endsWith('.plan')) {
                 const name = basename(entry, '.plan');
-                if (name === normalized || name.startsWith(`${normalized}-`) || name.endsWith(`-${normalized}`)) {
+                const lowerName = name.toLowerCase();
+                if (
+                    lowerName === normalizedLower ||
+                    lowerName.startsWith(`${normalizedLower}-`) ||
+                    lowerName.endsWith(`-${normalizedLower}`)
+                ) {
                     return fullPath;
                 }
             }

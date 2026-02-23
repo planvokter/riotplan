@@ -26,9 +26,9 @@ For any information marked as "[code]", "[description]", "[project-id]", or "[st
 
 ## Step 3: Create the Plan Using MCP Tools
 
-IMPORTANT: Use the `riotplan_create` MCP tool to create the plan. DO NOT shell out to CLI commands.
+IMPORTANT: Use the `riotplan_plan` MCP tool to create the plan. DO NOT shell out to CLI commands.
 
-Once you have all required information (code and description), call the `riotplan_create` tool:
+Once you have all required information (code and description), call the `riotplan_plan` tool:
 
 ```
 {
@@ -85,7 +85,7 @@ If validation fails, report the issues to the user.
 
 Inform the user that they can:
 - Review the generated plan files
-- Start the first step using `riotplan_step_start`
+- Start the first step using `riotplan_step` with `action: "start"`
 - Track progress using `riotplan_status`
 - Add or modify steps as needed
 
@@ -108,7 +108,7 @@ You should:
    - "Which project should this plan be associated with? (optional)"
    - "How many steps would you like? I recommend 8-10 for a system like this."
 
-2. Once you have the information, call `riotplan_create`:
+2. Once you have the information, call `riotplan_plan`:
    ```
    {
      "code": "dog-tracker",

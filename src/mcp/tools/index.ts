@@ -7,106 +7,67 @@
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 
 // Import all tool definitions (no execute functions needed - they're on the tool objects)
-import { createTool } from './create.js';
 import { statusTool } from './status.js';
 import {
-    stepListTool,
-    stepStartTool,
-    stepCompleteTool,
-    stepAddTool,
-    stepRemoveTool,
-    stepMoveTool,
+    stepTool,
 } from './step.js';
 import { validateTool } from './validate.js';
 import { generateTool } from './generate.js';
 import {
-    ideaCreateTool,
-    ideaAddNoteTool,
-    ideaAddConstraintTool,
-    ideaAddQuestionTool,
-    ideaAddEvidenceTool,
-    ideaAddNarrativeTool,
-    ideaKillTool,
-    ideaSetContentTool,
+    ideaTool,
 } from './idea.js';
 import {
-    shapingStartTool,
-    shapingAddApproachTool,
-    shapingAddFeedbackTool,
-    shapingAddEvidenceTool,
-    shapingCompareTool,
-    shapingSelectTool,
+    shapingTool,
 } from './shaping.js';
 import {
-    checkpointCreateTool,
-    checkpointListTool,
-    checkpointShowTool,
-    checkpointRestoreTool,
+    checkpointTool,
     historyShowTool,
 } from './history.js';
 import { transitionTool } from './transition.js';
 import { buildTool } from './build.js';
+import { buildValidatePlanTool, buildWriteArtifactTool, buildWriteStepTool } from './build-write.js';
 import { generateRuleTool } from './generate-rule.js';
 import { readContextTool } from './context.js';
+import { evidenceTool } from './evidence.js';
 import {
-    catalystListTool,
-    catalystShowTool,
-    catalystAssociateTool,
+    catalystTool,
 } from './catalyst.js';
 import { stepReflectTool } from './reflect.js';
 import { generateRetrospectiveTool } from './retrospective.js';
 import { backfillManifestsTool } from './backfill-manifests.js';
-import { switchPlanTool, listPlansTool } from './switch.js';
+import { planTool, listPlansTool } from './switch.js';
 import { bindProjectTool, getProjectBindingTool, resolveProjectContextTool } from './project.js';
 
 /**
  * Tool definitions array
  */
 export const tools: McpTool[] = [
-    createTool,
     statusTool,
-    stepListTool,
-    stepStartTool,
-    stepCompleteTool,
-    stepAddTool,
-    stepRemoveTool,
-    stepMoveTool,
+    stepTool,
     validateTool,
     generateTool,
     // Idea tools
-    ideaCreateTool,
-    ideaAddNoteTool,
-    ideaAddConstraintTool,
-    ideaAddQuestionTool,
-    ideaAddEvidenceTool,
-    ideaAddNarrativeTool,
-    ideaKillTool,
-    ideaSetContentTool,
+    ideaTool,
     // Shaping tools
-    shapingStartTool,
-    shapingAddApproachTool,
-    shapingAddFeedbackTool,
-    shapingAddEvidenceTool,
-    shapingCompareTool,
-    shapingSelectTool,
+    shapingTool,
     // History and checkpoint tools
-    checkpointCreateTool,
-    checkpointListTool,
-    checkpointShowTool,
-    checkpointRestoreTool,
+    checkpointTool,
     historyShowTool,
     // Transition tool
     transitionTool,
     // Build tool
     buildTool,
+    buildValidatePlanTool,
+    buildWriteArtifactTool,
+    buildWriteStepTool,
     // Generate rule tool
     generateRuleTool,
     // Context tool
     readContextTool,
+    // Structured evidence writer
+    evidenceTool,
     // Catalyst tools
-    catalystListTool,
-    catalystShowTool,
-    catalystAssociateTool,
+    catalystTool,
     // Reflection tool
     stepReflectTool,
     // Retrospective tool
@@ -114,7 +75,7 @@ export const tools: McpTool[] = [
     // Backfill tool
     backfillManifestsTool,
     // Plan switching tools
-    switchPlanTool,
+    planTool,
     listPlansTool,
     // Project binding tools
     bindProjectTool,

@@ -7,11 +7,20 @@
 
 import { join } from 'node:path';
 import { readFile, readdir, stat } from 'node:fs/promises';
+import { createSqliteProvider, type PlanFileType } from '@kjerneverk/riotplan-format';
 
 export interface ArtifactBundle {
     ideaContent: string | null;
     shapingContent: string | null;
     lifecycleContent: string | null;
+    artifactDiagnostics?: {
+        planId: string;
+        hasIdeaArtifact: boolean;
+        detectedArtifacts: Array<{
+            type: string;
+            filename: string;
+        }>;
+    };
     constraints: string[];
     questions: string[];
     selectedApproach: {
@@ -49,6 +58,47 @@ async function readFileSafe(path: string): Promise<string | null> {
     } catch {
         return null;
     }
+}
+
+function getMostRecentFileByType(
+    files: Array<{ type: string; content: string; updatedAt: string }>,
+    fileType: PlanFileType
+): string | null {
+    const matches = files
+        .filter((file) => file.type === fileType)
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    return matches[0]?.content ?? null;
+}
+
+function normalizeArtifactKey(value: string | undefined): string {
+    return (value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '');
+}
+
+function isArtifactMatch(
+    file: { type: string; filename: string },
+    aliases: string[],
+    filenameCandidates: string[]
+): boolean {
+    const normalizedType = normalizeArtifactKey(file.type);
+    const normalizedFilename = normalizeArtifactKey(file.filename);
+    const normalizedAliases = aliases.map(normalizeArtifactKey);
+    const normalizedCandidates = filenameCandidates.map(normalizeArtifactKey);
+
+    return normalizedAliases.includes(normalizedType) || normalizedCandidates.includes(normalizedFilename);
+}
+
+function getMostRecentArtifactContent(
+    files: Array<{ type: string; filename: string; content: string; updatedAt: string }>,
+    aliases: string[],
+    filenameCandidates: string[]
+): string | null {
+    const matches = files
+        .filter((file) => isArtifactMatch(file, aliases, filenameCandidates))
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    return matches[0]?.content ?? null;
 }
 
 /**
@@ -232,6 +282,8 @@ function summarizeEvent(event: any): string {
             return 'Shaping started';
         case 'checkpoint_created':
             return `Checkpoint: ${data.name || 'unnamed'}`;
+        case 'step_reflected':
+            return `Step ${data.step || '?'} reflection: ${truncate(data.reflection, 60)}`;
         default:
             return type;
     }
@@ -319,6 +371,96 @@ export function loadCatalystContent(mergedCatalyst: {
  * This is the main entry point for artifact loading, used by build.ts
  */
 export async function loadArtifacts(planPath: string): Promise<ArtifactBundle> {
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const [filesResult, metadataResult, evidenceResult, allEventsResult] = await Promise.all([
+                provider.getFiles(),
+                provider.getMetadata(),
+                provider.getEvidence(),
+                provider.getTimelineEvents(),
+            ]);
+
+            if (!filesResult.success) {
+                throw new Error(filesResult.error || 'Failed to load plan files from SQLite');
+            }
+            if (!metadataResult.success || !metadataResult.data) {
+                throw new Error(metadataResult.error || 'Failed to load plan metadata from SQLite');
+            }
+            if (!evidenceResult.success) {
+                throw new Error(evidenceResult.error || 'Failed to load evidence from SQLite');
+            }
+            if (!allEventsResult.success) {
+                throw new Error(allEventsResult.error || 'Failed to load timeline events from SQLite');
+            }
+
+            const files = filesResult.data || [];
+            const ideaContent =
+                getMostRecentArtifactContent(files, ['idea'], ['IDEA.md', 'idea']) ||
+                getMostRecentFileByType(files, 'idea');
+            const shapingContent =
+                getMostRecentArtifactContent(files, ['shaping'], ['SHAPING.md', 'shaping']) ||
+                getMostRecentFileByType(files, 'shaping');
+
+            const lifecycleFile =
+                getMostRecentArtifactContent(files, ['lifecycle'], ['LIFECYCLE.md', 'lifecycle']) ||
+                getMostRecentFileByType(files, 'lifecycle');
+            const lifecycleContent = lifecycleFile || `# Lifecycle
+
+## Current Stage
+
+**Stage**: \`${metadataResult.data.stage}\`
+**Since**: ${metadataResult.data.updatedAt}
+`;
+
+            const evidence = (evidenceResult.data || []).map((entry) => {
+                const body = entry.content || entry.summary || entry.description;
+                return {
+                    name: entry.filePath || `${entry.id}.md`,
+                    content: body,
+                    size: Buffer.byteLength(body, 'utf-8'),
+                };
+            });
+
+            const events = (allEventsResult.data || [])
+                .slice()
+                .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+            const recentEvents = events.slice(-15).map((event) => ({
+                type: event.type || 'unknown',
+                timestamp: event.timestamp || '',
+                summary: summarizeEvent(event),
+            }));
+
+            const constraints = ideaContent ? extractConstraints(ideaContent) : [];
+            const questions = ideaContent ? extractQuestions(ideaContent) : [];
+            const selectedApproach = shapingContent ? extractSelectedApproach(shapingContent) : null;
+
+            return {
+                ideaContent,
+                shapingContent,
+                lifecycleContent,
+                artifactDiagnostics: {
+                    planId: planPath,
+                    hasIdeaArtifact: Boolean(ideaContent),
+                    detectedArtifacts: files.map((file) => ({
+                        type: file.type,
+                        filename: file.filename,
+                    })),
+                },
+                constraints,
+                questions,
+                selectedApproach,
+                evidence,
+                historyContext: {
+                    recentEvents,
+                    totalEvents: events.length,
+                },
+            };
+        } finally {
+            await provider.close();
+        }
+    }
+
     // Read all files in parallel
     const [ideaContent, shapingContent, lifecycleContent, evidence, history] = await Promise.all([
         readFileSafe(join(planPath, 'IDEA.md')),
@@ -337,6 +479,15 @@ export async function loadArtifacts(planPath: string): Promise<ArtifactBundle> {
         ideaContent,
         shapingContent,
         lifecycleContent,
+        artifactDiagnostics: {
+            planId: planPath,
+            hasIdeaArtifact: Boolean(ideaContent),
+            detectedArtifacts: [
+                ...(ideaContent ? [{ type: 'idea', filename: 'IDEA.md' }] : []),
+                ...(shapingContent ? [{ type: 'shaping', filename: 'SHAPING.md' }] : []),
+                ...(lifecycleContent ? [{ type: 'lifecycle', filename: 'LIFECYCLE.md' }] : []),
+            ],
+        },
         constraints,
         questions,
         selectedApproach,
