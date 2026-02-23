@@ -22,6 +22,7 @@ riotplan migrate --source /path/to/old/plans --target /path/to/new/plans
 - `--target <dir>`: Target directory for .plan files (required)
 - `--dry-run`: Show what would be migrated without creating files
 - `--project <slug>`: Project slug to add to metadata (e.g., `kjerneverk`, `redaksjon`)
+- `--manifest <file>`: Optional output path for migration manifest JSON (default: `<target>/migration-manifest.json`)
 
 ### Examples
 
@@ -112,12 +113,13 @@ After migration and server startup, use the RiotPlan VSCode extension:
 3. Browse plans in the Explorer sidebar under "Plans"
 4. Plans are organized by category (Active, Done, Hold)
 
-## Rollback
+## Compatibility Policy
 
-To rollback to directory-based format:
-- The original directory-based plans are not modified by migration
+RiotPlan runtime workflows are SQLite-only. Directory-based plan execution is no longer supported after migration.
+
 - Keep backups of source directories before migrating
-- The migration is one-way (no reverse migration tool currently)
+- Use `--dry-run` and the migration manifest to verify outcomes before cutover
+- Treat migration as one-way operationally for active workflows
 
 ## Notes
 

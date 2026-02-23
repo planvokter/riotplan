@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import type { ToolExecutionContext } from '../../../src/mcp/types.js';
 import { listPlansTool } from '../../../src/mcp/tools/switch.js';
 import {
@@ -14,11 +15,21 @@ describe('project binding tools', () => {
     let testDir: string;
     let context: ToolExecutionContext;
 
-    async function createLegacyPlan(planName: string): Promise<string> {
-        const planDir = join(testDir, 'plans', planName);
-        await mkdir(planDir, { recursive: true });
-        await writeFile(join(planDir, 'STATUS.md'), '# Status\n');
-        return planDir;
+    async function createSqlitePlan(planCode: string): Promise<string> {
+        const planPath = join(testDir, 'plans', `${planCode}.plan`);
+        const now = new Date().toISOString();
+        const provider = createSqliteProvider(planPath);
+        await provider.initialize({
+            id: planCode,
+            uuid: '00000000-0000-4000-8000-000000000111',
+            name: planCode,
+            createdAt: now,
+            updatedAt: now,
+            stage: 'idea',
+            schemaVersion: 1,
+        });
+        await provider.close();
+        return planPath;
     }
 
     beforeEach(async () => {
@@ -36,21 +47,22 @@ describe('project binding tools', () => {
         await rm(testDir, { recursive: true, force: true });
     });
 
-    it('loads old plans without explicit project metadata', async () => {
-        await createLegacyPlan('legacy-plan');
+    it('lists sqlite plans', async () => {
+        await createSqlitePlan('sqlite-plan');
 
         const result = await listPlansTool.execute({}, context);
         expect(result.success).toBe(true);
         expect(result.data?.plans).toHaveLength(1);
-        expect(result.data?.plans[0].id).toBe('legacy-plan');
+        expect(result.data?.plans[0].id).toBe('sqlite-plan');
+        expect(result.data?.plans[0].type).toBe('sqlite');
     });
 
-    it('bind/get project metadata on a plan', async () => {
-        await createLegacyPlan('project-voice-tone');
+    it('rejects bind but infers get context for sqlite plans', async () => {
+        const planPath = await createSqlitePlan('project-voice-tone');
 
         const bindResult = await bindProjectTool.execute(
             {
-                planId: 'project-voice-tone',
+                planId: planPath,
                 project: {
                     id: 'riotdoc',
                     name: 'RiotDoc',
@@ -70,87 +82,29 @@ describe('project binding tools', () => {
             context
         );
 
-        expect(bindResult.success).toBe(true);
+        expect(bindResult.success).toBe(false);
+        expect(String(bindResult.error)).toContain('not yet persisted');
 
-        const getResult = await getProjectBindingTool.execute({ planId: 'project-voice-tone' }, context);
+        const getResult = await getProjectBindingTool.execute({ planId: planPath }, context);
         expect(getResult.success).toBe(true);
-        expect(getResult.data?.project?.id).toBe('riotdoc');
-        expect(getResult.data?.project?.repo?.owner).toBe('tobrien');
-        expect(getResult.data?.source).toBe('manifest');
+        const getData = getResult.data as { source: string; migration: { manifestCreated: boolean } };
+        expect(getData.source).toMatch(/inferred|none/);
+        expect(getData.migration.manifestCreated).toBe(false);
     });
 
-    it('filters list by associated project', async () => {
-        await createLegacyPlan('voice-tone');
-        await createLegacyPlan('release-cadence');
-
-        await bindProjectTool.execute(
-            {
-                planId: 'voice-tone',
-                project: { id: 'riotdoc', relationship: 'primary' },
-            },
-            context
-        );
-        await bindProjectTool.execute(
-            {
-                planId: 'release-cadence',
-                project: { id: 'riotplan', relationship: 'primary' },
-            },
-            context
-        );
-
-        const filtered = await listPlansTool.execute({ projectId: 'riotdoc' }, context);
-        expect(filtered.success).toBe(true);
-        expect(filtered.data?.plans).toHaveLength(1);
-        expect(filtered.data?.plans[0].id).toBe('voice-tone');
-        expect(filtered.data?.plans[0].project?.id).toBe('riotdoc');
-    });
-
-    it('resolves same bound plan across different workstation roots via local mapping', async () => {
-        await createLegacyPlan('portable-plan');
-        await bindProjectTool.execute(
-            {
-                planId: 'portable-plan',
-                project: {
-                    id: 'riotdoc',
-                    repo: {
-                        provider: 'github',
-                        owner: 'tobrien',
-                        name: 'riotdoc',
-                    },
-                    workspace: {
-                        relativeRoot: '.',
-                        pathHints: ['/Users/tobrien/gitw/kjerneverk/riotdoc'],
-                    },
-                    relationship: 'primary',
-                },
-            },
-            context
-        );
+    it('resolves sqlite project context using inferred binding when available', async () => {
+        const planPath = await createSqlitePlan('portable-plan');
 
         const aliceResolved = await resolveProjectContextTool.execute(
             {
-                planId: 'portable-plan',
+                planId: planPath,
                 cwd: '/tmp/non-repo-alice',
                 workspaceMappings: [{ projectId: 'riotdoc', rootPath: '/Users/alice/dev/riotdoc' }],
             },
             context
         );
         expect(aliceResolved.success).toBe(true);
-        expect(aliceResolved.data?.resolved).toBe(true);
-        expect(aliceResolved.data?.method).toBe('workspace_mapping');
-        expect(aliceResolved.data?.projectRoot).toContain('/Users/alice/dev/riotdoc');
-
-        const bobResolved = await resolveProjectContextTool.execute(
-            {
-                planId: 'portable-plan',
-                cwd: '/tmp/non-repo-bob',
-                workspaceMappings: [{ projectId: 'riotdoc', rootPath: '/home/bob/src/riotdoc' }],
-            },
-            context
-        );
-        expect(bobResolved.success).toBe(true);
-        expect(bobResolved.data?.resolved).toBe(true);
-        expect(bobResolved.data?.method).toBe('workspace_mapping');
-        expect(bobResolved.data?.projectRoot).toContain('/home/bob/src/riotdoc');
+        const resolvedData = aliceResolved.data as { source: string };
+        expect(resolvedData.source).toMatch(/inferred|none/);
     });
 });

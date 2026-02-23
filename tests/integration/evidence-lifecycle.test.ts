@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createSqliteProvider } from "@kjerneverk/riotplan-format";
 import { evidenceTool } from "../../src/mcp/tools/evidence.js";
 import { readEvidenceListResource, readEvidenceResource } from "../../src/mcp/resources/evidence.js";
 import type { ToolExecutionContext } from "../../src/mcp/types.js";
@@ -15,9 +16,20 @@ describe("evidence lifecycle integration", () => {
     beforeEach(async () => {
         testRoot = join(tmpdir(), `riotplan-evidence-integration-${Date.now()}`);
         planId = "evidence-integration-plan";
-        planPath = join(testRoot, planId);
-        await mkdir(join(planPath, "evidence"), { recursive: true });
-        await writeFile(join(planPath, "IDEA.md"), "# IDEA\n", "utf-8");
+        planPath = join(testRoot, `${planId}.plan`);
+        await mkdir(testRoot, { recursive: true });
+        const now = new Date().toISOString();
+        const provider = createSqliteProvider(planPath);
+        await provider.initialize({
+            id: planId,
+            uuid: "00000000-0000-4000-8000-000000000501",
+            name: planId,
+            stage: "idea",
+            createdAt: now,
+            updatedAt: now,
+            schemaVersion: 1,
+        });
+        await provider.close();
         context = { workingDirectory: testRoot };
     });
 
@@ -29,7 +41,7 @@ describe("evidence lifecycle integration", () => {
         const created = await evidenceTool.execute(
             {
                 action: "add",
-                planId,
+                planId: planPath,
                 title: "Runtime benchmark",
                 summary: "Initial benchmark notes",
                 content: "Initial benchmark content",
@@ -43,7 +55,7 @@ describe("evidence lifecycle integration", () => {
         const edited = await evidenceTool.execute(
             {
                 action: "edit",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: createdData.evidenceId },
                 patch: {
                     summary: "Updated benchmark notes",
@@ -55,9 +67,9 @@ describe("evidence lifecycle integration", () => {
         );
         expect(edited.success).toBe(true);
 
-        const read = await readEvidenceResource(planPath, basename(createdData.file));
-        expect(read.file).toBe(basename(createdData.file));
-        const parsed = JSON.parse(read.content) as Record<string, unknown>;
+        const read = await readEvidenceResource(planPath, createdData.file);
+        expect(read.file).toBe(createdData.file);
+        const parsed = read.record as Record<string, unknown>;
         expect(parsed.summary).toBe("Updated benchmark notes");
         expect(parsed.content).toBe("Updated benchmark content");
         expect(parsed.tags).toEqual(["perf", "benchmark"]);
@@ -67,7 +79,7 @@ describe("evidence lifecycle integration", () => {
         const deleted = await evidenceTool.execute(
             {
                 action: "delete",
-                planId,
+                planId: planPath,
                 evidenceRef: { file: createdData.file },
                 confirm: true,
             },

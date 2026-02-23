@@ -6,11 +6,9 @@
 
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
-import { mkdir, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import { createSqliteProvider } from "@kjerneverk/riotplan-format";
 import type { McpTool, ToolResult, ToolExecutionContext } from "../types.js";
-import { resolveDirectory, formatError, createSuccess } from "./shared.js";
+import { resolveSqlitePlanPath, formatError, createSuccess } from "./shared.js";
 import { loadArtifacts } from "../../ai/artifacts.js";
 
 const ArtifactTypeSchema = z.enum(["summary", "execution_plan", "status", "provenance"]);
@@ -81,7 +79,7 @@ function includesCaseInsensitive(haystack: string, needle: string): boolean {
 async function executeBuildValidatePlan(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = BuildValidatePlanSchema.parse(args);
-        const planPath = resolveDirectory(args, context);
+        const planPath = resolveSqlitePlanPath(args, context);
         const generatedPlan = validated.generatedPlan;
 
         const requiredTopLevel = ["analysis", "summary", "approach", "successCriteria", "steps"];
@@ -186,26 +184,22 @@ function slugify(value: string): string {
 async function executeBuildWriteArtifact(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = BuildWriteArtifactSchema.parse(args);
-        const planPath = resolveDirectory(args, context);
+        const planPath = resolveSqlitePlanPath(args, context);
         assertValidStamp(planPath, validated.validationStamp);
         const filename = artifactFilename(validated.type);
 
-        if (planPath.endsWith(".plan")) {
-            const now = new Date().toISOString();
-            const provider = createSqliteProvider(planPath);
-            try {
-                await provider.saveFile({
-                    type: validated.type,
-                    filename,
-                    content: validated.content,
-                    createdAt: now,
-                    updatedAt: now,
-                });
-            } finally {
-                await provider.close();
-            }
-        } else {
-            await writeFile(join(planPath, filename), validated.content, "utf-8");
+        const now = new Date().toISOString();
+        const provider = createSqliteProvider(planPath);
+        try {
+            await provider.saveFile({
+                type: validated.type,
+                filename,
+                content: validated.content,
+                createdAt: now,
+                updatedAt: now,
+            });
+        } finally {
+            await provider.close();
         }
 
         return createSuccess(
@@ -220,52 +214,35 @@ async function executeBuildWriteArtifact(args: any, context: ToolExecutionContex
 async function executeBuildWriteStep(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = BuildWriteStepSchema.parse(args);
-        const planPath = resolveDirectory(args, context);
+        const planPath = resolveSqlitePlanPath(args, context);
         assertValidStamp(planPath, validated.validationStamp);
         const stepNum = validated.step.toString().padStart(2, "0");
         const safeSlug = slugify(validated.title) || `step-${validated.step}`;
         const filename = `${stepNum}-${safeSlug}.md`;
 
-        if (planPath.endsWith(".plan")) {
-            const provider = createSqliteProvider(planPath);
-            try {
-                if (validated.clearExisting) {
-                    const existing = await provider.getSteps();
-                    if (existing.success && existing.data) {
-                        for (const step of existing.data) {
-                            await provider.deleteStep(step.number);
-                        }
+        const provider = createSqliteProvider(planPath);
+        try {
+            if (validated.clearExisting) {
+                const existing = await provider.getSteps();
+                if (existing.success && existing.data) {
+                    for (const step of existing.data) {
+                        await provider.deleteStep(step.number);
                     }
                 }
-                const addResult = await provider.addStep({
-                    number: validated.step,
-                    code: safeSlug,
-                    title: validated.title,
-                    description: validated.title,
-                    status: "pending",
-                    content: validated.content,
-                });
-                if (!addResult.success) {
-                    throw new Error(addResult.error || `Failed to write step ${validated.step}`);
-                }
-            } finally {
-                await provider.close();
             }
-        } else {
-            const planDir = join(planPath, "plan");
-            if (validated.clearExisting) {
-                await rm(planDir, { recursive: true, force: true });
+            const addResult = await provider.addStep({
+                number: validated.step,
+                code: safeSlug,
+                title: validated.title,
+                description: validated.title,
+                status: "pending",
+                content: validated.content,
+            });
+            if (!addResult.success) {
+                throw new Error(addResult.error || `Failed to write step ${validated.step}`);
             }
-            await mkdir(planDir, { recursive: true });
-
-            const existingStepFiles = await readdir(planDir).catch(() => [] as string[]);
-            const sameNumberPrefix = `${stepNum}-`;
-            for (const existing of existingStepFiles) {
-                if (existing.startsWith(sameNumberPrefix) && existing !== filename) {
-                    await unlink(join(planDir, existing));
-                }
-            }
-            await writeFile(join(planDir, filename), validated.content, "utf-8");
+        } finally {
+            await provider.close();
         }
 
         return createSuccess(

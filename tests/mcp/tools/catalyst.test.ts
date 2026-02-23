@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import {
   catalystTool,
 } from '../../../src/mcp/tools/catalyst.js';
@@ -99,9 +100,27 @@ facets:
   });
 
   describe('executeCatalystAssociate', () => {
+    async function createSqlitePlan(planId: string): Promise<string> {
+      const sqlitePath = join(testDir, `${planId}.plan`);
+      const now = new Date().toISOString();
+      const provider = createSqliteProvider(sqlitePath);
+      await provider.initialize({
+        id: planId,
+        uuid: '00000000-0000-4000-8000-000000000401',
+        name: planId,
+        stage: 'idea',
+        createdAt: now,
+        updatedAt: now,
+        schemaVersion: 1,
+      });
+      await provider.close();
+      return sqlitePath;
+    }
+
     it('should return error when no catalysts specified', async () => {
+      const planPath = await createSqlitePlan('assoc-empty');
       const result = await executeCatalystAssociate(
-        { catalysts: [], operation: 'add' },
+        { planId: planPath, catalysts: [], operation: 'add' },
         mockContext
       );
 
@@ -111,7 +130,7 @@ facets:
 
     it('should return error when catalyst cannot be loaded', async () => {
       const result = await executeCatalystAssociate(
-        { catalysts: ['/non/existent'], operation: 'add' },
+        { catalysts: ['/non/existent'], operation: 'add', planId: await createSqlitePlan('assoc-missing-cat') },
         mockContext
       );
 
@@ -119,7 +138,7 @@ facets:
       expect(result.error).toContain('cannot be loaded');
     });
 
-    it('should return error when plan.yaml does not exist', async () => {
+    it('should return sqlite binding error when using sqlite plans', async () => {
       // Create a valid catalyst
       const catalystDir = join(testDir, 'test-catalyst');
       await mkdir(catalystDir, { recursive: true });
@@ -141,13 +160,11 @@ facets:
         '# Q1'
       );
 
-      // Try to associate with a plan that doesn't have plan.yaml
-      const planDir = join(testDir, 'test-plan');
-      await mkdir(planDir, { recursive: true });
+      const planPath = await createSqlitePlan('assoc-plan');
 
       const result = await executeCatalystAssociate(
         {
-          path: planDir,
+          planId: planPath,
           catalysts: [catalystDir],
           operation: 'add',
         },
@@ -155,10 +172,10 @@ facets:
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('No plan.yaml found');
+      expect(String(result.error).toLowerCase()).toContain('not a directory');
     });
 
-    it('should add catalyst to existing plan.yaml', async () => {
+    it('should reject add operation for sqlite plans', async () => {
       // Create a valid catalyst
       const catalystDir = join(testDir, 'test-catalyst');
       await mkdir(catalystDir, { recursive: true });
@@ -180,33 +197,22 @@ facets:
         '# Q1'
       );
 
-      // Create a plan with plan.yaml
-      const planDir = join(testDir, 'test-plan');
-      await mkdir(planDir, { recursive: true });
-
-      await writeFile(
-        join(planDir, 'plan.yaml'),
-        `id: test-plan
-title: Test Plan
-catalysts: []
-`
-      );
+      const planPath = await createSqlitePlan('assoc-add');
 
       const result = await executeCatalystAssociate(
         {
-          path: planDir,
+          planId: planPath,
           catalysts: [catalystDir],
           operation: 'add',
         },
         mockContext
       );
 
-      expect(result.success).toBe(true);
-      expect(result.data?.catalysts).toContain(catalystDir);
-      expect(result.message).toContain('Successfully added catalysts');
+      expect(result.success).toBe(false);
+      expect(String(result.error).toLowerCase()).toContain('not a directory');
     });
 
-    it('should set catalysts replacing existing ones', async () => {
+    it('should reject set operation for sqlite plans', async () => {
       // Create two valid catalysts
       const catalyst1Dir = join(testDir, 'catalyst-1');
       const catalyst2Dir = join(testDir, 'catalyst-2');
@@ -230,35 +236,23 @@ facets:
         await writeFile(join(dir, 'questions', 'q1.md'), '# Q1');
       }
 
-      // Create a plan with one catalyst
-      const planDir = join(testDir, 'test-plan');
-      await mkdir(planDir, { recursive: true });
-
-      await writeFile(
-        join(planDir, 'plan.yaml'),
-        `id: test-plan
-title: Test Plan
-catalysts:
-  - ${catalyst1Dir}
-`
-      );
+      const planPath = await createSqlitePlan('assoc-set');
 
       // Set to catalyst2 (replacing catalyst1)
       const result = await executeCatalystAssociate(
         {
-          path: planDir,
+          planId: planPath,
           catalysts: [catalyst2Dir],
           operation: 'set',
         },
         mockContext
       );
 
-      expect(result.success).toBe(true);
-      expect(result.data?.catalysts).toEqual([catalyst2Dir]);
-      expect(result.data?.catalysts).not.toContain(catalyst1Dir);
+      expect(result.success).toBe(false);
+      expect(String(result.error).toLowerCase()).toContain('not a directory');
     });
 
-    it('should remove catalyst from plan', async () => {
+    it('should reject remove operation for sqlite plans', async () => {
       // Create a valid catalyst
       const catalystDir = join(testDir, 'test-catalyst');
       await mkdir(catalystDir, { recursive: true });
@@ -277,31 +271,20 @@ facets:
 
       await writeFile(join(catalystDir, 'questions', 'q1.md'), '# Q1');
 
-      // Create a plan with the catalyst
-      const planDir = join(testDir, 'test-plan');
-      await mkdir(planDir, { recursive: true });
-
-      await writeFile(
-        join(planDir, 'plan.yaml'),
-        `id: test-plan
-title: Test Plan
-catalysts:
-  - ${catalystDir}
-`
-      );
+      const planPath = await createSqlitePlan('assoc-remove');
 
       // Remove the catalyst
       const result = await executeCatalystAssociate(
         {
-          path: planDir,
+          planId: planPath,
           catalysts: [catalystDir],
           operation: 'remove',
         },
         mockContext
       );
 
-      expect(result.success).toBe(true);
-      expect(result.data?.catalysts).toEqual([]);
+      expect(result.success).toBe(false);
+      expect(String(result.error).toLowerCase()).toContain('not a directory');
     });
   });
 });

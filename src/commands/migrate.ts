@@ -15,6 +15,7 @@ export function createMigrateCommand(): Command {
         .requiredOption('-s, --source <dir>', 'Source directory containing plans')
         .requiredOption('-t, --target <dir>', 'Target directory for .plan files')
         .option('--dry-run', 'Dry run - show what would be migrated without creating files')
+        .option('-m, --manifest <file>', 'Output path for migration manifest JSON')
         .option('-p, --project <slug>', 'Project slug to add to metadata (e.g., kjerneverk, redaksjon)')
         .action(async (options) => {
             const sourceDir = resolve(options.source);
@@ -26,6 +27,7 @@ export function createMigrateCommand(): Command {
                     targetDir,
                     dryRun: options.dryRun,
                     projectSlug: options.project,
+                    manifestPath: options.manifest,
                 });
 
                 if (!result.success) {

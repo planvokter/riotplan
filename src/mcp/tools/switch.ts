@@ -55,42 +55,6 @@ function findAllPlanFiles(dir: string): string[] {
 }
 
 /**
- * Find legacy directory-based plans recursively.
- * A directory is considered a legacy plan when it contains STATUS.md.
- */
-function findAllLegacyPlanDirs(dir: string): string[] {
-    const planDirs: string[] = [];
-    function scan(d: string): void {
-        try {
-            const entries = readdirSync(d);
-            const hasStatus = entries.includes('STATUS.md');
-            if (hasStatus) {
-                planDirs.push(d);
-                return;
-            }
-            for (const entry of entries) {
-                if (entry.startsWith('.')) {
-                    continue;
-                }
-                const fullPath = join(d, entry);
-                try {
-                    const s = statSync(fullPath);
-                    if (s.isDirectory()) {
-                        scan(fullPath);
-                    }
-                } catch {
-                    /* skip */
-                }
-            }
-        } catch {
-            /* skip */
-        }
-    }
-    scan(dir);
-    return planDirs;
-}
-
-/**
  * Resolve a plan reference to an absolute path
  */
 async function resolvePlanPath(planId: string, context: ToolExecutionContext): Promise<string | null> {
@@ -194,8 +158,7 @@ async function executeSwitchPlan(
  * List available plans in the current context
  */
 export const ListPlansSchema = z.object({
-    // Legacy compatibility only; clients should not send filesystem paths.
-    directory: z.string().optional().describe("Optional legacy search scope"),
+    directory: z.string().optional().describe("Optional search scope for SQLite .plan files"),
     filter: z
         .enum(['all', 'active', 'done', 'hold'])
         .optional()
@@ -225,7 +188,7 @@ async function executeListPlans(
         const validated = ListPlansSchema.parse(args);
         const searchDir = validated.directory || context.workingDirectory;
         
-        // SQLite and legacy directory plans
+        // SQLite plans only
         const plans: Array<{
             id: string;
             name: string;
@@ -272,30 +235,6 @@ async function executeListPlans(
                 }
             } catch {
                 /* skip unreadable .plan files */
-            }
-        }
-
-        // Legacy directory-based plans (STATUS.md present).
-        for (const legacyPlanDir of findAllLegacyPlanDirs(searchDir)) {
-            try {
-                const binding = await readProjectBinding(legacyPlanDir, {
-                    createManifestIfMissing: false,
-                });
-                const category = getPlanCategory(legacyPlanDir);
-                if (validated.filter && validated.filter !== 'all' && validated.filter !== category) {
-                    continue;
-                }
-                plans.push({
-                    id: basename(legacyPlanDir),
-                    name: basename(legacyPlanDir),
-                    path: legacyPlanDir,
-                    type: 'directory',
-                    category,
-                    project: binding.project,
-                    projectSource: binding.source,
-                });
-            } catch {
-                /* skip unreadable directories */
             }
         }
 
@@ -518,6 +457,9 @@ const PlanActionSchema = z.discriminatedUnion('action', [
         model: z.string().optional(),
         noAi: z.boolean().optional(),
         catalysts: z.array(z.string()).optional(),
+        ideaContent: z.string().optional(),
+        idea: z.string().optional(),
+        motivation: z.string().optional(),
     }),
     z.object({
         action: z.literal('switch'),
@@ -544,6 +486,9 @@ const PlanToolSchema = {
     model: z.string().optional().describe('Forwarded create option'),
     noAi: z.boolean().optional().describe('Forwarded create option'),
     catalysts: z.array(z.string()).optional().describe('Catalysts for action=create'),
+    ideaContent: z.string().optional().describe('Optional initial idea/motivation content'),
+    idea: z.string().optional().describe('Alias for ideaContent'),
+    motivation: z.string().optional().describe('Alias for ideaContent'),
 } satisfies z.ZodRawShape;
 
 async function executePlan(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {

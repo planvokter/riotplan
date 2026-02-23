@@ -10,6 +10,8 @@ Part of [Kjerneverk](https://kjerneverk.github.io) - structured formats for work
 
 **✨ MCP Sampling Support** - No duplicate API keys needed when using RiotPlan via MCP! [Learn more →](docs/SAMPLING.md)
 
+> **Storage model:** RiotPlan now uses SQLite-backed `.plan` files as the only supported runtime format. Legacy directory-based plan workflows are deprecated and should be migrated.
+
 ## Why RiotPlan?
 
 ### Before: Inadequate Planning

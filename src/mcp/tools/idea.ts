@@ -181,6 +181,9 @@ export const IdeaCreateSchema = z.object({
     code: z.string().describe("Plan identifier (kebab-case)"),
     description: z.string().describe("Initial idea description"),
     directory: z.string().optional().describe("Parent directory for the idea"),
+    ideaContent: z.string().optional().describe("Optional initial idea/motivation content to persist as IDEA.md"),
+    idea: z.string().optional().describe("Alias for ideaContent"),
+    motivation: z.string().optional().describe("Alias for ideaContent"),
 });
 
 export const IdeaAddNoteSchema = z.object({
@@ -285,10 +288,18 @@ export async function ideaCreate(args: z.infer<typeof IdeaCreateSchema>): Promis
         throw new Error(initResult.error || "Failed to initialize sqlite plan");
     }
 
+    const rawIdeaContent =
+        (typeof args.ideaContent === "string" ? args.ideaContent : "") ||
+        (typeof args.idea === "string" ? args.idea : "") ||
+        (typeof args.motivation === "string" ? args.motivation : "");
+    const initialIdeaContent = rawIdeaContent.trim().length > 0
+        ? rawIdeaContent
+        : defaultIdeaContent(code, description);
+
     const ideaFileResult = await provider.saveFile({
         type: "idea",
         filename: "IDEA.md",
-        content: defaultIdeaContent(code, description),
+        content: initialIdeaContent,
         createdAt: now,
         updatedAt: now,
     });
@@ -297,16 +308,13 @@ export async function ideaCreate(args: z.infer<typeof IdeaCreateSchema>): Promis
         throw new Error(ideaFileResult.error || "Failed to create IDEA.md in sqlite plan");
     }
 
-    const timelineResult = await provider.addTimelineEvent({
-        id: randomUUID(),
-        timestamp: now,
-        type: "idea_created",
-        data: { code, description, storage: "sqlite", stage: "idea" },
-    });
     await provider.close();
-    if (!timelineResult.success) {
-        throw new Error(timelineResult.error || "Failed to log idea creation event");
-    }
+    await addTimelineEventToSqlite(planPath, "idea_created", {
+        code,
+        description,
+        storage: "sqlite",
+        stage: "idea",
+    });
 
     return {
         message:
@@ -864,6 +872,9 @@ const IdeaActionSchema = z.discriminatedUnion("action", [
         code: z.string(),
         description: z.string(),
         directory: z.string().optional(),
+        ideaContent: z.string().optional(),
+        idea: z.string().optional(),
+        motivation: z.string().optional(),
     }),
     z.object({
         action: z.literal("add_note"),
@@ -930,6 +941,9 @@ const IdeaToolSchema = {
     code: z.string().optional().describe("Plan identifier when action=create"),
     description: z.string().optional().describe("Description when action=create|add_evidence"),
     directory: z.string().optional().describe("Parent directory for action=create"),
+    ideaContent: z.string().optional().describe("Optional initial idea/motivation content for action=create"),
+    idea: z.string().optional().describe("Alias for ideaContent"),
+    motivation: z.string().optional().describe("Alias for ideaContent"),
     planId: z.string().optional().describe("Plan identifier"),
     note: z.string().optional().describe("Note when action=add_note"),
     constraint: z.string().optional().describe("Constraint when action=add_constraint"),

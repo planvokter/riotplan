@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdir, rm, readFile, access, writeFile } from "node:fs/promises";
-import { join, basename } from "node:path";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createSqliteProvider } from "@kjerneverk/riotplan-format";
 import {
     evidenceTool,
     inspectFilepathReference,
@@ -18,10 +19,20 @@ describe("evidence MCP tools", () => {
     beforeEach(async () => {
         testRoot = join(tmpdir(), `riotplan-evidence-tools-test-${Date.now()}`);
         planId = "evidence-tools-plan";
-        planPath = join(testRoot, planId);
-        await mkdir(join(planPath, "evidence"), { recursive: true });
-        await mkdir(join(planPath, ".history"), { recursive: true });
-        await writeFile(join(planPath, "IDEA.md"), "# IDEA\n", "utf-8");
+        planPath = join(testRoot, `${planId}.plan`);
+        await mkdir(testRoot, { recursive: true });
+        const now = new Date().toISOString();
+        const provider = createSqliteProvider(planPath);
+        await provider.initialize({
+            id: planId,
+            uuid: "00000000-0000-4000-8000-000000000301",
+            name: planId,
+            stage: "idea",
+            createdAt: now,
+            updatedAt: now,
+            schemaVersion: 1,
+        });
+        await provider.close();
 
         context = { workingDirectory: testRoot };
     });
@@ -34,7 +45,7 @@ describe("evidence MCP tools", () => {
         const result = await evidenceTool.execute(
             {
                 action: "add",
-                planId,
+                planId: planPath,
                 title: "Auth note",
                 summary: "Initial auth findings",
                 content: "Details about auth behavior.",
@@ -51,7 +62,7 @@ describe("evidence MCP tools", () => {
         const result = await evidenceTool.execute(
             {
                 action: "add",
-                planId,
+                planId: planPath,
                 title: "Path evidence",
                 summary: "Filepath reference summary",
                 content: "Path evidence content.",
@@ -68,7 +79,7 @@ describe("evidence MCP tools", () => {
         const result = await evidenceTool.execute(
             {
                 action: "add",
-                planId,
+                planId: planPath,
                 title: "URL evidence",
                 summary: "URL reference summary",
                 content: "URL evidence content.",
@@ -85,7 +96,7 @@ describe("evidence MCP tools", () => {
         const result = await evidenceTool.execute(
             {
                 action: "add",
-                planId,
+                planId: planPath,
                 title: "Mixed evidence",
                 summary: "Mixed summary",
                 content: "Mixed evidence content.",
@@ -110,7 +121,7 @@ describe("evidence MCP tools", () => {
         const result = await evidenceTool.execute(
             {
                 action: "add",
-                planId,
+                planId: planPath,
                 title: "Invalid URL evidence",
                 summary: "Invalid URL summary",
                 content: "Invalid URL content.",
@@ -127,7 +138,7 @@ describe("evidence MCP tools", () => {
         const edited = await evidenceTool.execute(
             {
                 action: "edit",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: created.evidenceId },
                 patch: { summary: "Updated summary", content: "Updated details." },
             },
@@ -137,8 +148,8 @@ describe("evidence MCP tools", () => {
         expect(edited.success).toBe(true);
         expect(edited.data?.evidenceId).toBe(created.evidenceId);
 
-        const fileContent = await readFile(join(planPath, created.file), "utf-8");
-        const parsed = JSON.parse(fileContent) as Record<string, unknown>;
+        const recordResult = await readEvidenceResource(planPath, created.file);
+        const parsed = recordResult.record as Record<string, unknown>;
         expect(parsed.summary).toBe("Updated summary");
         expect(parsed.content).toBe("Updated details.");
         expect(parsed.evidenceId).toBe(created.evidenceId);
@@ -152,7 +163,7 @@ describe("evidence MCP tools", () => {
         const edited = await evidenceTool.execute(
             {
                 action: "edit",
-                planId,
+                planId: planPath,
                 evidenceRef: { file: created.file },
                 patch: { summary: "Updated summary", title: "Auth note revised", tags: ["auth", "security"] },
             },
@@ -161,8 +172,8 @@ describe("evidence MCP tools", () => {
 
         expect(edited.success).toBe(true);
 
-        const fileContent = await readFile(join(planPath, created.file), "utf-8");
-        const parsed = JSON.parse(fileContent) as Record<string, unknown>;
+        const recordResult = await readEvidenceResource(planPath, created.file);
+        const parsed = recordResult.record as Record<string, unknown>;
         expect(parsed.summary).toBe("Updated summary");
         expect(parsed.title).toBe("Auth note revised");
         expect(parsed.tags).toEqual(["auth", "security"]);
@@ -173,7 +184,7 @@ describe("evidence MCP tools", () => {
         const edited = await evidenceTool.execute(
             {
                 action: "edit",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: created.evidenceId },
                 patch: {
                     content: "Updated body content",
@@ -191,8 +202,8 @@ describe("evidence MCP tools", () => {
         expect(edited.success).toBe(true);
         expect(edited.data?.referenceSources).toHaveLength(2);
 
-        const fileContent = await readFile(join(planPath, created.file), "utf-8");
-        const parsed = JSON.parse(fileContent) as Record<string, unknown>;
+        const recordResult = await readEvidenceResource(planPath, created.file);
+        const parsed = recordResult.record as Record<string, unknown>;
         expect(parsed.content).toBe("Updated body content");
         expect(parsed.sources).toEqual(["https://example.com/new-source", "./docs/new-source.md"]);
         expect(parsed.tags).toEqual(["auth", "updated"]);
@@ -203,7 +214,7 @@ describe("evidence MCP tools", () => {
         const edited = await evidenceTool.execute(
             {
                 action: "edit",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: created.evidenceId, file: created.file },
                 patch: { summary: "should fail" },
             },
@@ -219,7 +230,7 @@ describe("evidence MCP tools", () => {
         const edited = await evidenceTool.execute(
             {
                 action: "edit",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: created.evidenceId },
                 patch: {
                     referenceSources: [{ type: "filepath", value: "/tmp/input.md" }],
@@ -234,14 +245,14 @@ describe("evidence MCP tools", () => {
 
     it("edits evidence with append/removeById referenceSources modes", async () => {
         const created = await createEvidence();
-        const initial = await readFile(join(planPath, created.file), "utf-8");
-        const initialParsed = JSON.parse(initial) as { referenceSources: Array<{ id: string }> };
+        const initial = await readEvidenceResource(planPath, created.file);
+        const initialParsed = initial.record as { referenceSources: Array<{ id: string }> };
         const existingId = initialParsed.referenceSources[0].id;
 
         const appended = await evidenceTool.execute(
             {
                 action: "edit",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: created.evidenceId },
                 patch: {
                     referenceSourcesMode: "append",
@@ -256,7 +267,7 @@ describe("evidence MCP tools", () => {
         const removed = await evidenceTool.execute(
             {
                 action: "edit",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: created.evidenceId },
                 patch: {
                     referenceSourcesMode: "removeById",
@@ -275,7 +286,7 @@ describe("evidence MCP tools", () => {
         const edited = await evidenceTool.execute(
             {
                 action: "edit",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: created.evidenceId },
                 patch: { tags: [""] },
             },
@@ -292,7 +303,7 @@ describe("evidence MCP tools", () => {
         const deleted = await evidenceTool.execute(
             {
                 action: "delete",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: created.evidenceId },
                 confirm: true,
             },
@@ -300,7 +311,7 @@ describe("evidence MCP tools", () => {
         );
 
         expect(deleted.success).toBe(true);
-        await expect(access(join(planPath, created.file))).rejects.toBeDefined();
+        await expect(readEvidenceResource(planPath, created.file)).rejects.toThrow();
     });
 
     it("deletes evidence by file", async () => {
@@ -309,15 +320,15 @@ describe("evidence MCP tools", () => {
         const deleted = await evidenceTool.execute(
             {
                 action: "delete",
-                planId,
-                evidenceRef: { file: basename(created.file) },
+                planId: planPath,
+                evidenceRef: { file: created.file },
                 confirm: true,
             },
             context
         );
 
         expect(deleted.success).toBe(true);
-        await expect(access(join(planPath, created.file))).rejects.toBeDefined();
+        await expect(readEvidenceResource(planPath, created.file)).rejects.toThrow();
     });
 
     it("rejects delete when confirm=false", async () => {
@@ -325,7 +336,7 @@ describe("evidence MCP tools", () => {
         const deleted = await evidenceTool.execute(
             {
                 action: "delete",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: created.evidenceId },
                 confirm: false,
             },
@@ -340,7 +351,7 @@ describe("evidence MCP tools", () => {
         const deleted = await evidenceTool.execute(
             {
                 action: "delete",
-                planId,
+                planId: planPath,
                 evidenceRef: { evidenceId: "ev_missing" },
                 confirm: true,
             },
@@ -352,27 +363,31 @@ describe("evidence MCP tools", () => {
     });
 
     it("reads legacy evidence with only sources and derives referenceSources", async () => {
-        const legacyFile = join(planPath, "evidence", "legacy.json");
-        await writeFile(
-            legacyFile,
-            JSON.stringify(
+        const provider = createSqliteProvider(planPath);
+        const createdAt = new Date().toISOString();
+        await provider.addEvidence({
+            id: "ev_legacy",
+            filePath: "legacy.json",
+            description: "Legacy summary",
+            content: JSON.stringify(
                 {
                     format: "riotplan-evidence-v1",
                     planId,
                     evidenceId: "ev_legacy",
-                    file: "evidence/legacy.json",
+                    file: "legacy.json",
                     title: "Legacy",
                     summary: "Legacy summary",
                     content: "Legacy content",
                     sources: ["https://example.com/legacy", "./legacy/path.txt", "note: verbal source"],
                     tags: [],
-                    createdAt: new Date().toISOString(),
+                    createdAt,
                 },
                 null,
                 2
             ),
-            "utf-8"
-        );
+            createdAt,
+        });
+        await provider.close();
 
         const read = await readEvidenceResource(planPath, "legacy.json");
         expect(read.record.referenceSources).toHaveLength(3);
@@ -414,7 +429,7 @@ describe("evidence MCP tools", () => {
         const result = await evidenceTool.execute(
             {
                 action: "archive",
-                planId,
+                planId: planPath,
             },
             context
         );

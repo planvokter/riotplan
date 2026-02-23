@@ -69,6 +69,26 @@ export async function executeCreate(
             throw new Error(initResult.error || 'Failed to initialize sqlite plan');
         }
 
+        const rawIdeaContent =
+            (typeof args.ideaContent === 'string' ? args.ideaContent : '') ||
+            (typeof args.idea === 'string' ? args.idea : '') ||
+            (typeof args.motivation === 'string' ? args.motivation : '');
+        const ideaContent = rawIdeaContent.trim();
+        if (ideaContent.length > 0) {
+            const now = new Date().toISOString();
+            const saveIdeaResult = await provider.saveFile({
+                type: 'idea',
+                filename: 'IDEA.md',
+                content: ideaContent,
+                createdAt: now,
+                updatedAt: now,
+            });
+            if (!saveIdeaResult.success) {
+                await provider.close();
+                throw new Error(saveIdeaResult.error || 'Failed to persist idea content');
+            }
+        }
+
         const requestedSteps = typeof args.steps === 'number' && Number.isFinite(args.steps)
             ? Math.max(1, Math.floor(args.steps))
             : 3;
@@ -92,6 +112,7 @@ export async function executeCreate(
                 stepsCreated: steps.length,
                 catalysts: args.catalysts || [],
                 storage: 'sqlite',
+                ideaPersisted: ideaContent.length > 0,
             },
             `Plan "${args.code}" created successfully.`
         );
@@ -116,6 +137,9 @@ export const createTool: McpTool = {
         model: z.string().optional().describe('Specific model to use'),
         noAi: z.boolean().optional().describe('Use templates only, no AI generation (default: false)'),
         catalysts: z.array(z.string()).optional().describe('Optional catalyst IDs or paths to apply to this plan'),
+        ideaContent: z.string().optional().describe('Optional initial idea/motivation content to persist as IDEA.md'),
+        idea: z.string().optional().describe('Alias for ideaContent'),
+        motivation: z.string().optional().describe('Alias for ideaContent'),
     },
     execute: executeCreate,
 };

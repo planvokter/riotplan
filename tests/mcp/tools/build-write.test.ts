@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createSqliteProvider } from "@kjerneverk/riotplan-format";
@@ -24,15 +24,20 @@ describe("build write tools", () => {
         await rm(testRoot, { recursive: true, force: true });
     });
 
-    it("writes top-level artifacts for directory plans", async () => {
-        const planPath = join(testRoot, "dir-plan");
-        await mkdir(planPath, { recursive: true });
-        await writeFile(join(planPath, "IDEA.md"), "# Idea\n", "utf-8");
-        await writeFile(
-            join(planPath, "LIFECYCLE.md"),
-            "# Lifecycle\n\n## Current Stage\n\n**Stage**: `idea`\n",
-            "utf-8",
-        );
+    it("writes top-level artifacts for sqlite plans", async () => {
+        const planPath = join(testRoot, "sqlite-artifacts.plan");
+        const now = new Date().toISOString();
+        const provider = createSqliteProvider(planPath);
+        await provider.initialize({
+            id: "sqlite-artifacts",
+            uuid: "00000000-0000-4000-8000-000000000100",
+            name: "SQLite Artifacts",
+            stage: "idea",
+            createdAt: now,
+            updatedAt: now,
+            schemaVersion: 1,
+        });
+        await provider.close();
 
         const validatedPlan = {
             analysis: {
@@ -60,27 +65,34 @@ describe("build write tools", () => {
         );
 
         expect(result.success).toBe(true);
-        const summary = await readFile(join(planPath, "SUMMARY.md"), "utf-8");
-        expect(summary).toContain("Caller generated.");
+        const verify = createSqliteProvider(planPath);
+        const summary = await verify.getFile("summary", "SUMMARY.md");
+        await verify.close();
+        expect(summary.success).toBe(true);
+        expect(summary.data?.content).toContain("Caller generated.");
     });
 
-    it("writes steps and clears existing directory steps when requested", async () => {
-        const planPath = join(testRoot, "dir-steps-plan");
-        const planDir = join(planPath, "plan");
-        await mkdir(planDir, { recursive: true });
-        await writeFile(
-            join(planPath, "IDEA.md"),
-            "# Idea\n\n## Constraints\n\n- Must keep this\n\n## Questions\n\n- Q?\n",
-            "utf-8",
-        );
-        await writeFile(
-            join(planPath, "LIFECYCLE.md"),
-            "# Lifecycle\n\n## Current Stage\n\n**Stage**: `idea`\n",
-            "utf-8",
-        );
-        await writeFile(join(planDir, "01-old-step.md"), "old", "utf-8");
-        await mkdir(join(planPath, "evidence"), { recursive: true });
-        await writeFile(join(planPath, "evidence", "ref.md"), "# ref\n", "utf-8");
+    it("writes steps and clears existing sqlite steps when requested", async () => {
+        const planPath = join(testRoot, "sqlite-steps.plan");
+        const now = new Date().toISOString();
+        const provider = createSqliteProvider(planPath);
+        await provider.initialize({
+            id: "sqlite-steps",
+            uuid: "00000000-0000-4000-8000-000000000102",
+            name: "SQLite Steps",
+            stage: "idea",
+            createdAt: now,
+            updatedAt: now,
+            schemaVersion: 1,
+        });
+        await provider.saveFile({
+            type: "evidence",
+            filename: "ref.md",
+            content: "# ref\n",
+            createdAt: now,
+            updatedAt: now,
+        });
+        await provider.close();
 
         const validatedPlan = {
             analysis: {
@@ -128,10 +140,14 @@ describe("build write tools", () => {
         );
         expect(second.success).toBe(true);
 
-        const step1 = await readFile(join(planDir, "01-fresh-step.md"), "utf-8");
-        const step2 = await readFile(join(planDir, "02-second-step.md"), "utf-8");
-        expect(step1).toContain("Fresh Step");
-        expect(step2).toContain("Second Step");
+        const verify = createSqliteProvider(planPath);
+        const step1 = await verify.getStep(1);
+        const step2 = await verify.getStep(2);
+        await verify.close();
+        expect(step1.success).toBe(true);
+        expect(step1.data?.title).toContain("Fresh Step");
+        expect(step2.success).toBe(true);
+        expect(step2.data?.title).toContain("Second Step");
     });
 
     it("writes artifacts and steps for sqlite plans", async () => {
@@ -199,9 +215,19 @@ describe("build write tools", () => {
     });
 
     it("fails writes when validationStamp is missing", async () => {
-        const planPath = join(testRoot, "no-stamp-plan");
-        await mkdir(planPath, { recursive: true });
-        await writeFile(join(planPath, "IDEA.md"), "# Idea\n", "utf-8");
+        const planPath = join(testRoot, "no-stamp.plan");
+        const now = new Date().toISOString();
+        const provider = createSqliteProvider(planPath);
+        await provider.initialize({
+            id: "no-stamp",
+            uuid: "00000000-0000-4000-8000-000000000103",
+            name: "No Stamp",
+            stage: "idea",
+            createdAt: now,
+            updatedAt: now,
+            schemaVersion: 1,
+        });
+        await provider.close();
 
         const result = await buildWriteArtifactTool.execute(
             {

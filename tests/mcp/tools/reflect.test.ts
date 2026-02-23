@@ -21,7 +21,7 @@ describe("riotplan_step_reflect tool", () => {
         await rm(testRoot, { recursive: true, force: true });
     });
 
-    it("writes reflection file and timeline event for directory plans", async () => {
+    it("rejects reflection writes for directory plans", async () => {
         const planId = "dir-reflect-plan";
         const planPath = join(testRoot, planId);
         await mkdir(join(planPath, "plan"), { recursive: true });
@@ -58,18 +58,8 @@ describe("riotplan_step_reflect tool", () => {
             context
         );
 
-        expect(result.success).toBe(true);
-        const reflectionPath = join(planPath, "reflections", "01-reflection.md");
-        const reflectionContent = await readFile(reflectionPath, "utf-8");
-        expect(reflectionContent).toBe("Reflection for directory-backed plan.");
-
-        const timeline = await readTimelineResource(planPath);
-        const event = timeline.events.find((entry: any) => entry.type === "step_reflected");
-        expect(event).toBeDefined();
-        expect(event.data.step).toBe(1);
-        expect(event.data.storage).toBe("directory");
-        expect(event.data.reflection).toContain("directory-backed plan");
-        expect(typeof event.data.timestamp).toBe("string");
+        expect(result.success).toBe(false);
+        expect(String(result.error).toLowerCase()).toMatch(/plan not found|directory-based plans are no longer supported/);
     });
 
     it("persists reflections for SQLite plans and emits timeline events", async () => {

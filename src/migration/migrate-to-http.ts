@@ -11,7 +11,7 @@
  */
 /* eslint-disable no-console */
 
-import { readdirSync, statSync, mkdirSync } from 'node:fs';
+import { readdirSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { 
     createSqliteProvider, 
@@ -31,6 +31,8 @@ export interface MigrationOptions {
     dryRun?: boolean;
     /** Project slug to add to metadata (e.g., 'kjerneverk', 'redaksjon') */
     projectSlug?: string;
+    /** Optional output path for migration manifest JSON */
+    manifestPath?: string;
 }
 
 export interface MigrationResult {
@@ -38,6 +40,13 @@ export interface MigrationResult {
     migratedCount: number;
     skippedCount: number;
     errors: Array<{ plan: string; error: string }>;
+    manifestPath?: string;
+    entries: Array<{
+        sourcePath: string;
+        targetPath?: string;
+        status: 'migrated' | 'failed' | 'skipped';
+        error?: string;
+    }>;
 }
 
 /**
@@ -122,7 +131,7 @@ async function migratePlan(
     targetDir: string,
     projectSlug?: string,
     dryRun?: boolean
-): Promise<void> {
+): Promise<{ targetPath: string; status: 'migrated' | 'skipped' }> {
     // Load the plan from directory format
     const plan = await loadPlan(sourcePath);
 
@@ -148,7 +157,7 @@ async function migratePlan(
     console.log(`    Category: ${category}`);
 
     if (dryRun) {
-        return;
+        return { targetPath, status: 'skipped' };
     }
 
     // Create SQLite provider for target
@@ -230,6 +239,7 @@ async function migratePlan(
 
     // Close provider
     await provider.close();
+    return { targetPath, status: 'migrated' };
 }
 
 /**
@@ -241,6 +251,7 @@ export async function migrateToHttpFormat(options: MigrationOptions): Promise<Mi
         migratedCount: 0,
         skippedCount: 0,
         errors: [],
+        entries: [],
     };
 
     console.log(`Migrating plans from ${options.sourceDir} to ${options.targetDir}`);
@@ -255,12 +266,27 @@ export async function migrateToHttpFormat(options: MigrationOptions): Promise<Mi
     // Migrate each plan
     for (const planDir of planDirs) {
         try {
-            await migratePlan(planDir, options.targetDir, options.projectSlug, options.dryRun);
-            result.migratedCount++;
+            const migrated = await migratePlan(planDir, options.targetDir, options.projectSlug, options.dryRun);
+            if (migrated.status === 'skipped') {
+                result.skippedCount++;
+            } else {
+                result.migratedCount++;
+            }
+            result.entries.push({
+                sourcePath: planDir,
+                targetPath: migrated.targetPath,
+                status: migrated.status,
+            });
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             result.errors.push({
                 plan: planDir,
-                error: error instanceof Error ? error.message : 'Unknown error',
+                error: errorMessage,
+            });
+            result.entries.push({
+                sourcePath: planDir,
+                status: 'failed',
+                error: errorMessage,
             });
             console.error(`  ERROR: ${error}`);
         }
@@ -276,6 +302,34 @@ export async function migrateToHttpFormat(options: MigrationOptions): Promise<Mi
         for (const error of result.errors) {
             console.log(`  ${error.plan}: ${error.error}`);
         }
+    }
+
+    const manifestPath = options.manifestPath || join(options.targetDir, 'migration-manifest.json');
+    try {
+        mkdirSync(options.targetDir, { recursive: true });
+        writeFileSync(
+            manifestPath,
+            JSON.stringify(
+                {
+                    generatedAt: new Date().toISOString(),
+                    sourceDir: options.sourceDir,
+                    targetDir: options.targetDir,
+                    dryRun: Boolean(options.dryRun),
+                    migratedCount: result.migratedCount,
+                    skippedCount: result.skippedCount,
+                    errorCount: result.errors.length,
+                    entries: result.entries,
+                },
+                null,
+                2
+            ),
+            'utf-8'
+        );
+        result.manifestPath = manifestPath;
+        console.log(`\nMigration manifest written to: ${manifestPath}`);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`\nWarning: could not write migration manifest (${message})`);
     }
 
     return result;

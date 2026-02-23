@@ -30,6 +30,7 @@ describe("riotplan_idea_create sqlite enforcement", () => {
                 action: "create",
                 code,
                 description: "Validate sqlite-native ideation plan creation.",
+                ideaContent: "# IDEA\n\nSeed motivation from create payload.",
             },
             context
         );
@@ -48,6 +49,9 @@ describe("riotplan_idea_create sqlite enforcement", () => {
         expect(metaResult.success).toBe(true);
         expect(metaResult.data?.id).toBe(code);
         expect(metaResult.data?.stage).toBe("idea");
+        const ideaFileResult = await provider.getFile("idea", "IDEA.md");
+        expect(ideaFileResult.success).toBe(true);
+        expect(ideaFileResult.data?.content).toContain("Seed motivation from create payload.");
 
         const statusResult = await statusTool.execute({ planId: planPath }, context);
         expect(statusResult.success).toBe(true);

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createSqliteProvider } from "@kjerneverk/riotplan-format";
@@ -105,40 +105,12 @@ Plan build fails when reading SQLite idea artifacts.
         expect(summary.data).toBeNull();
     });
 
-    it("returns instructions for directory plans and does not create output files", async () => {
+    it("rejects directory plans for build", async () => {
         const planPath = join(testRoot, "dir-plan");
         await mkdir(planPath, { recursive: true });
-        await writeFile(
-            join(planPath, "IDEA.md"),
-            `# Idea
-
-## Problem
-
-Directory-based plan build.
-`,
-            "utf-8"
-        );
-        await writeFile(
-            join(planPath, "LIFECYCLE.md"),
-            `# Lifecycle
-
-## Current Stage
-
-**Stage**: \`idea\`
-`,
-            "utf-8"
-        );
-
-        const result = await buildPlan({ planId: planPath, steps: 6 }, { workingDirectory: testRoot });
-        expect(result.currentStage).toBe("idea");
-        expect(result.generationInstructions.expectedStepCount).toBe(6);
-        expect(result.generationInstructions.userPrompt).toContain("Directory-based plan build.");
-        expect(result.writeProtocol.mode).toBe("directory");
-        expect(result.contextCoverage.includedArtifacts.some((item) => item.id === "idea" && item.present)).toBe(true);
-
-        await expect(readFile(join(planPath, "SUMMARY.md"), "utf-8")).rejects.toThrow();
-        await expect(readFile(join(planPath, "EXECUTION_PLAN.md"), "utf-8")).rejects.toThrow();
-        await expect(readFile(join(planPath, "STATUS.md"), "utf-8")).rejects.toThrow();
+        await expect(
+            buildPlan({ planId: planPath, steps: 6 }, { workingDirectory: testRoot })
+        ).rejects.toThrow(/Plan not found|Directory-based plans are no longer supported/);
     });
 
     it("returns diagnostic error when no idea artifact exists and no description provided", async () => {
