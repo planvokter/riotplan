@@ -263,6 +263,29 @@ When using RiotPlan as an MCP server in Cursor or other IDEs, you can configure 
 
 Alternatively, create a `riotplan.config.yaml` file in your workspace root, and RiotPlan will automatically discover it.
 
+### HTTP MCP server (`riotplan-mcp-http`)
+
+The HTTP server supports separate roots for plan storage and context discovery:
+
+```bash
+riotplan-mcp-http --plans-dir /Users/me/projects/myapp/plans --context-dir /Users/me/projects/context
+```
+
+- `plansDir` is required.
+- `contextDir` is optional.
+- If `contextDir` is not provided, RiotPlan uses deterministic fallback: `contextDir = plansDir`.
+
+This is useful when `.plan` files live in one directory but `riotplan_context` entities (projects) are shared in another root.
+
+You can also set these in `riotplan-http.config.yaml`:
+
+```yaml
+plansDir: /Users/me/projects/myapp/plans
+contextDir: /Users/me/projects/context
+port: 3002
+cors: true
+```
+
 ## Troubleshooting
 
 ### Config File Not Found

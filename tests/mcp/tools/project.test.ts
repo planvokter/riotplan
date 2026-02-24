@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import type { ToolExecutionContext } from '../../../src/mcp/types.js';
 import { listPlansTool } from '../../../src/mcp/tools/switch.js';
@@ -11,12 +13,15 @@ import {
     resolveProjectContextTool,
 } from '../../../src/mcp/tools/project.js';
 
+const execFileAsync = promisify(execFile);
+
 describe('project binding tools', () => {
     let testDir: string;
     let context: ToolExecutionContext;
 
-    async function createSqlitePlan(planCode: string): Promise<string> {
-        const planPath = join(testDir, 'plans', `${planCode}.plan`);
+    async function createSqlitePlan(planCode: string, parentDir = join(testDir, 'plans')): Promise<string> {
+        await mkdir(parentDir, { recursive: true });
+        const planPath = join(parentDir, `${planCode}.plan`);
         const now = new Date().toISOString();
         const provider = createSqliteProvider(planPath);
         await provider.initialize({
@@ -30,6 +35,12 @@ describe('project binding tools', () => {
         });
         await provider.close();
         return planPath;
+    }
+
+    async function setupGitRepo(path: string, remoteUrl: string): Promise<void> {
+        await mkdir(path, { recursive: true });
+        await execFileAsync('git', ['-C', path, 'init']);
+        await execFileAsync('git', ['-C', path, 'remote', 'add', 'origin', remoteUrl]);
     }
 
     beforeEach(async () => {
@@ -55,9 +66,10 @@ describe('project binding tools', () => {
         expect(result.data?.plans).toHaveLength(1);
         expect(result.data?.plans[0].id).toBe('sqlite-plan');
         expect(result.data?.plans[0].type).toBe('sqlite');
+        expect(result.data?.plans[0].projectSource).toBe('none');
     });
 
-    it('rejects bind but infers get context for sqlite plans', async () => {
+    it('binds and reads explicit project metadata for sqlite plans', async () => {
         const planPath = await createSqlitePlan('project-voice-tone');
 
         const bindResult = await bindProjectTool.execute(
@@ -73,8 +85,9 @@ describe('project binding tools', () => {
                         url: 'https://github.com/tobrien/riotdoc',
                     },
                     workspace: {
+                        id: 'workspace-a',
                         relativeRoot: '.',
-                        pathHints: ['/Users/tobrien/gitw/kjerneverk/riotdoc'],
+                        pathHints: ['/tmp/workspace-a/riotdoc'],
                     },
                     relationship: 'primary',
                 },
@@ -82,29 +95,100 @@ describe('project binding tools', () => {
             context
         );
 
-        expect(bindResult.success).toBe(false);
-        expect(String(bindResult.error)).toContain('not yet persisted');
+        expect(bindResult.success).toBe(true);
 
         const getResult = await getProjectBindingTool.execute({ planId: planPath }, context);
         expect(getResult.success).toBe(true);
-        const getData = getResult.data as { source: string; migration: { manifestCreated: boolean } };
-        expect(getData.source).toMatch(/inferred|none/);
+        const getData = getResult.data as {
+            source: string;
+            project: { id: string; workspace?: { id?: string } };
+            migration: { manifestCreated: boolean };
+        };
+        expect(getData.source).toBe('explicit');
+        expect(getData.project.id).toBe('riotdoc');
+        expect(getData.project.workspace?.id).toBe('workspace-a');
         expect(getData.migration.manifestCreated).toBe(false);
     });
 
-    it('resolves sqlite project context using inferred binding when available', async () => {
-        const planPath = await createSqlitePlan('portable-plan');
-
-        const aliceResolved = await resolveProjectContextTool.execute(
+    it('resolves project context using explicit binding workspace mapping', async () => {
+        const planPath = await createSqlitePlan('portable-plan-explicit');
+        const bindResult = await bindProjectTool.execute(
             {
                 planId: planPath,
-                cwd: '/tmp/non-repo-alice',
-                workspaceMappings: [{ projectId: 'riotdoc', rootPath: '/Users/alice/dev/riotdoc' }],
+                project: {
+                    id: 'riotdoc',
+                    repo: {
+                        provider: 'github',
+                        owner: 'tobrien',
+                        name: 'riotdoc',
+                        url: 'https://github.com/tobrien/riotdoc',
+                    },
+                    workspace: {
+                        id: 'workspace-a',
+                        relativeRoot: '.',
+                        pathHints: [],
+                    },
+                },
             },
             context
         );
-        expect(aliceResolved.success).toBe(true);
-        const resolvedData = aliceResolved.data as { source: string };
-        expect(resolvedData.source).toMatch(/inferred|none/);
+        expect(bindResult.success).toBe(true);
+
+        const resolved = await resolveProjectContextTool.execute(
+            {
+                planId: planPath,
+                cwd: '/tmp/non-repo',
+                workspaceMappings: [{ projectId: 'riotdoc', rootPath: '/tmp/workspace-a/riotdoc' }],
+            },
+            context
+        );
+        expect(resolved.success).toBe(true);
+        expect(resolved.data?.source).toBe('explicit');
+        expect(resolved.data?.resolved).toBe(true);
+        expect(resolved.data?.method).toBe('workspace_mapping');
+    });
+
+    it('falls back to inferred binding for sqlite plans in a git repo', async () => {
+        const repoPath = join(testDir, 'repo');
+        await setupGitRepo(repoPath, 'https://github.com/acme/rocket.git');
+        const planPath = await createSqlitePlan('portable-plan-inferred', join(repoPath, 'plans'));
+
+        const getResult = await getProjectBindingTool.execute({ planId: planPath }, context);
+        expect(getResult.success).toBe(true);
+        expect(getResult.data?.source).toBe('inferred');
+        expect(getResult.data?.project?.id).toBe('acme/rocket');
+
+        const resolved = await resolveProjectContextTool.execute(
+            {
+                planId: planPath,
+                cwd: '/tmp/non-repo',
+                workspaceMappings: [{ projectId: 'acme/rocket', rootPath: '/tmp/workspace-b/rocket' }],
+            },
+            context
+        );
+        expect(resolved.success).toBe(true);
+        expect(resolved.data?.resolved).toBe(true);
+        expect(resolved.data?.method).toBe('workspace_mapping');
+        expect(resolved.data?.source).toBe('inferred');
+    });
+
+    it('returns unresolved binding when explicit and inferred metadata are unavailable', async () => {
+        const planPath = await createSqlitePlan('portable-plan-unresolved');
+
+        const getResult = await getProjectBindingTool.execute({ planId: planPath }, context);
+        expect(getResult.success).toBe(true);
+        expect(getResult.data?.source).toBe('none');
+        expect(getResult.data?.project).toBeNull();
+
+        const resolved = await resolveProjectContextTool.execute(
+            {
+                planId: planPath,
+                cwd: '/tmp/non-repo',
+            },
+            context
+        );
+        expect(resolved.success).toBe(true);
+        expect(resolved.data?.resolved).toBe(false);
+        expect(resolved.data?.source).toBe('none');
     });
 });

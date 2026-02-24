@@ -565,6 +565,20 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
 
 The MCP server includes enhanced error handling and logging for better reliability and debugging.
 
+### HTTP MCP Startup (`riotplan-mcp-http`)
+
+For the HTTP server variant you can configure both plan storage and context discovery roots:
+
+```bash
+riotplan-mcp-http --plans-dir /path/to/plans --context-dir /path/to/context
+```
+
+- `--plans-dir` is required and controls where `.plan` files are discovered.
+- `--context-dir` is optional and controls where `riotplan_context` resolves project entities.
+- If `--context-dir` is omitted, RiotPlan uses a deterministic fallback: `contextDir = plansDir`.
+
+Recommended: point `contextDir` at your shared context root when plans are portable across machines.
+
 ### MCP Tools
 
 **Lifecycle Management:**
@@ -603,6 +617,17 @@ The MCP server includes enhanced error handling and logging for better reliabili
 - **`riotplan_checkpoint`** - Save state snapshots
 - **`riotplan_checkpoint`** - Restore previous state
 - **`riotplan_history_show`** - View timeline of events
+
+**Project Binding & Workspace Filtering:**
+- **`riotplan_bind_project`** - Persist one explicit project binding per plan.
+- **`riotplan_get_project_binding`** - Resolve binding source (`explicit` → `inferred` → `none`).
+- **`riotplan_resolve_project_context`** - Resolve local project roots from bindings.
+- **`riotplan_list_plans`** supports `projectId` and optional `workspaceId` filters.
+
+Binding model notes:
+- Each plan has at most one bound project.
+- SQLite plans persist binding metadata inside the `.plan` file (`other/project-binding.json`) for portability.
+- Unresolved plans remain listable and safe for clients (shown as unassigned until mapped).
 
 ### MCP Resources
 

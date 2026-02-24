@@ -6,12 +6,13 @@
  */
 
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { create as createContext } from '@redaksjon/context';
 import type { McpTool, ToolExecutionContext, ToolResult } from '../types.js';
 import { createSuccess, formatError } from './shared.js';
 
-const EntityTypeSchema = z.enum(['project', 'person', 'term', 'company', 'ignored']);
+const EntityTypeSchema = z.enum(['project']);
 type EntityType = z.infer<typeof EntityTypeSchema>;
 
 const BaseSchema = z.object({
@@ -43,7 +44,9 @@ const GetSchema = BaseSchema.extend({
 const CreateSchema = BaseSchema.extend({
     action: z.literal('create'),
     entityType: EntityTypeSchema.describe('Entity type to create'),
-    entity: z.record(z.string(), z.unknown()).describe('Full entity payload; id is required'),
+    entity: z
+        .record(z.string(), z.unknown())
+        .describe('Full entity payload; entity.id should be a UUID (generated automatically when missing/invalid)'),
 });
 
 const UpdateSchema = BaseSchema.extend({
@@ -68,6 +71,11 @@ const ActionSchema = z.discriminatedUnion('action', [
 ]);
 
 type ContextInstance = Awaited<ReturnType<typeof createContext>>;
+const UUID_V4ISH_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+    return UUID_V4ISH_PATTERN.test(value);
+}
 
 function resolveContextPath(value: string, context: ToolExecutionContext): string {
     return resolve(context.workingDirectory || process.cwd(), value);
@@ -76,8 +84,10 @@ function resolveContextPath(value: string, context: ToolExecutionContext): strin
 async function loadContext(args: z.infer<typeof BaseSchema>, context: ToolExecutionContext): Promise<ContextInstance> {
     const startingDir = args.contextDirectory
         ? resolveContextPath(args.contextDirectory, context)
-        : context.workingDirectory || process.cwd();
-    const contextDirectories = args.contextDirectories?.map((dir) => resolveContextPath(dir, context));
+        : context.contextDir || context.workingDirectory || process.cwd();
+    const contextDirectories =
+        args.contextDirectories?.map((dir) => resolveContextPath(dir, context)) ||
+        (context.contextDir ? [context.contextDir] : undefined);
     return createContext({
         startingDir,
         contextDirectories,
@@ -88,14 +98,6 @@ function getEntityByType(ctx: ContextInstance, entityType: EntityType, id: strin
     switch (entityType) {
         case 'project':
             return ctx.getProject(id);
-        case 'person':
-            return ctx.getPerson(id);
-        case 'term':
-            return ctx.getTerm(id);
-        case 'company':
-            return ctx.getCompany(id);
-        case 'ignored':
-            return ctx.getIgnored(id);
     }
 }
 
@@ -105,14 +107,6 @@ function listEntitiesByType(ctx: ContextInstance, entityType: EntityType, includ
             const projects = ctx.getAllProjects();
             return includeInactive ? projects : projects.filter((p) => p.active !== false);
         }
-        case 'person':
-            return ctx.getAllPeople();
-        case 'term':
-            return ctx.getAllTerms();
-        case 'company':
-            return ctx.getAllCompanies();
-        case 'ignored':
-            return ctx.getAllIgnored();
     }
 }
 
@@ -144,17 +138,15 @@ async function executeContextEntity(args: Record<string, any>, context: ToolExec
         }
 
         if (validated.action === 'create') {
-            const rawId = validated.entity.id;
-            if (typeof rawId !== 'string' || rawId.trim() === '') {
-                throw new Error('entity.id is required for create action');
-            }
-            const existing = getEntityByType(ctx, validated.entityType, rawId);
+            const rawId = typeof validated.entity.id === 'string' ? validated.entity.id.trim() : '';
+            const resolvedId = isUuid(rawId) ? rawId : randomUUID();
+            const existing = getEntityByType(ctx, validated.entityType, resolvedId);
             if (existing) {
-                throw new Error(`${validated.entityType} with id "${rawId}" already exists`);
+                throw new Error(`${validated.entityType} with id "${resolvedId}" already exists`);
             }
             const nextEntity = {
                 ...validated.entity,
-                id: rawId,
+                id: resolvedId,
                 type: validated.entityType,
             };
             await ctx.saveEntity(nextEntity as any);
@@ -204,7 +196,7 @@ export const contextEntityTool: McpTool = {
     name: 'riotplan_context',
     description:
         'Unified context entity operations using action=list|get|create|update|delete. ' +
-        'Supports entity types: project, person, term, company, ignored.',
+        'Supports entity type: project.',
     schema: {
         action: z
             .enum(['list', 'get', 'create', 'update', 'delete'])

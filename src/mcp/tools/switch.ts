@@ -14,7 +14,7 @@ import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import { executeCreate } from './create.js';
 import {
     getProjectMatchKeys,
-    inferProjectBindingFromPath,
+    getWorkspaceMatchKeys,
     readProjectBinding,
     type ProjectBinding,
 } from './project-binding-shared.js';
@@ -167,6 +167,10 @@ export const ListPlansSchema = z.object({
         .string()
         .optional()
         .describe('Optional project filter (matches project.id, owner/repo, or provider:owner/repo)'),
+    workspaceId: z
+        .string()
+        .optional()
+        .describe('Optional workspace filter (matches project.workspace.id)'),
 });
 
 function getPlanCategory(planFile: string): PlanCategory {
@@ -178,6 +182,20 @@ function getPlanCategory(planFile: string): PlanCategory {
         return 'hold';
     }
     return 'active';
+}
+
+function toIsoTimestamp(value: unknown): string | undefined {
+    if (!value) {
+        return undefined;
+    }
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+    }
+    if (typeof value === 'string' && value.trim()) {
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+    }
+    return undefined;
 }
 
 async function executeListPlans(
@@ -197,9 +215,11 @@ async function executeListPlans(
             uuid?: string;
             title?: string;
             stage?: string;
+            createdAt?: string;
+            updatedAt?: string;
             category: PlanCategory;
             project?: ProjectBinding | null;
-            projectSource?: 'manifest' | 'inferred' | 'none';
+            projectSource?: 'explicit' | 'inferred' | 'none';
         }> = [];
 
         // Scan for .plan (SQLite) files
@@ -215,7 +235,7 @@ async function executeListPlans(
                 await provider.close();
                 if (metaResult.success && metaResult.data) {
                     const m = metaResult.data;
-                    const inferred = await inferProjectBindingFromPath(planFile);
+                    const binding = await readProjectBinding(planFile);
                     const category = getPlanCategory(planFile);
                     if (validated.filter && validated.filter !== 'all' && validated.filter !== category) {
                         continue;
@@ -228,9 +248,11 @@ async function executeListPlans(
                         uuid: m.uuid,
                         title: m.name,
                         stage: m.stage,
+                        createdAt: toIsoTimestamp(m.createdAt),
+                        updatedAt: toIsoTimestamp(m.updatedAt),
                         category,
-                        project: inferred,
-                        projectSource: inferred ? 'inferred' : 'none',
+                        project: binding.project,
+                        projectSource: binding.source,
                     });
                 }
             } catch {
@@ -246,12 +268,21 @@ async function executeListPlans(
             }
         }
 
-        const filteredPlans = validated.projectId
-            ? [...dedupedById.values()].filter((plan) => {
-                const matchKeys = getProjectMatchKeys(plan.project);
-                return matchKeys.includes(validated.projectId!.toLowerCase());
-            })
-            : [...dedupedById.values()];
+        const filteredPlans = [...dedupedById.values()].filter((plan) => {
+            if (validated.projectId) {
+                const projectMatchKeys = getProjectMatchKeys(plan.project);
+                if (!projectMatchKeys.includes(validated.projectId.toLowerCase())) {
+                    return false;
+                }
+            }
+            if (validated.workspaceId) {
+                const workspaceMatchKeys = getWorkspaceMatchKeys(plan.project);
+                if (!workspaceMatchKeys.includes(validated.workspaceId.toLowerCase())) {
+                    return false;
+                }
+            }
+            return true;
+        });
 
         if (filteredPlans.length === 0) {
             return {
@@ -275,7 +306,7 @@ async function executeListPlans(
             success: true,
             data: {
                 message: `Found ${filteredPlans.length} plan(s):\n${planList}`,
-                plans: filteredPlans.map(({ id, name, path, type, uuid, title, stage, category, project, projectSource }) => ({
+                plans: filteredPlans.map(({ id, name, path, type, uuid, title, stage, createdAt, updatedAt, category, project, projectSource }) => ({
                     id,
                     planId: id,
                     name,
@@ -284,12 +315,15 @@ async function executeListPlans(
                     uuid,
                     title,
                     stage,
+                    createdAt,
+                    updatedAt,
                     category,
                     project,
                     projectSource,
                 })),
                 filter: {
                     ...(validated.projectId ? { projectId: validated.projectId } : {}),
+                    ...(validated.workspaceId ? { workspaceId: validated.workspaceId } : {}),
                     ...(validated.filter ? { category: validated.filter } : {}),
                 },
             },
