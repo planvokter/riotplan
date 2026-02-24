@@ -496,7 +496,7 @@ async function executeBuild(
         const instructions = await buildPlan(validated, context);
         return createSuccess(
             instructions,
-            "Build instructions prepared. No files were written. Generate plan JSON locally, write artifacts via build-write tools, then call riotplan_transition to move to built.",
+            "Build instructions prepared. No files were written. Use riotplan_build_apply for one-shot persistence, or manually run validate + build-write tools + transition.",
         );
     } catch (error) {
         return formatError(error);
@@ -509,6 +509,7 @@ export const buildTool: McpTool = {
     description:
         '[RiotPlan] Prepare caller-side plan generation instructions from idea/shaping artifacts. ' +
         'This tool does not run server-side AI, does not write plan files, and does not transition lifecycle. ' +
+        'Use riotplan_build_apply when you want one-shot persistence of generated outputs. ' +
         'It returns a canonical system prompt, user prompt, JSON schema, generation context, context coverage proof, and write/validation protocols ' +
         'so the calling LLM can generate steps locally, prove grounding, and persist artifacts explicitly through gated writes.',
     schema: {

@@ -10,6 +10,7 @@ import { createSqliteProvider } from "@kjerneverk/riotplan-format";
 import type { McpTool, ToolResult, ToolExecutionContext } from "../types.js";
 import { resolveSqlitePlanPath, formatError, createSuccess } from "./shared.js";
 import { loadArtifacts } from "../../ai/artifacts.js";
+import { transitionStage } from "./transition.js";
 
 const ArtifactTypeSchema = z.enum(["summary", "execution_plan", "status", "provenance"]);
 
@@ -35,6 +36,12 @@ const BuildWriteStepSchema = z.object({
 const BuildValidatePlanSchema = z.object({
     planId: z.string().optional().describe("Plan identifier (defaults to current plan context)"),
     generatedPlan: z.record(z.string(), z.any()).describe("Caller-generated plan JSON from riotplan_build instructions"),
+});
+
+const BuildApplySchema = z.object({
+    planId: z.string().optional().describe("Plan identifier (defaults to current plan context)"),
+    generatedPlan: z.record(z.string(), z.any()).describe("Caller-generated plan JSON from riotplan_build instructions"),
+    reason: z.string().optional().describe("Optional lifecycle transition reason"),
 });
 
 const validationStamps = new Map<string, { planPath: string; issuedAt: number }>();
@@ -181,6 +188,113 @@ function slugify(value: string): string {
         .replace(/^-+|-+$/g, "");
 }
 
+function toHeading(value: unknown, fallback: string): string {
+    if (typeof value !== "string") return fallback;
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : fallback;
+}
+
+function asStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+function renderTasks(tasks: unknown): string {
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+        return "- (none)";
+    }
+    return tasks
+        .map((task) => {
+            const id = typeof task?.id === "string" ? task.id : "";
+            const description = typeof task?.description === "string" ? task.description : "";
+            const prefix = id ? `- ${id}:` : "-";
+            return `${prefix} ${description || "task"}`;
+        })
+        .join("\n");
+}
+
+function renderList(values: string[]): string {
+    if (values.length === 0) return "- (none)";
+    return values.map((value) => `- ${value}`).join("\n");
+}
+
+function renderSummaryContent(generatedPlan: Record<string, any>): string {
+    const summary = toHeading(generatedPlan.summary, "No summary provided.");
+    const approach = toHeading(generatedPlan.approach, "No approach provided.");
+    const successCriteria = toHeading(generatedPlan.successCriteria, "No success criteria provided.");
+    return (
+        "# Summary\n\n" +
+        `${summary}\n\n` +
+        "## Approach\n\n" +
+        `${approach}\n\n` +
+        "## Success Criteria\n\n" +
+        `${successCriteria}\n`
+    );
+}
+
+function renderExecutionPlanContent(generatedPlan: Record<string, any>): string {
+    const steps = Array.isArray(generatedPlan.steps) ? generatedPlan.steps : [];
+    const ordered = [...steps].sort((a, b) => Number(a?.number || 0) - Number(b?.number || 0));
+    const lines = ordered.map((step) => {
+        const number = Number(step?.number || 0);
+        const title = toHeading(step?.title, `Step ${number}`);
+        const objective = toHeading(step?.objective, "Objective not provided.");
+        return `## Step ${number}: ${title}\n\n${objective}`;
+    });
+    return `# Execution Plan\n\n${lines.join("\n\n")}\n`;
+}
+
+function renderStatusContent(generatedPlan: Record<string, any>): string {
+    const steps = Array.isArray(generatedPlan.steps) ? generatedPlan.steps : [];
+    return (
+        "# STATUS\n\n" +
+        "- State: built\n" +
+        "- Current Step: none started yet\n" +
+        `- Progress: 0/${steps.length} complete\n` +
+        "- Blockers: none\n" +
+        "- Issues: none\n"
+    );
+}
+
+function renderProvenanceContent(generatedPlan: Record<string, any>): string {
+    const analysis = generatedPlan.analysis && typeof generatedPlan.analysis === "object" ? generatedPlan.analysis : {};
+    let constraints: string[] = [];
+    if (Array.isArray((analysis as any).constraintAnalysis)) {
+        constraints = (analysis as any).constraintAnalysis
+            .map((row: any) => (typeof row?.constraint === "string" ? row.constraint.trim() : ""))
+            .filter((value: string) => value.length > 0);
+    }
+    return (
+        "# PROVENANCE\n\n" +
+        "## Constraint Coverage\n\n" +
+        `${renderList(constraints)}\n\n` +
+        "## Source\n\n" +
+        "- generatedPlan submitted to `riotplan_build_apply`\n"
+    );
+}
+
+function renderStepContent(step: Record<string, any>): string {
+    const number = Number(step.number || 0);
+    const title = toHeading(step.title, `Step ${number}`);
+    const objective = toHeading(step.objective, "Objective not provided.");
+    const background = toHeading(step.background, "Background not provided.");
+    const acceptanceCriteria = asStringArray(step.acceptanceCriteria);
+    const testing = toHeading(step.testing, "Testing approach not provided.");
+    return (
+        `# Step ${number}: ${title}\n\n` +
+        "## Objective\n" +
+        `${objective}\n\n` +
+        "## Background\n" +
+        `${background}\n\n` +
+        "## Tasks\n" +
+        `${renderTasks(step.tasks)}\n\n` +
+        "## Acceptance Criteria\n" +
+        `${renderList(acceptanceCriteria)}\n\n` +
+        "## Testing\n" +
+        `${testing}\n`
+    );
+}
+
 async function executeBuildWriteArtifact(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = BuildWriteArtifactSchema.parse(args);
@@ -230,16 +344,33 @@ async function executeBuildWriteStep(args: any, context: ToolExecutionContext): 
                     }
                 }
             }
-            const addResult = await provider.addStep({
-                number: validated.step,
-                code: safeSlug,
-                title: validated.title,
-                description: validated.title,
-                status: "pending",
-                content: validated.content,
-            });
-            if (!addResult.success) {
-                throw new Error(addResult.error || `Failed to write step ${validated.step}`);
+            const existingStepResult = await provider.getStep(validated.step);
+            if (!existingStepResult.success) {
+                throw new Error(existingStepResult.error || `Failed to check step ${validated.step}`);
+            }
+
+            if (existingStepResult.data) {
+                const updateResult = await provider.updateStep(validated.step, {
+                    code: safeSlug,
+                    title: validated.title,
+                    description: validated.title,
+                    content: validated.content,
+                });
+                if (!updateResult.success) {
+                    throw new Error(updateResult.error || `Failed to update step ${validated.step}`);
+                }
+            } else {
+                const addResult = await provider.addStep({
+                    number: validated.step,
+                    code: safeSlug,
+                    title: validated.title,
+                    description: validated.title,
+                    status: "pending",
+                    content: validated.content,
+                });
+                if (!addResult.success) {
+                    throw new Error(addResult.error || `Failed to write step ${validated.step}`);
+                }
             }
         } finally {
             await provider.close();
@@ -248,6 +379,87 @@ async function executeBuildWriteStep(args: any, context: ToolExecutionContext): 
         return createSuccess(
             { planId: planPath, step: validated.step, title: validated.title, filename },
             `Wrote step ${validated.step} (${filename}) using caller-provided content.`,
+        );
+    } catch (error) {
+        return formatError(error);
+    }
+}
+
+async function executeBuildApply(args: any, context: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const validated = BuildApplySchema.parse(args);
+        const planPath = resolveSqlitePlanPath(validated, context);
+
+        const validationResult = await executeBuildValidatePlan(
+            {
+                planId: validated.planId,
+                generatedPlan: validated.generatedPlan,
+            },
+            context,
+        );
+        if (!validationResult.success || !validationResult.data?.validationStamp) {
+            throw new Error(validationResult.error || "Failed to validate generated plan for apply");
+        }
+        const validationStamp = String(validationResult.data.validationStamp);
+
+        const writeArtifact = async (
+            type: z.infer<typeof ArtifactTypeSchema>,
+            content: string,
+        ): Promise<void> => {
+            const result = await executeBuildWriteArtifact(
+                { planId: validated.planId, type, content, validationStamp },
+                context,
+            );
+            if (!result.success) {
+                throw new Error(result.error || `Failed to write ${type} artifact`);
+            }
+        };
+
+        await writeArtifact("summary", renderSummaryContent(validated.generatedPlan));
+        await writeArtifact("execution_plan", renderExecutionPlanContent(validated.generatedPlan));
+        await writeArtifact("status", renderStatusContent(validated.generatedPlan));
+
+        const generatedSteps = Array.isArray(validated.generatedPlan.steps) ? validated.generatedPlan.steps : [];
+        const orderedSteps = [...generatedSteps].sort((a, b) => Number(a?.number || 0) - Number(b?.number || 0));
+        for (let i = 0; i < orderedSteps.length; i++) {
+            const step = orderedSteps[i] as Record<string, any>;
+            const stepNumber = Number(step.number || i + 1);
+            const stepTitle = toHeading(step.title, `Step ${stepNumber}`);
+            const result = await executeBuildWriteStep(
+                {
+                    planId: validated.planId,
+                    step: stepNumber,
+                    title: stepTitle,
+                    content: renderStepContent(step),
+                    validationStamp,
+                    clearExisting: i === 0,
+                },
+                context,
+            );
+            if (!result.success) {
+                throw new Error(result.error || `Failed to write step ${stepNumber}`);
+            }
+        }
+
+        await writeArtifact("provenance", renderProvenanceContent(validated.generatedPlan));
+
+        await transitionStage(
+            {
+                planId: validated.planId,
+                stage: "built",
+                reason: validated.reason || "Applied generated plan via riotplan_build_apply",
+            },
+            context,
+        );
+
+        return createSuccess(
+            {
+                planId: planPath,
+                applied: true,
+                stepsWritten: orderedSteps.length,
+                stage: "built",
+            },
+            "Applied generated plan: validated, persisted artifacts/steps, and transitioned to built.",
         );
     } catch (error) {
         return formatError(error);
@@ -279,5 +491,14 @@ export const buildValidatePlanTool: McpTool = {
         "and issue a validationStamp required by build-write tools.",
     schema: BuildValidatePlanSchema.shape,
     execute: executeBuildValidatePlan,
+};
+
+export const buildApplyTool: McpTool = {
+    name: "riotplan_build_apply",
+    description:
+        "One-shot build apply flow. Validates generated plan JSON, writes SUMMARY/EXECUTION_PLAN/STATUS/PROVENANCE and steps, " +
+        "then transitions lifecycle to built.",
+    schema: BuildApplySchema.shape,
+    execute: executeBuildApply,
 };
 

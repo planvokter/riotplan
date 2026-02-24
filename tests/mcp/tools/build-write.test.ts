@@ -150,6 +150,73 @@ describe("build write tools", () => {
         expect(step2.data?.title).toContain("Second Step");
     });
 
+    it("replaces an existing sqlite step when writing the same step number", async () => {
+        const planPath = join(testRoot, "sqlite-step-replace.plan");
+        const now = new Date().toISOString();
+        const provider = createSqliteProvider(planPath);
+        await provider.initialize({
+            id: "sqlite-step-replace",
+            uuid: "00000000-0000-4000-8000-000000000104",
+            name: "SQLite Step Replace",
+            stage: "idea",
+            createdAt: now,
+            updatedAt: now,
+            schemaVersion: 1,
+        });
+        await provider.close();
+
+        const validatedPlan = {
+            analysis: {
+                constraintAnalysis: [],
+                evidenceAnalysis: [],
+                approachAnalysis: { selectedApproach: "", commitments: "", implementationStrategy: "" },
+            },
+            summary: "Summary",
+            approach: "Approach",
+            successCriteria: "Done",
+            steps: [{ number: 1, title: "Editable Step", provenance: { constraintsAddressed: [], evidenceUsed: [] } }],
+        };
+        const validation = await buildValidatePlanTool.execute({ planId: planPath, generatedPlan: validatedPlan }, context);
+        expect(validation.success).toBe(true);
+        const stamp = String(validation.data?.validationStamp);
+
+        const firstWrite = await buildWriteStepTool.execute(
+            {
+                planId: planPath,
+                step: 1,
+                title: "Editable Step",
+                content: "# Step 01: Editable Step\n\nv1",
+                validationStamp: stamp,
+                clearExisting: true,
+            },
+            context,
+        );
+        expect(firstWrite.success).toBe(true);
+
+        const secondWrite = await buildWriteStepTool.execute(
+            {
+                planId: planPath,
+                step: 1,
+                title: "Editable Step Updated",
+                content: "# Step 01: Editable Step Updated\n\nv2",
+                validationStamp: stamp,
+            },
+            context,
+        );
+        expect(secondWrite.success).toBe(true);
+
+        const verify = createSqliteProvider(planPath);
+        const allSteps = await verify.getSteps();
+        const step1 = await verify.getStep(1);
+        await verify.close();
+
+        expect(allSteps.success).toBe(true);
+        expect(allSteps.data).toHaveLength(1);
+        expect(step1.success).toBe(true);
+        expect(step1.data?.title).toBe("Editable Step Updated");
+        expect(step1.data?.content).toContain("v2");
+    });
+
     it("writes artifacts and steps for sqlite plans", async () => {
         const sqlitePath = join(testRoot, "sqlite-build-write.plan");
         const now = new Date().toISOString();

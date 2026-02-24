@@ -63,6 +63,7 @@
     "@kjerneverk/riotplan-catalyst": "^1.0.5",
     "@kjerneverk/riotplan-format": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.25.3",
+    "@redaksjon/context": "^0.0.10",
     "@types/inquirer": "^9.0.9",
     "@utilarium/cardigantime": "^0.0.25",
     "better-sqlite3": "^12.6.2",

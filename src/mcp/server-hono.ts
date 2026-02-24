@@ -106,6 +106,10 @@ function isMutatingTool(toolName: string, args?: Record<string, unknown>): boole
         const action = typeof args?.action === 'string' ? args.action : '';
         return action !== 'switch';
     }
+    if (toolName === 'riotplan_context') {
+        const action = typeof args?.action === 'string' ? args.action : '';
+        return action !== 'list' && action !== 'get';
+    }
     const nonMutating = new Set([
         'riotplan_status',
         'riotplan_read_context',
