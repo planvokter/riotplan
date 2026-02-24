@@ -6,17 +6,20 @@
  */
 
 import { z } from 'zod';
-import { resolve, join, basename } from 'node:path';
-import { readdir } from 'node:fs/promises';
+import { resolve, join, basename, dirname, sep } from 'node:path';
 import { readdirSync, statSync } from 'node:fs';
+import { mkdir, rename, access } from 'node:fs/promises';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+import { executeCreate } from './create.js';
 import {
     getProjectMatchKeys,
     inferProjectBindingFromPath,
     readProjectBinding,
     type ProjectBinding,
 } from './project-binding-shared.js';
+
+type PlanCategory = 'active' | 'done' | 'hold';
 
 // Schema for switch plan
 export const SwitchPlanSchema = z.object({
@@ -52,60 +55,57 @@ function findAllPlanFiles(dir: string): string[] {
 }
 
 /**
- * Check if a directory is a valid plan directory
- */
-async function isPlanDirectory(dirPath: string): Promise<boolean> {
-    try {
-        // Check for common plan files
-        const files = await readdir(dirPath);
-        return files.includes('LIFECYCLE.md') || 
-               files.includes('STATUS.md') || 
-               files.includes('IDEA.md') ||
-               files.includes('plan');
-    } catch {
-        return false;
-    }
-}
-
-/**
  * Resolve a plan reference to an absolute path
  */
 async function resolvePlanPath(planId: string, context: ToolExecutionContext): Promise<string | null> {
-    // Legacy fallback: allow absolute path inputs from older clients.
-    if (planId.startsWith('/')) {
-        if (await isPlanDirectory(planId)) {
-            return planId;
+    // Allow explicit absolute sqlite paths from older clients.
+    if (planId.startsWith('/') && planId.endsWith('.plan')) {
+        try {
+            const s = statSync(planId);
+            if (s.isFile()) {
+                return planId;
+            }
+        } catch {
+            return null;
         }
-        return null;
     }
-    
-    // Try as relative path from current working directory
-    const fromCwd = resolve(context.workingDirectory, planId);
-    if (await isPlanDirectory(fromCwd)) {
-        return fromCwd;
-    }
-    
-    // Try as plan code in common locations
+
     const basePaths = [
         context.workingDirectory,
-        resolve(context.workingDirectory, '..'),  // Parent directory
-        resolve(context.workingDirectory, '../..'),  // Grandparent
+        resolve(context.workingDirectory, '..'),
+        resolve(context.workingDirectory, '../..'),
     ];
-    
+
+    const normalizedPlanId = planId.trim().toLowerCase();
     for (const basePath of basePaths) {
-        // Try direct child
-        const directPath = join(basePath, planId);
-        if (await isPlanDirectory(directPath)) {
-            return directPath;
-        }
-        
-        // Try in plans/ subdirectory
-        const plansPath = join(basePath, 'plans', planId);
-        if (await isPlanDirectory(plansPath)) {
-            return plansPath;
+        const planFiles = findAllPlanFiles(basePath);
+        for (const planFile of planFiles) {
+            try {
+                const provider = createSqliteProvider(planFile);
+                const exists = await provider.exists();
+                if (!exists) {
+                    await provider.close();
+                    continue;
+                }
+
+                const metaResult = await provider.getMetadata();
+                await provider.close();
+                if (!metaResult.success || !metaResult.data) {
+                    continue;
+                }
+
+                const matchesId = (metaResult.data.id || '').toLowerCase() === normalizedPlanId;
+                const matchesUuid = (metaResult.data.uuid || '').toLowerCase() === normalizedPlanId;
+                const matchesFilename = basename(planFile, '.plan').toLowerCase() === normalizedPlanId;
+                if (matchesId || matchesUuid || matchesFilename) {
+                    return planFile;
+                }
+            } catch {
+                // skip unreadable sqlite plans
+            }
         }
     }
-    
+
     return null;
 }
 
@@ -158,48 +158,26 @@ async function executeSwitchPlan(
  * List available plans in the current context
  */
 export const ListPlansSchema = z.object({
-    // Legacy compatibility only; clients should not send filesystem paths.
-    directory: z.string().optional().describe("Optional legacy search scope"),
+    directory: z.string().optional().describe("Optional search scope for SQLite .plan files"),
+    filter: z
+        .enum(['all', 'active', 'done', 'hold'])
+        .optional()
+        .describe('Optional category filter'),
     projectId: z
         .string()
         .optional()
         .describe('Optional project filter (matches project.id, owner/repo, or provider:owner/repo)'),
 });
 
-/**
- * Read plan.yaml manifest to get metadata
- */
-async function readPlanManifest(planPath: string): Promise<{ id?: string; title?: string; stage?: string; project?: ProjectBinding } | null> {
-    try {
-        const { readFile } = await import('node:fs/promises');
-        const yaml = await import('yaml');
-        
-        // Try plan.yaml
-        const manifestPath = join(planPath, 'plan.yaml');
-        try {
-            const content = await readFile(manifestPath, 'utf-8');
-            const manifest = yaml.parse(content);
-            return manifest || null;
-        } catch {
-            // No manifest
-        }
-        
-        // Try LIFECYCLE.md for stage
-        const lifecyclePath = join(planPath, 'LIFECYCLE.md');
-        try {
-            const content = await readFile(lifecyclePath, 'utf-8');
-            const stageMatch = content.match(/\*\*Stage\*\*:\s*`(\w+)`/);
-            if (stageMatch) {
-                return { stage: stageMatch[1] };
-            }
-        } catch {
-            // No lifecycle
-        }
-        
-        return null;
-    } catch {
-        return null;
+function getPlanCategory(planFile: string): PlanCategory {
+    const segments = planFile.split(/[\\/]+/).map((segment) => segment.toLowerCase());
+    if (segments.includes('done')) {
+        return 'done';
     }
+    if (segments.includes('hold')) {
+        return 'hold';
+    }
+    return 'active';
 }
 
 async function executeListPlans(
@@ -210,86 +188,19 @@ async function executeListPlans(
         const validated = ListPlansSchema.parse(args);
         const searchDir = validated.directory || context.workingDirectory;
         
-        // Find all plan directories
+        // SQLite plans only
         const plans: Array<{
             id: string;
             name: string;
             path: string;
             type: string;
+            uuid?: string;
             title?: string;
             stage?: string;
+            category: PlanCategory;
             project?: ProjectBinding | null;
             projectSource?: 'manifest' | 'inferred' | 'none';
         }> = [];
-        
-        // Check if current directory is a plan
-        if (await isPlanDirectory(searchDir)) {
-            const manifest = await readPlanManifest(searchDir);
-            const binding = await readProjectBinding(searchDir);
-            plans.push({
-                id: basename(searchDir),
-                name: basename(searchDir),
-                path: searchDir,
-                type: 'current',
-                title: manifest?.title,
-                stage: manifest?.stage,
-                project: binding.project,
-                projectSource: binding.source,
-            });
-        }
-        
-        // Check subdirectories
-        try {
-            const entries = await readdir(searchDir, { withFileTypes: true });
-            for (const entry of entries) {
-                if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
-                    const subPath = join(searchDir, entry.name);
-                    if (await isPlanDirectory(subPath)) {
-                        const manifest = await readPlanManifest(subPath);
-                        const binding = await readProjectBinding(subPath);
-                        plans.push({
-                            id: entry.name,
-                            name: entry.name,
-                            path: subPath,
-                            type: 'subdirectory',
-                            title: manifest?.title,
-                            stage: manifest?.stage,
-                            project: binding.project,
-                            projectSource: binding.source,
-                        });
-                    }
-                }
-            }
-        } catch {
-            // Ignore errors reading subdirectories
-        }
-        
-        // Check plans/ subdirectory
-        const plansDir = join(searchDir, 'plans');
-        try {
-            const entries = await readdir(plansDir, { withFileTypes: true });
-            for (const entry of entries) {
-                if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
-                    const subPath = join(plansDir, entry.name);
-                    if (await isPlanDirectory(subPath)) {
-                        const manifest = await readPlanManifest(subPath);
-                        const binding = await readProjectBinding(subPath);
-                        plans.push({
-                            id: entry.name,
-                            name: entry.name,
-                            path: subPath,
-                            type: 'plans/',
-                            title: manifest?.title,
-                            stage: manifest?.stage,
-                            project: binding.project,
-                            projectSource: binding.source,
-                        });
-                    }
-                }
-            }
-        } catch {
-            // Ignore errors reading plans directory
-        }
 
         // Scan for .plan (SQLite) files
         for (const planFile of findAllPlanFiles(searchDir)) {
@@ -305,13 +216,19 @@ async function executeListPlans(
                 if (metaResult.success && metaResult.data) {
                     const m = metaResult.data;
                     const inferred = await inferProjectBindingFromPath(planFile);
+                    const category = getPlanCategory(planFile);
+                    if (validated.filter && validated.filter !== 'all' && validated.filter !== category) {
+                        continue;
+                    }
                     plans.push({
                         id: m.id || basename(planFile, '.plan'),
                         name: basename(planFile, '.plan'),
                         path: planFile,
                         type: 'sqlite',
+                        uuid: m.uuid,
                         title: m.name,
                         stage: m.stage,
+                        category,
                         project: inferred,
                         projectSource: inferred ? 'inferred' : 'none',
                     });
@@ -321,12 +238,20 @@ async function executeListPlans(
             }
         }
 
+        // De-duplicate by plan id.
+        const dedupedById = new Map<string, typeof plans[number]>();
+        for (const plan of plans) {
+            if (!dedupedById.has(plan.id)) {
+                dedupedById.set(plan.id, plan);
+            }
+        }
+
         const filteredPlans = validated.projectId
-            ? plans.filter((plan) => {
+            ? [...dedupedById.values()].filter((plan) => {
                 const matchKeys = getProjectMatchKeys(plan.project);
                 return matchKeys.includes(validated.projectId!.toLowerCase());
             })
-            : plans;
+            : [...dedupedById.values()];
 
         if (filteredPlans.length === 0) {
             return {
@@ -350,17 +275,147 @@ async function executeListPlans(
             success: true,
             data: {
                 message: `Found ${filteredPlans.length} plan(s):\n${planList}`,
-                plans: filteredPlans.map(({ id, name, type, title, stage, project, projectSource }) => ({
+                plans: filteredPlans.map(({ id, name, path, type, uuid, title, stage, category, project, projectSource }) => ({
                     id,
+                    planId: id,
                     name,
+                    path,
                     type,
+                    uuid,
                     title,
                     stage,
+                    category,
                     project,
                     projectSource,
                 })),
-                filter: validated.projectId ? { projectId: validated.projectId } : undefined,
+                filter: {
+                    ...(validated.projectId ? { projectId: validated.projectId } : {}),
+                    ...(validated.filter ? { category: validated.filter } : {}),
+                },
             },
+        };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export const MovePlanSchema = z.object({
+    planId: z.string().describe('Plan identifier to move (id, uuid, filename, or absolute .plan path)'),
+    target: z.enum(['active', 'done', 'hold']).describe('Target category'),
+});
+
+function resolveDestinationDir(sourcePath: string, target: PlanCategory): string {
+    const sourceDir = dirname(sourcePath);
+    const parts = sourceDir.split(sep);
+    const lowered = parts.map((segment) => segment.toLowerCase());
+    const categoryIndex = lowered.findIndex((segment) => segment === 'done' || segment === 'hold');
+
+    if (target === 'active') {
+        if (categoryIndex >= 0) {
+            const prefix = parts.slice(0, categoryIndex).join(sep) || sep;
+            if (basename(prefix).toLowerCase() === 'plans') {
+                return prefix;
+            }
+            const siblingPlans = join(prefix, 'plans');
+            try {
+                if (statSync(siblingPlans).isDirectory()) {
+                    return siblingPlans;
+                }
+            } catch {
+                // fall through
+            }
+            return prefix;
+        }
+        return sourceDir;
+    }
+
+    if (categoryIndex >= 0) {
+        const root = parts.slice(0, categoryIndex).join(sep) || sep;
+        return join(root, target);
+    }
+
+    const plansIndex = lowered.lastIndexOf('plans');
+    if (plansIndex >= 0) {
+        const plansRoot = parts.slice(0, plansIndex + 1).join(sep) || sep;
+        return join(plansRoot, target);
+    }
+
+    return join(sourceDir, target);
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+    try {
+        await access(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function uniqueDestinationPath(destinationDir: string, sourcePath: string): Promise<string> {
+    const ext = '.plan';
+    const base = basename(sourcePath, ext);
+    let candidate = join(destinationDir, `${base}${ext}`);
+    let suffix = 1;
+    while (await pathExists(candidate)) {
+        candidate = join(destinationDir, `${base}-${suffix}${ext}`);
+        suffix += 1;
+    }
+    return candidate;
+}
+
+async function executeMovePlan(args: any, context: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const validated = MovePlanSchema.parse(args);
+        const sourcePath = await resolvePlanPath(validated.planId, context);
+        if (!sourcePath) {
+            return {
+                success: false,
+                error: `Could not find plan: ${validated.planId}. Use riotplan_list_plans to discover available plan identifiers.`,
+            };
+        }
+
+        const currentCategory = getPlanCategory(sourcePath);
+        if (currentCategory === validated.target) {
+            return {
+                success: true,
+                data: {
+                    moved: false,
+                    category: currentCategory,
+                    path: sourcePath,
+                },
+                message: `Plan is already in ${validated.target}.`,
+            };
+        }
+
+        const destinationDir = resolveDestinationDir(sourcePath, validated.target);
+        await mkdir(destinationDir, { recursive: true });
+        const destinationPath = await uniqueDestinationPath(destinationDir, sourcePath);
+        await rename(sourcePath, destinationPath);
+
+        // Resolve canonical plan id from moved file metadata when possible.
+        let canonicalPlanId = validated.planId;
+        try {
+            const provider = createSqliteProvider(destinationPath);
+            const metaResult = await provider.getMetadata();
+            await provider.close();
+            if (metaResult.success && metaResult.data?.id) {
+                canonicalPlanId = metaResult.data.id;
+            }
+        } catch {
+            // best-effort only
+        }
+
+        return {
+            success: true,
+            data: {
+                moved: true,
+                planId: canonicalPlanId,
+                sourcePath,
+                destinationPath,
+                category: validated.target,
+            },
+            message: `Moved plan to ${validated.target}.`,
         };
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -380,4 +435,81 @@ export const listPlansTool: McpTool = {
     description: 'List available plans in the current context. Use this to discover what plans exist before switching.',
     schema: ListPlansSchema.shape,
     execute: executeListPlans,
+};
+
+export const movePlanTool: McpTool = {
+    name: 'riotplan_move_plan',
+    description: 'Move a plan between active, done, and hold categories by relocating the underlying .plan file.',
+    schema: MovePlanSchema.shape,
+    execute: executeMovePlan,
+};
+
+const PlanActionSchema = z.discriminatedUnion('action', [
+    z.object({
+        action: z.literal('create'),
+        code: z.string(),
+        name: z.string().optional(),
+        description: z.string(),
+        directory: z.string().optional(),
+        steps: z.number().optional(),
+        direct: z.boolean().optional(),
+        provider: z.string().optional(),
+        model: z.string().optional(),
+        noAi: z.boolean().optional(),
+        catalysts: z.array(z.string()).optional(),
+        ideaContent: z.string().optional(),
+        idea: z.string().optional(),
+        motivation: z.string().optional(),
+    }),
+    z.object({
+        action: z.literal('switch'),
+        planId: z.string(),
+    }),
+    z.object({
+        action: z.literal('move'),
+        planId: z.string(),
+        target: z.enum(['active', 'done', 'hold']),
+    }),
+]);
+
+const PlanToolSchema = {
+    action: z.enum(['create', 'switch', 'move']).describe('Plan management action to perform'),
+    planId: z.string().optional().describe('Plan identifier for action=switch|move'),
+    target: z.enum(['active', 'done', 'hold']).optional().describe('Target category for action=move'),
+    code: z.string().optional().describe('Plan code when action=create'),
+    name: z.string().optional().describe('Plan display name when action=create'),
+    description: z.string().optional().describe('Plan description when action=create'),
+    directory: z.string().optional().describe('Parent directory when action=create'),
+    steps: z.number().optional().describe('Initial step count when action=create'),
+    direct: z.boolean().optional().describe('Forwarded create option'),
+    provider: z.string().optional().describe('Forwarded create option'),
+    model: z.string().optional().describe('Forwarded create option'),
+    noAi: z.boolean().optional().describe('Forwarded create option'),
+    catalysts: z.array(z.string()).optional().describe('Catalysts for action=create'),
+    ideaContent: z.string().optional().describe('Optional initial idea/motivation content'),
+    idea: z.string().optional().describe('Alias for ideaContent'),
+    motivation: z.string().optional().describe('Alias for ideaContent'),
+} satisfies z.ZodRawShape;
+
+async function executePlan(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const validated = PlanActionSchema.parse(args);
+        switch (validated.action) {
+            case 'create':
+                return executeCreate(validated, context);
+            case 'switch':
+                return executeSwitchPlan(validated, context);
+            case 'move':
+                return executeMovePlan(validated, context);
+        }
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export const planTool: McpTool = {
+    name: 'riotplan_plan',
+    description: 'Manage plans with action=create|switch|move.',
+    schema: PlanToolSchema,
+    execute: executePlan,
 };

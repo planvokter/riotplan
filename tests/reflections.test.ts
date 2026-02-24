@@ -15,6 +15,7 @@ import { rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 
 describe('Reflection System', () => {
     let testDir: string;
@@ -222,6 +223,78 @@ What the next step should know:
             await writeStepReflection(planPath, 1, 'Reflection after completion');
             const content = await readStepReflection(planPath, 1);
             expect(content).toBe('Reflection after completion');
+        });
+    });
+
+    describe('SQLite reflection reads', () => {
+        it('should read a single SQLite reflection by step', async () => {
+            const sqlitePath = join(testDir, 'sqlite-reflections.plan');
+            const now = new Date().toISOString();
+            const provider = createSqliteProvider(sqlitePath);
+            await provider.initialize({
+                id: 'sqlite-reflections',
+                uuid: '00000000-0000-4000-8000-000000000301',
+                name: 'SQLite Reflections',
+                stage: 'executing',
+                createdAt: now,
+                updatedAt: now,
+                schemaVersion: 1,
+            });
+            await provider.saveFile({
+                type: 'prompt',
+                filename: 'reflections/01-reflection.md',
+                content: 'SQLite reflection step 1',
+                createdAt: now,
+                updatedAt: now,
+            });
+            await provider.close();
+
+            const content = await readStepReflection(sqlitePath, 1);
+            expect(content).toBe('SQLite reflection step 1');
+        });
+
+        it('should read all SQLite reflections sorted by step number', async () => {
+            const sqlitePath = join(testDir, 'sqlite-reflections-all.plan');
+            const now = new Date().toISOString();
+            const provider = createSqliteProvider(sqlitePath);
+            await provider.initialize({
+                id: 'sqlite-reflections-all',
+                uuid: '00000000-0000-4000-8000-000000000302',
+                name: 'SQLite Reflections All',
+                stage: 'executing',
+                createdAt: now,
+                updatedAt: now,
+                schemaVersion: 1,
+            });
+            await provider.saveFile({
+                type: 'prompt',
+                filename: 'reflections/03-reflection.md',
+                content: 'Reflection 3',
+                createdAt: now,
+                updatedAt: now,
+            });
+            await provider.saveFile({
+                type: 'prompt',
+                filename: 'reflections/01-reflection.md',
+                content: 'Reflection 1',
+                createdAt: now,
+                updatedAt: now,
+            });
+            await provider.saveFile({
+                type: 'prompt',
+                filename: 'reflections/02-reflection.md',
+                content: 'Reflection 2',
+                createdAt: now,
+                updatedAt: now,
+            });
+            await provider.close();
+
+            const reflections = await readAllReflections(sqlitePath);
+            expect(reflections).toEqual([
+                { step: 1, content: 'Reflection 1' },
+                { step: 2, content: 'Reflection 2' },
+                { step: 3, content: 'Reflection 3' },
+            ]);
         });
     });
 });

@@ -5,9 +5,11 @@
 import { z } from "zod";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir, appendFile, readdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { formatTimestamp, resolveDirectory } from "./shared.js";
 import type { ToolResult, ToolExecutionContext } from '../types.js';
 import type { TimelineEvent, CheckpointMetadata } from '../../types.js';
+import { createSqliteProvider } from "@kjerneverk/riotplan-format";
 
 // Re-export for backward compatibility
 export type HistoryEvent = TimelineEvent;
@@ -48,6 +50,21 @@ export const HistoryShowSchema = z.object({
  * Log an event to the timeline
  */
 export async function logEvent(planPath: string, event: TimelineEvent): Promise<void> {
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            await provider.addTimelineEvent({
+                id: randomUUID(),
+                timestamp: event.timestamp,
+                type: event.type as any,
+                data: event.data,
+            } as any);
+            return;
+        } finally {
+            await provider.close();
+        }
+    }
+
     const historyDir = join(planPath, '.history');
     await mkdir(historyDir, { recursive: true });
   
@@ -61,6 +78,23 @@ export async function logEvent(planPath: string, event: TimelineEvent): Promise<
  * Read timeline events
  */
 export async function readTimeline(planPath: string): Promise<TimelineEvent[]> {
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const eventsResult = await provider.getTimelineEvents();
+            if (!eventsResult.success || !eventsResult.data) {
+                return [];
+            }
+            return eventsResult.data.map((event) => ({
+                timestamp: event.timestamp,
+                type: event.type as any,
+                data: event.data,
+            }));
+        } finally {
+            await provider.close();
+        }
+    }
+
     const timelinePath = join(planPath, '.history', 'timeline.jsonl');
   
     try {
@@ -187,6 +221,25 @@ async function countEventsSinceLastCheckpoint(planPath: string): Promise<number>
  * Get list of files in plan directory
  */
 async function getChangedFiles(planPath: string): Promise<string[]> {
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const [filesResult, stepsResult] = await Promise.all([
+                provider.getFiles(),
+                provider.getSteps(),
+            ]);
+            const files = filesResult.success && filesResult.data
+                ? filesResult.data.map((f) => f.filename)
+                : [];
+            const steps = stepsResult.success && stepsResult.data
+                ? stepsResult.data.map((s) => `${s.number.toString().padStart(2, '0')}-${s.code}.md`)
+                : [];
+            return [...files, ...steps];
+        } finally {
+            await provider.close();
+        }
+    }
+
     try {
         const files = await readdir(planPath);
         return files.filter(f => f.endsWith('.md'));
@@ -238,6 +291,41 @@ async function capturePromptContext(
     snapshot: any,
     message: string
 ): Promise<void> {
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const prompt = `# Checkpoint: ${checkpointName}
+
+**Timestamp**: ${snapshot.timestamp}
+**Stage**: ${snapshot.stage || 'unknown'}
+**Message**: ${message}
+
+## Current State
+
+${formatSnapshot(snapshot)}
+
+## Files at This Point
+
+${(await getChangedFiles(planPath)).map(f => `- ${f}`).join('\n')}
+
+## Recent Timeline
+
+${await formatRecentEvents(planPath, 10)}
+`;
+            const now = formatTimestamp();
+            await provider.saveFile({
+                type: 'prompt',
+                filename: `${checkpointName}.md`,
+                content: prompt,
+                createdAt: now,
+                updatedAt: now,
+            });
+            return;
+        } finally {
+            await provider.close();
+        }
+    }
+
     const promptDir = join(planPath, '.history', 'prompts');
     await mkdir(promptDir, { recursive: true });
   
@@ -262,7 +350,7 @@ ${await formatRecentEvents(planPath, 10)}
 ---
 
 This checkpoint captures the state of the plan at this moment in time.
-You can restore to this checkpoint using: \`riotplan_checkpoint_restore({ checkpoint: "${checkpointName}" })\`
+You can restore to this checkpoint using: \`riotplan_checkpoint({ action: "restore", checkpoint: "${checkpointName}" })\`
 `;
   
     await writeFile(
@@ -276,6 +364,71 @@ You can restore to this checkpoint using: \`riotplan_checkpoint_restore({ checkp
 export async function checkpointCreate(args: z.infer<typeof CheckpointCreateSchema>): Promise<string> {
     const planPath = args.planId || process.cwd();
     const { name, message, capturePrompt } = args;
+
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const [metadataResult, stepsResult, filesResult] = await Promise.all([
+                provider.getMetadata(),
+                provider.getSteps(),
+                provider.getFiles(),
+            ]);
+            if (!metadataResult.success || !metadataResult.data) {
+                throw new Error(metadataResult.error || 'Failed to read plan metadata');
+            }
+
+            const createdAt = formatTimestamp();
+            const createResult = await provider.createCheckpoint({
+                name,
+                message,
+                createdAt,
+                snapshot: {
+                    metadata: metadataResult.data,
+                    steps: (stepsResult.success ? stepsResult.data : [])?.map((s) => ({
+                        number: s.number,
+                        status: s.status,
+                        startedAt: s.startedAt,
+                        completedAt: s.completedAt,
+                    })) || [],
+                    files: (filesResult.success ? filesResult.data : [])?.map((f) => ({
+                        type: f.type,
+                        filename: f.filename,
+                        content: f.content,
+                    })) || [],
+                },
+            } as any);
+            if (!createResult.success) {
+                throw new Error(createResult.error || 'Failed to create checkpoint');
+            }
+
+            const snapshot = {
+                timestamp: createdAt,
+                stage: metadataResult.data.stage,
+                idea: { exists: true, content: filesResult.success ? filesResult.data?.find((f) => f.type === 'idea')?.content : undefined },
+                shaping: { exists: true, content: filesResult.success ? filesResult.data?.find((f) => f.type === 'shaping')?.content : undefined },
+            };
+
+            if (capturePrompt) {
+                await capturePromptContext(planPath, name, snapshot, message);
+            }
+
+            await provider.addTimelineEvent({
+                id: randomUUID(),
+                timestamp: createdAt,
+                type: 'checkpoint_created' as any,
+                data: {
+                    name,
+                    message,
+                    snapshotPath: `checkpoint:${name}`,
+                    promptPath: `${name}.md`,
+                },
+            } as any);
+
+            return `✅ Checkpoint created: ${name}\n\nStored in SQLite storage.\nPrompt artifact: ${name}.md\n\nYou can restore this checkpoint later with:\n  riotplan_checkpoint({ action: "restore", checkpoint: "${name}" })`;
+        } finally {
+            await provider.close();
+        }
+    }
   
     // 1. Create checkpoint directory
     const checkpointDir = join(planPath, '.history', 'checkpoints');
@@ -325,11 +478,31 @@ export async function checkpointCreate(args: z.infer<typeof CheckpointCreateSche
     };
     await logEvent(planPath, checkpointEvent);
   
-    return `✅ Checkpoint created: ${name}\n\nLocation: ${planPath}/.history/checkpoints/${name}.json\nPrompt: ${planPath}/.history/prompts/${name}.md\n\nYou can restore this checkpoint later with:\n  riotplan_checkpoint_restore({ checkpoint: "${name}" })`;
+    return `✅ Checkpoint created: ${name}\n\nLocation: ${planPath}/.history/checkpoints/${name}.json\nPrompt: ${planPath}/.history/prompts/${name}.md\n\nYou can restore this checkpoint later with:\n  riotplan_checkpoint({ action: "restore", checkpoint: "${name}" })`;
 }
 
 export async function checkpointList(args: z.infer<typeof CheckpointListSchema>): Promise<string> {
     const planPath = args.planId || process.cwd();
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const checkpointsResult = await provider.getCheckpoints();
+            const checkpoints = checkpointsResult.success ? checkpointsResult.data || [] : [];
+            if (checkpoints.length === 0) {
+                return 'No checkpoints found.';
+            }
+            let output = `Found ${checkpoints.length} checkpoint(s):\n\n`;
+            for (const checkpoint of checkpoints) {
+                const time = new Date(checkpoint.createdAt).toLocaleString();
+                output += `- **${checkpoint.name}** (${time})\n`;
+                output += `  Message: ${checkpoint.message}\n\n`;
+            }
+            return output;
+        } finally {
+            await provider.close();
+        }
+    }
+
     const checkpointDir = join(planPath, '.history', 'checkpoints');
   
     try {
@@ -363,6 +536,29 @@ export async function checkpointList(args: z.infer<typeof CheckpointListSchema>)
 
 export async function checkpointShow(args: z.infer<typeof CheckpointShowSchema>): Promise<string> {
     const planPath = args.planId || process.cwd();
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const checkpointResult = await provider.getCheckpoint(args.checkpoint);
+            if (!checkpointResult.success || !checkpointResult.data) {
+                throw new Error(`Checkpoint not found: ${args.checkpoint}`);
+            }
+            const checkpoint = checkpointResult.data;
+            const time = new Date(checkpoint.createdAt).toLocaleString();
+            let output = `# Checkpoint: ${checkpoint.name}\n\n`;
+            output += `**Created**: ${time}\n`;
+            output += `**Message**: ${checkpoint.message}\n\n`;
+            output += `## Snapshot\n\n`;
+            output += `- Stage: ${checkpoint.snapshot.metadata.stage}\n`;
+            output += `- Files: ${checkpoint.snapshot.files.length}\n`;
+            output += `- Steps: ${checkpoint.snapshot.steps.length}\n\n`;
+            output += `Restore: riotplan_checkpoint({ action: "restore", checkpoint: "${args.checkpoint}" })`;
+            return output;
+        } finally {
+            await provider.close();
+        }
+    }
+
     const checkpointPath = join(planPath, '.history', 'checkpoints', `${args.checkpoint}.json`);
   
     const content = await readFile(checkpointPath, 'utf-8');
@@ -381,13 +577,39 @@ export async function checkpointShow(args: z.infer<typeof CheckpointShowSchema>)
     output += `${formatSnapshot(checkpoint.snapshot)}\n`;
     output += `\n---\n\n`;
     output += `View full prompt context: ${planPath}/.history/prompts/${args.checkpoint}.md\n`;
-    output += `Restore: riotplan_checkpoint_restore({ checkpoint: "${args.checkpoint}" })`;
+    output += `Restore: riotplan_checkpoint({ action: "restore", checkpoint: "${args.checkpoint}" })`;
   
     return output;
 }
 
 export async function checkpointRestore(args: z.infer<typeof CheckpointRestoreSchema>): Promise<string> {
     const planPath = args.planId || process.cwd();
+    if (planPath.endsWith('.plan')) {
+        const provider = createSqliteProvider(planPath);
+        try {
+            const checkpointResult = await provider.getCheckpoint(args.checkpoint);
+            if (!checkpointResult.success || !checkpointResult.data) {
+                throw new Error(`Checkpoint not found: ${args.checkpoint}`);
+            }
+            const restoreResult = await provider.restoreCheckpoint(args.checkpoint);
+            if (!restoreResult.success) {
+                throw new Error(restoreResult.error || `Failed to restore checkpoint: ${args.checkpoint}`);
+            }
+            await provider.addTimelineEvent({
+                id: randomUUID(),
+                timestamp: formatTimestamp(),
+                type: 'checkpoint_restored' as any,
+                data: {
+                    checkpoint: args.checkpoint,
+                    restoredFrom: checkpointResult.data.createdAt,
+                },
+            } as any);
+            return `✅ Restored to checkpoint: ${args.checkpoint}\n\nRestored from: ${checkpointResult.data.createdAt}\nStage: ${checkpointResult.data.snapshot.metadata.stage}`;
+        } finally {
+            await provider.close();
+        }
+    }
+
     const checkpointPath = join(planPath, '.history', 'checkpoints', `${args.checkpoint}.json`);
   
     const content = await readFile(checkpointPath, 'utf-8');
@@ -516,32 +738,62 @@ export async function executeHistoryShow(args: any, context: ToolExecutionContex
 // Tool definitions for MCP
 import type { McpTool } from '../types.js';
 
-export const checkpointCreateTool: McpTool = {
-    name: "riotplan_checkpoint_create",
-    description: "Create a named checkpoint of current ideation state with prompt capture. Use this at key decision points to save your progress.",
-    schema: CheckpointCreateSchema.shape,
-    execute: executeCheckpointCreate,
-};
+const CheckpointActionSchema = z.discriminatedUnion('action', [
+    z.object({
+        action: z.literal('create'),
+        planId: z.string().optional(),
+        name: z.string(),
+        message: z.string(),
+        capturePrompt: z.boolean().optional(),
+    }),
+    z.object({
+        action: z.literal('list'),
+        planId: z.string().optional(),
+    }),
+    z.object({
+        action: z.literal('show'),
+        planId: z.string().optional(),
+        checkpoint: z.string(),
+    }),
+    z.object({
+        action: z.literal('restore'),
+        planId: z.string().optional(),
+        checkpoint: z.string(),
+    }),
+]);
 
-export const checkpointListTool: McpTool = {
-    name: "riotplan_checkpoint_list",
-    description: "List all checkpoints for a plan with timestamps and messages.",
-    schema: CheckpointListSchema.shape,
-    execute: executeCheckpointList,
-};
+const CheckpointToolSchema = {
+    action: z.enum(['create', 'list', 'show', 'restore']).describe('Checkpoint action to perform'),
+    planId: z.string().optional().describe('Plan identifier (defaults to current plan context)'),
+    name: z.string().optional().describe('Checkpoint name when action=create'),
+    message: z.string().optional().describe('Checkpoint message when action=create'),
+    capturePrompt: z.boolean().optional().describe('Capture prompt context when action=create'),
+    checkpoint: z.string().optional().describe('Checkpoint name when action=show|restore'),
+} satisfies z.ZodRawShape;
 
-export const checkpointShowTool: McpTool = {
-    name: "riotplan_checkpoint_show",
-    description: "Show detailed information about a specific checkpoint including full snapshot.",
-    schema: CheckpointShowSchema.shape,
-    execute: executeCheckpointShow,
-};
+async function executeCheckpoint(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const validated = CheckpointActionSchema.parse(args);
+        switch (validated.action) {
+            case 'create':
+                return executeCheckpointCreate(validated, context);
+            case 'list':
+                return executeCheckpointList(validated, context);
+            case 'show':
+                return executeCheckpointShow(validated, context);
+            case 'restore':
+                return executeCheckpointRestore(validated, context);
+        }
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
 
-export const checkpointRestoreTool: McpTool = {
-    name: "riotplan_checkpoint_restore",
-    description: "Restore plan to a previous checkpoint state. This will overwrite current files with checkpoint snapshot.",
-    schema: CheckpointRestoreSchema.shape,
-    execute: executeCheckpointRestore,
+export const checkpointTool: McpTool = {
+    name: "riotplan_checkpoint",
+    description: "Manage plan checkpoints with action=create|list|show|restore.",
+    schema: CheckpointToolSchema,
+    execute: executeCheckpoint,
 };
 
 export const historyShowTool: McpTool = {

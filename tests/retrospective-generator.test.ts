@@ -10,7 +10,7 @@ import {
     generateRetrospective,
 } from '../src/retrospective/generator.js';
 import { writeStepReflection } from '../src/reflections/writer.js';
-import { rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -19,7 +19,7 @@ describe('Retrospective Generator', () => {
     let planPath: string;
 
     beforeEach(async () => {
-        testDir = join(tmpdir(), `riotplan-retro-test-${Date.now()}`);
+        testDir = await mkdtemp(join(tmpdir(), 'riotplan-retro-test-'));
         const result = await createPlan({
             code: 'test-plan',
             name: 'Test Plan',
@@ -35,7 +35,7 @@ describe('Retrospective Generator', () => {
 
     afterEach(async () => {
         try {
-            await rm(testDir, { recursive: true });
+            await rm(testDir, { recursive: true, force: true });
         } catch {
             // Ignore cleanup errors
         }

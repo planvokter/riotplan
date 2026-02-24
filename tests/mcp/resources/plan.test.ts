@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import { readPlanResource } from '../../../src/mcp/resources/plan.js';
 
 describe('readPlanResource', () => {
@@ -16,34 +17,26 @@ describe('readPlanResource', () => {
         await rm(testDir, { recursive: true, force: true });
     });
 
-    async function createPlan(planId: string, options?: { projectPath?: string }): Promise<string> {
-        const planDir = join(testDir, planId);
-        await mkdir(planDir, { recursive: true });
-        await writeFile(
-            join(planDir, 'SUMMARY.md'),
-            '# Project Voice Tone\n\nRefine tone and voice for project communication.\n',
-            'utf-8'
-        );
-        await writeFile(join(planDir, 'STATUS.md'), '# Status\n', 'utf-8');
-
-        if (options?.projectPath) {
-            await writeFile(
-                join(planDir, 'plan.yaml'),
-                `id: ${planId}\n` +
-                    'title: Project Voice Tone\n' +
-                    'created: 2026-02-17T17:25:38.812Z\n' +
-                    `projectPath: ${options.projectPath}\n`,
-                'utf-8'
-            );
-        }
-
-        return planDir;
+    async function createPlan(planId: string): Promise<string> {
+        const planPath = join(testDir, `${planId}.plan`);
+        const now = new Date().toISOString();
+        const provider = createSqliteProvider(planPath);
+        await provider.initialize({
+            id: planId,
+            uuid: '00000000-0000-4000-8000-000000000121',
+            name: 'Project Voice Tone',
+            description: 'Refine tone and voice for project communication.',
+            createdAt: now,
+            updatedAt: now,
+            stage: 'idea',
+            schemaVersion: 1,
+        });
+        await provider.close();
+        return planPath;
     }
 
-    it('returns projectPath when plan.yaml includes it', async () => {
-        const planDir = await createPlan('project-voice-tone', {
-            projectPath: '/Users/tobrien/gitw/kjerneverk/riotdoc',
-        });
+    it('reads sqlite plan metadata', async () => {
+        const planDir = await createPlan('project-voice-tone');
 
         const result = await readPlanResource(planDir);
 
@@ -51,24 +44,18 @@ describe('readPlanResource', () => {
         expect(result.planId).toBe('project-voice-tone');
         expect(result.code).toBe('project-voice-tone');
         expect(result.name).toBe('Project Voice Tone');
-        expect(result.metadata?.projectPath).toBe('/Users/tobrien/gitw/kjerneverk/riotdoc');
         expect(result.metadata?.code).toBe('project-voice-tone');
         expect(result.metadata?.name).toBe('Project Voice Tone');
         expect(result).toHaveProperty('state');
     });
 
-    it('works for plans without projectPath and preserves existing fields', async () => {
+    it('returns exists=false when sqlite plan does not exist', async () => {
         const planDir = await createPlan('legacy-plan');
+        await rm(planDir, { force: true });
 
         const result = await readPlanResource(planDir);
 
-        expect(result.exists).toBe(true);
-        expect(result.planId).toBe('legacy-plan');
-        expect(result.code).toBe('legacy-plan');
-        expect(result.name).toBe('Project Voice Tone');
-        expect(result.metadata?.code).toBe('legacy-plan');
-        expect(result.metadata?.name).toBe('Project Voice Tone');
-        expect(result.metadata?.projectPath).toBeUndefined();
-        expect(result.state?.status).toBeDefined();
+        expect(result.exists).toBe(false);
+        expect(result.planId).toBeNull();
     });
 });

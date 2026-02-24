@@ -127,7 +127,7 @@ npm install -g @kjerneverk/execution-gemini
 
 ```typescript
 // 1. Create plan
-riotplan_create({
+riotplan_plan({
   code: "feature-x",
   description: "Implement feature X with tests and docs",
   steps: 8
@@ -137,13 +137,13 @@ riotplan_create({
 riotplan_status({ path: "./feature-x" })
 
 // 3. Start first step
-riotplan_step_start({ path: "./feature-x", step: 1 })
+riotplan_step({ planId: "./feature-x", action: "start", step: 1 })
 
 // 4. Read step content
-fetch("riotplan://step/feature-x/1")
+fetch("riotplan://step/feature-x?number=1")
 
 // 5. Complete step
-riotplan_step_complete({ path: "./feature-x", step: 1 })
+riotplan_step({ planId: "./feature-x", action: "complete", step: 1 })
 
 // 6. Repeat for remaining steps
 ```
@@ -152,28 +152,28 @@ riotplan_step_complete({ path: "./feature-x", step: 1 })
 
 ```typescript
 // 1. Create idea
-riotplan_idea_create({
+riotplan_idea({
   code: "new-feature",
   description: "Explore adding a new feature"
 })
 
 // 2. Add notes
-riotplan_idea_add_note({
+riotplan_idea({
   note: "Users have been requesting this feature"
 })
 
 // 3. Add constraints
-riotplan_idea_add_constraint({
+riotplan_idea({
   constraint: "Must work with existing auth system"
 })
 
 // 4. Add questions
-riotplan_idea_add_question({
+riotplan_idea({
   question: "How does this affect performance?"
 })
 
 // 5. When ready, start shaping
-riotplan_shaping_start()
+riotplan_shaping({ action: "start" })
 ```
 
 ## Benefits

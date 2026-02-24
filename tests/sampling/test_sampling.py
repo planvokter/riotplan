@@ -27,7 +27,7 @@ async def test_sampling_capability_detection(sampling_client):
     # Check for key RiotPlan tools
     tool_names = [tool.name for tool in tools]
     assert "riotplan_generate" in tool_names, "riotplan_generate tool not found"
-    assert "riotplan_create" in tool_names, "riotplan_create tool not found"
+    assert "riotplan_plan" in tool_names, "riotplan_plan tool not found"
     
     print(f"\n✅ Sampling capability detected with {handler_type} handler")
     print(f"   Available tools: {len(tools)}")
@@ -38,14 +38,13 @@ async def test_sampling_plan_generation(sampling_client, temp_plan_dir):
     """
     Test that RiotPlan uses MCP sampling to generate a plan.
     
-    Uses riotplan_create which creates files using sampling.
+    Uses riotplan_plan(action="create") which creates SQLite plans.
     """
     client, handler_type = sampling_client
-    plan_path = Path(temp_plan_dir) / "test-web-app"
-    
     result = await client.call_tool(
-        "riotplan_create",
+        "riotplan_plan",
         {
+            "action": "create",
             "code": "test-web-app",
             "description": "Create a simple web application with user authentication",
             "directory": str(temp_plan_dir),
@@ -56,23 +55,13 @@ async def test_sampling_plan_generation(sampling_client, temp_plan_dir):
     assert result.content, "No content in result"
     assert not result.is_error, f"Tool returned error: {result.content}"
     
-    # Verify plan was created
-    assert plan_path.exists(), f"Plan directory not created at {plan_path}"
-    assert (plan_path / "STATUS.md").exists(), "STATUS.md not created"
-    
-    # Verify steps were created
-    plan_dir = plan_path / "plan"
-    if plan_dir.exists():
-        step_files = list(plan_dir.glob("*.md"))
-    else:
-        steps_dir = plan_path / "steps"
-        step_files = list(steps_dir.glob("*.md")) if steps_dir.exists() else []
-    
-    assert len(step_files) >= 1, f"Expected at least 1 step, found {len(step_files)}"
+    # Verify a SQLite plan file was created.
+    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
+    assert len(plan_files) == 1, f"Expected one .plan file, found {len(plan_files)}"
+    assert "test-web-app" in plan_files[0].name, "Plan filename does not include plan code"
     
     print(f"\n✅ Plan generated successfully using {handler_type} sampling handler")
-    print(f"   Plan location: {plan_path}")
-    print(f"   Steps created: {len(step_files)}")
+    print(f"   Plan location: {plan_files[0]}")
 
 
 @pytest.mark.asyncio
@@ -155,12 +144,11 @@ async def test_no_server_api_keys_needed(sampling_client, temp_plan_dir, monkeyp
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     
-    plan_path = Path(temp_plan_dir) / "test-no-keys"
-    
     # This should still work because sampling delegates to the client
     result = await client.call_tool(
-        "riotplan_create",
+        "riotplan_plan",
         {
+            "action": "create",
             "code": "test-no-keys",
             "description": "Simple calculator app",
             "directory": str(temp_plan_dir),
@@ -169,8 +157,8 @@ async def test_no_server_api_keys_needed(sampling_client, temp_plan_dir, monkeyp
     )
     
     assert not result.is_error, f"Tool returned error: {result.content}"
-    assert plan_path.exists(), "Plan not created despite no server API keys"
-    assert (plan_path / "STATUS.md").exists(), "STATUS.md not created"
+    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
+    assert len(plan_files) == 1, "Plan .plan file was not created despite no server API keys"
     
     print(f"\n✅ CRITICAL: No server API keys needed with {handler_type} sampling!")
     print("   This proves RiotPlan delegates AI generation to the client")
@@ -182,11 +170,10 @@ async def test_plan_file_structure(sampling_client, temp_plan_dir):
     Test that generated plan has correct file structure.
     """
     client, handler_type = sampling_client
-    plan_path = Path(temp_plan_dir) / "test-structure"
-    
     result = await client.call_tool(
-        "riotplan_create",
+        "riotplan_plan",
         {
+            "action": "create",
             "code": "test-structure",
             "description": "E-commerce platform",
             "directory": str(temp_plan_dir),
@@ -195,20 +182,14 @@ async def test_plan_file_structure(sampling_client, temp_plan_dir):
     )
     
     assert not result.is_error, f"Tool returned error: {result.content}"
-    
-    # Check directory structure
-    assert plan_path.exists(), "Plan directory not created"
-    assert plan_path.is_dir(), "Plan path is not a directory"
-    assert (plan_path / "STATUS.md").exists(), "STATUS.md not created"
-    
-    # Check plan directory for steps
-    plan_dir = plan_path / "plan"
-    if plan_dir.exists():
-        step_files = sorted(plan_dir.glob("*.md"))
-        assert len(step_files) >= 1, f"Expected at least 1 step, found {len(step_files)}"
+
+    # Check SQLite plan structure.
+    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
+    assert len(plan_files) == 1, f"Expected one .plan file, found {len(plan_files)}"
+    assert plan_files[0].is_file(), "Plan path is not a file"
     
     print(f"\n✅ Plan file structure correct with {handler_type}")
-    print(f"   Plan directory: {plan_path}")
+    print(f"   Plan file: {plan_files[0]}")
 
 
 # =============================================================================
@@ -225,11 +206,10 @@ async def test_real_openai_integration(openai_client, temp_plan_dir):
     WARNING: This costs money! Only run when needed.
     Run with: pytest -m integration -k openai
     """
-    plan_path = Path(temp_plan_dir) / "test-openai-real"
-    
     result = await openai_client.call_tool(
-        "riotplan_create",
+        "riotplan_plan",
         {
+            "action": "create",
             "code": "test-openai-real",
             "description": "Simple TODO app",
             "directory": str(temp_plan_dir),
@@ -238,7 +218,8 @@ async def test_real_openai_integration(openai_client, temp_plan_dir):
     )
     
     assert not result.is_error, f"Tool returned error: {result.content}"
-    assert plan_path.exists(), "Plan not created"
+    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
+    assert len(plan_files) == 1, "Plan not created"
     
     print("\n✅ Real OpenAI integration works")
 
@@ -252,11 +233,10 @@ async def test_real_anthropic_integration(anthropic_client, temp_plan_dir):
     WARNING: This costs money! Only run when needed.
     Run with: pytest -m integration -k anthropic
     """
-    plan_path = Path(temp_plan_dir) / "test-anthropic-real"
-    
     result = await anthropic_client.call_tool(
-        "riotplan_create",
+        "riotplan_plan",
         {
+            "action": "create",
             "code": "test-anthropic-real",
             "description": "Simple blog platform",
             "directory": str(temp_plan_dir),
@@ -265,6 +245,7 @@ async def test_real_anthropic_integration(anthropic_client, temp_plan_dir):
     )
     
     assert not result.is_error, f"Tool returned error: {result.content}"
-    assert plan_path.exists(), "Plan not created"
+    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
+    assert len(plan_files) == 1, "Plan not created"
     
     print("\n✅ Real Anthropic integration works")

@@ -27,24 +27,13 @@ Report this information to the user in a clear, concise format.
 
 ## Step 2: Review Step Progress
 
-Use the `riotplan_step_list` tool to see all steps:
+Read `riotplan://steps/${planId}` to see all steps:
 
 ```
-{
-  "planId": "${planId}",
-  "pending": false,
-  "all": true
-}
+riotplan://steps/${planId}
 ```
 
-Or to see only remaining work:
-
-```
-{
-  "planId": "${planId}",
-  "pending": true
-}
-```
+To focus on remaining work, filter pending items client-side from the resource response.
 
 This provides:
 - List of all steps with status
@@ -118,10 +107,11 @@ When you identify a blocker:
 If requirements emerge or steps need adjustment:
 
 ### Adding Steps
-Suggest using `riotplan_step_add`:
+Suggest using `riotplan_step` with `action: "add"`:
 
 ```
 {
+  "action": "add",
   "planId": "${planId}",
   "title": "New Step Title",
   "after": 5
@@ -129,7 +119,7 @@ Suggest using `riotplan_step_add`:
 ```
 
 ### Splitting Large Steps
-If a step is too complex, suggest breaking it into smaller steps using `riotplan_step_add`.
+If a step is too complex, suggest breaking it into smaller steps using `riotplan_step` with `action: "add"`.
 
 ## Example Workflow
 
@@ -137,9 +127,9 @@ Here's how you should execute this workflow:
 
 1. Call `riotplan_status` with `planId`: "${planId}"
 2. Present the status to the user clearly
-3. Call `riotplan_step_list` to show all steps
+3. Read `riotplan://steps/${planId}` to show all steps
 4. Identify any issues or blockers
 5. Suggest next actions to the user
-6. If the user wants to adjust the plan, use `riotplan_step_add` or other tools
+6. If the user wants to adjust the plan, use `riotplan_step` with `action: "add"` (or other actions) as needed
 
 Remember: Always use MCP tools, never shell commands.

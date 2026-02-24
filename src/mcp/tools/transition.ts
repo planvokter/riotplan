@@ -3,11 +3,13 @@
  */
 
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { formatTimestamp, resolveDirectory, formatError, createSuccess } from "./shared.js";
 import { logEvent } from "./history.js";
 import type { McpTool, ToolResult, ToolExecutionContext } from "../types.js";
+import { createSqliteProvider } from "@kjerneverk/riotplan-format";
 
 // Tool schema
 export const TransitionSchema = z.object({
@@ -19,6 +21,49 @@ export const TransitionSchema = z.object({
 // Tool implementation
 export async function transitionStage(args: z.infer<typeof TransitionSchema>, context: ToolExecutionContext): Promise<string> {
     const planPath = resolveDirectory(args, context);
+    if (planPath.endsWith(".plan")) {
+        const provider = createSqliteProvider(planPath);
+        const metadataResult = await provider.getMetadata();
+        if (!metadataResult.success || !metadataResult.data) {
+            await provider.close();
+            throw new Error(metadataResult.error || "Failed to load plan metadata");
+        }
+
+        const currentStage = metadataResult.data.stage;
+        if (!args.stage || args.stage.trim() === "") {
+            await provider.close();
+            throw new Error("Target stage cannot be empty");
+        }
+        if (currentStage === args.stage) {
+            await provider.close();
+            return `Already at stage '${args.stage}'. No transition needed.`;
+        }
+
+        const timestamp = formatTimestamp();
+        const updateResult = await provider.updateMetadata({
+            stage: args.stage as any,
+            updatedAt: timestamp,
+        });
+        if (!updateResult.success) {
+            await provider.close();
+            throw new Error(updateResult.error || "Failed to update lifecycle stage");
+        }
+
+        await provider.addTimelineEvent({
+            id: randomUUID(),
+            timestamp,
+            type: "stage_transition",
+            data: {
+                from: currentStage,
+                to: args.stage,
+                reason: args.reason,
+            },
+        });
+        await provider.close();
+
+        return `✅ Transitioned from '${currentStage}' to '${args.stage}'\n\nReason: ${args.reason}`;
+    }
+
     const lifecycleFile = join(planPath, "LIFECYCLE.md");
     
     // Read current LIFECYCLE.md

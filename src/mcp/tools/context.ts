@@ -8,15 +8,18 @@
 
 import { z } from 'zod';
 import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { resolveDirectory, formatError, createSuccess } from './shared.js';
 import { extractConstraints, extractQuestions, extractSelectedApproach, readEvidenceFiles, readRecentHistory } from '../../ai/artifacts.js';
+import { createSqliteProvider, type PlanFile } from '@kjerneverk/riotplan-format';
 
 interface EvidenceFile {
     name: string;
+    title: string;
     preview: string;
     size: number;
+    createdAt?: string;
 }
 
 interface HistoryEvent {
@@ -26,7 +29,7 @@ interface HistoryEvent {
 }
 
 interface PlanContextResult {
-    planPath: string;
+    planId: string | null;
     stage: string | null;
     idea: { content: string } | null;
     shaping: { content: string; selectedApproach: string | null } | null;
@@ -41,6 +44,16 @@ interface PlanContextResult {
     lifecycle: { content: string } | null;
     constraints: string[];
     questions: string[];
+}
+
+async function getLatestFileByType(
+    files: PlanFile[],
+    type: string
+): Promise<PlanFile | null> {
+    const matches = files
+        .filter((f) => f.type === type)
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    return matches[0] || null;
 }
 
 /**
@@ -86,17 +99,104 @@ function getPreview(content: string, lines: number = 5): string {
     return content.split('\n').slice(0, lines).join('\n');
 }
 
+function titleFromFilename(name: string): string {
+    const lastPart = name.split('/').pop() || name;
+    const withoutExt = lastPart.replace(/\.[^.]+$/, '');
+    const normalized = withoutExt
+        .replace(/^\d{4}-\d{2}-\d{2}-/, '')
+        .replace(/^ev_[a-z0-9]+-/i, '')
+        .replace(/[-_]+/g, ' ')
+        .trim();
+    if (!normalized) {
+        return name;
+    }
+    return normalized
+        .split(' ')
+        .filter(Boolean)
+        .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+        .join(' ');
+}
+
+function extractEvidenceTitle(name: string, content: string): string {
+    if (!content) {
+        return titleFromFilename(name);
+    }
+    const trimmed = content.trim();
+    if (!trimmed) {
+        return titleFromFilename(name);
+    }
+
+    // Structured JSON evidence file
+    if (trimmed.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(trimmed) as { title?: string };
+            if (typeof parsed.title === 'string' && parsed.title.trim()) {
+                return parsed.title.trim();
+            }
+        } catch {
+            // Fall through to markdown heuristics.
+        }
+    }
+
+    // Embedded metadata block in markdown evidence
+    const embeddedTitleMatch = content.match(/"title"\s*:\s*"([^"]+)"/);
+    if (embeddedTitleMatch?.[1]) {
+        return embeddedTitleMatch[1].trim();
+    }
+
+    // Markdown heading
+    const headingMatch = content.match(/^#\s+(.+)$/m);
+    if (headingMatch?.[1]) {
+        return headingMatch[1].trim();
+    }
+
+    // First meaningful line fallback
+    const firstLine = content
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => line && !line.startsWith('<!--') && line !== '-->');
+    if (firstLine) {
+        return firstLine.replace(/^[#>*\-\s]+/, '').trim().slice(0, 100) || titleFromFilename(name);
+    }
+
+    return titleFromFilename(name);
+}
+
 /**
  * Read evidence files with preview formatting for context tool
  */
 async function readEvidenceFilesWithPreview(planPath: string, depth: string): Promise<{ files: EvidenceFile[]; count: number }> {
-    const evidenceFiles = await readEvidenceFiles(planPath, depth === 'full');
-    
-    const filesWithPreview: EvidenceFile[] = evidenceFiles.map(file => ({
-        name: file.name,
-        preview: depth === 'full' ? getPreview(file.content, 10) : '',
-        size: file.size,
-    }));
+    const includeContent = depth === 'full';
+    const evidenceFiles = await readEvidenceFiles(planPath, includeContent);
+    const evidenceDir = join(planPath, 'evidence');
+    const dotEvidenceDir = join(planPath, '.evidence');
+    const filesInEvidenceDir = await readdir(evidenceDir).catch(() => [] as string[]);
+    const filesInDotEvidenceDir = filesInEvidenceDir.length === 0
+        ? await readdir(dotEvidenceDir).catch(() => [] as string[])
+        : [];
+    const activeDir = filesInEvidenceDir.length > 0 ? evidenceDir : dotEvidenceDir;
+    const knownFiles = new Set([...filesInEvidenceDir, ...filesInDotEvidenceDir]);
+
+    const filesWithPreview: EvidenceFile[] = await Promise.all(
+        evidenceFiles.map(async (file) => {
+            let createdAt: string | undefined;
+            if (knownFiles.has(file.name)) {
+                const stats = await stat(join(activeDir, file.name)).catch(() => null);
+                if (stats) {
+                    createdAt = stats.mtime.toISOString();
+                }
+            }
+
+            const previewSource = file.content || '';
+            return {
+                name: file.name,
+                title: extractEvidenceTitle(file.name, previewSource),
+                preview: includeContent ? getPreview(previewSource, 10) : '',
+                size: file.size,
+                createdAt,
+            };
+        })
+    );
     
     return { files: filesWithPreview, count: filesWithPreview.length };
 }
@@ -109,7 +209,64 @@ async function executeReadContext(
         const planPath = resolveDirectory(args, context);
         const depth = args.depth || 'full';
         
-        // Read all files in parallel
+        if (planPath.endsWith('.plan')) {
+            const provider = createSqliteProvider(planPath);
+            const [metaResult, filesResult, evidenceResult, historyResult] = await Promise.all([
+                provider.getMetadata(),
+                provider.getFiles(),
+                provider.getEvidence(),
+                provider.getTimelineEvents({ limit: 50 }),
+            ]);
+
+            const files = filesResult.success ? filesResult.data || [] : [];
+            const latestIdea = await getLatestFileByType(files, 'idea');
+            const latestShaping = await getLatestFileByType(files, 'shaping');
+            const latestLifecycle = await getLatestFileByType(files, 'lifecycle');
+            const evidenceRecords = evidenceResult.success ? evidenceResult.data || [] : [];
+            const timelineEvents = historyResult.success ? historyResult.data || [] : [];
+
+            const result: PlanContextResult = {
+                planId: metaResult.success && metaResult.data ? metaResult.data.id : null,
+                stage: metaResult.success && metaResult.data ? metaResult.data.stage : null,
+                idea: latestIdea
+                    ? { content: depth === 'full' ? latestIdea.content : getPreview(latestIdea.content, 20) }
+                    : null,
+                shaping: latestShaping
+                    ? {
+                        content: depth === 'full' ? latestShaping.content : getPreview(latestShaping.content, 20),
+                        selectedApproach: extractSelectedApproachName(latestShaping.content),
+                    }
+                    : null,
+                evidence: {
+                    files: evidenceRecords.map((record) => ({
+                        name: record.id,
+                        title: record.description || extractEvidenceTitle(record.id, record.content || record.summary || ''),
+                        preview: depth === 'full' ? getPreview(record.content || record.summary || '', 10) : '',
+                        size: (record.content || '').length,
+                        createdAt: record.createdAt,
+                    })),
+                    count: evidenceRecords.length,
+                },
+                history: {
+                    recentEvents: timelineEvents.map((event) => ({
+                        type: event.type,
+                        timestamp: event.timestamp,
+                        summary: JSON.stringify(event.data),
+                    })),
+                    totalEvents: timelineEvents.length,
+                },
+                lifecycle: latestLifecycle
+                    ? { content: depth === 'full' ? latestLifecycle.content : getPreview(latestLifecycle.content, 10) }
+                    : null,
+                constraints: latestIdea ? extractConstraints(latestIdea.content) : [],
+                questions: latestIdea ? extractQuestions(latestIdea.content) : [],
+            };
+
+            await provider.close();
+            return createSuccess(result);
+        }
+
+        // Read all files in parallel for directory plans
         const [ideaContent, shapingContent, lifecycleContent, evidence, history] = await Promise.all([
             readFileSafe(join(planPath, 'IDEA.md')),
             readFileSafe(join(planPath, 'SHAPING.md')),
@@ -120,7 +277,7 @@ async function executeReadContext(
         
         // Build result
         const result: PlanContextResult = {
-            planPath,
+            planId: null,
             stage: extractStage(lifecycleContent, ideaContent),
             idea: ideaContent ? { content: depth === 'full' ? ideaContent : getPreview(ideaContent, 20) } : null,
             shaping: shapingContent ? {

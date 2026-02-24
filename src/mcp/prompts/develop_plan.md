@@ -316,7 +316,7 @@ The user may want to refine the plan. Use the same narrative capture approach:
 
 ```typescript
 // Capture user feedback
-riotplan_idea_add_narrative({
+riotplan_idea({
   planId: "${planId}",
   content: "[User's feedback about the plan]",
   speaker: "user",
@@ -327,7 +327,7 @@ riotplan_idea_add_narrative({
 // Update plan files as needed
 
 // Capture what changed
-riotplan_idea_add_narrative({
+riotplan_idea({
   planId: "${planId}",
   content: "Updated [X] based on feedback because [reasoning]",
   speaker: "assistant",
@@ -340,7 +340,7 @@ riotplan_idea_add_narrative({
 Once the user approves the plan, create a checkpoint:
 
 ```typescript
-riotplan_checkpoint_create({
+riotplan_checkpoint({
   planId: "${planId}",
   name: "plan-approved",
   message: "Plan approved and ready for execution. Synthesized from [N] timeline events, [M] evidence files, and selected approach from shaping phase."
@@ -479,7 +479,7 @@ Does this plan capture everything we discussed? Any adjustments needed?"
 
 **AI**: *Captures feedback*
 ```typescript
-riotplan_idea_add_narrative({
+riotplan_idea({
   content: "User wants to add cache invalidation strategy step before implementing hot endpoints. Makes sense - we need the invalidation approach defined before we start caching.",
   speaker: "assistant",
   context: "Plan refinement feedback"
@@ -502,7 +502,7 @@ The hot endpoint implementation is now Step 4 and depends on Step 3. Does this w
 
 **AI**: *Creates checkpoint*
 ```typescript
-riotplan_checkpoint_create({
+riotplan_checkpoint({
   name: "plan-approved",
   message: "Plan approved. Synthesized from 23 timeline events, 2 evidence files, and selected Redis approach. Added cache invalidation step based on user feedback."
 })
@@ -568,11 +568,11 @@ These resources make it easy to gather context without manually constructing fil
 The following tools should be available:
 
 1. **`riotplan_status`** - Get current plan status
-2. **`riotplan_idea_add_narrative`** - Capture feedback and deliberation
-3. **`riotplan_checkpoint_create`** - Create snapshots at key moments
-4. **`riotplan_step_add`** - Add new steps during refinement
-5. **`riotplan_step_start`** - Mark step as started
-6. **`riotplan_step_complete`** - Mark step as complete
+2. **`riotplan_idea`** - Capture feedback and deliberation
+3. **`riotplan_checkpoint`** - Create snapshots at key moments
+4. **`riotplan_step`** with `action: "add"` - Add new steps during refinement
+5. **`riotplan_step`** with `action: "start"` - Mark step as started
+6. **`riotplan_step`** with `action: "complete"` - Mark step as complete
 
 ### File Operations
 

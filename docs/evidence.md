@@ -39,7 +39,8 @@ Inline evidence is content that gets stored directly in the plan's `.history/evi
 
 **Example:**
 ```typescript
-riotplan_idea_add_evidence({
+riotplan_idea({
+  action: "add_evidence",
   evidencePath: "inline",
   content: "After researching authentication approaches, I found that JWT with refresh tokens is the most common pattern. Key considerations: token expiration (15min for access, 7 days for refresh), secure storage (httpOnly cookies), and rotation strategy...",
   description: "Web research on JWT authentication patterns",
@@ -59,7 +60,8 @@ File evidence is a reference to an existing file in the filesystem. Use this for
 
 **Example:**
 ```typescript
-riotplan_idea_add_evidence({
+riotplan_idea({
+  action: "add_evidence",
   evidencePath: "/Users/me/projects/auth-service/src/jwt.ts",
   description: "Existing JWT implementation showing token generation and validation",
   source: "file analysis",
@@ -81,7 +83,8 @@ riotplan_idea_add_evidence({
 4. Attach as inline evidence:
 
 ```typescript
-riotplan_idea_add_evidence({
+riotplan_idea({
+  action: "add_evidence",
   evidencePath: "inline",
   content: "[Synthesized findings from web search]",
   description: "Research on microservices architecture patterns: API Gateway, Service Discovery, Circuit Breaker, Event Sourcing",
@@ -104,7 +107,8 @@ riotplan_idea_add_evidence({
 4. Attach relevant files as evidence:
 
 ```typescript
-riotplan_idea_add_evidence({
+riotplan_idea({
+  action: "add_evidence",
   evidencePath: "/Users/me/project/src/auth/jwt.ts",
   description: "JWT authentication implementation using jsonwebtoken library. Generates access tokens with 15min expiration and refresh tokens with 7 day expiration. Includes token validation middleware.",
   source: "file analysis",
@@ -125,7 +129,8 @@ riotplan_idea_add_evidence({
 4. Attach as inline evidence:
 
 ```typescript
-riotplan_idea_add_evidence({
+riotplan_idea({
+  action: "add_evidence",
   evidencePath: "inline",
   content: "[Full transcript text]",
   description: "Voice transcript discussing pain points with current planning workflow: too much time in meetings, unclear action items, difficulty tracking decisions over time",
@@ -148,7 +153,8 @@ riotplan_idea_add_evidence({
 
 ```typescript
 // First example
-riotplan_idea_add_evidence({
+riotplan_idea({
+  action: "add_evidence",
   evidencePath: "/Users/me/project/src/errors/AppError.ts",
   description: "Custom error class hierarchy with specific error types (ValidationError, AuthError, NotFoundError)",
   source: "codebase exploration",
@@ -157,7 +163,8 @@ riotplan_idea_add_evidence({
 })
 
 // Second example
-riotplan_idea_add_evidence({
+riotplan_idea({
+  action: "add_evidence",
   evidencePath: "/Users/me/project/src/middleware/errorHandler.ts",
   description: "Express error handling middleware that catches errors, logs them, and returns appropriate HTTP responses",
   source: "codebase exploration",
@@ -181,6 +188,39 @@ This metadata helps users understand:
 - How it was gathered
 - Why it matters
 - What the key points are
+
+### Structured Reference Sources
+
+Structured evidence records support `referenceSources` for machine-readable links:
+
+```json
+{
+  "referenceSources": [
+    {
+      "id": "ref_auth_file",
+      "type": "filepath",
+      "value": "/Users/me/gitw/another-project/src/auth/refresh.ts",
+      "label": "Token refresh implementation"
+    },
+    {
+      "id": "ref_pr_discussion",
+      "type": "url",
+      "value": "https://github.com/org/repo/pull/1234",
+      "label": "Design discussion"
+    }
+  ]
+}
+```
+
+Reference source types:
+- `filepath`: absolute or workspace-relative file/directory paths
+- `url`: generic URL references (HTTP/HTTPS; intentionally provider-agnostic)
+- `other`: freeform non-empty references
+
+Backward compatibility rules:
+- Existing `sources` string arrays still work.
+- If `referenceSources` is missing, RiotPlan derives it from `sources` (URL => `url`, path-like => `filepath`, fallback => `other`).
+- On write, RiotPlan persists `referenceSources` and mirrors `sources` as plain values for compatibility.
 
 ## Storage Structure
 

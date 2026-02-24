@@ -137,6 +137,110 @@ export interface GenerationOptionsWithProgress extends ExecutionOptions {
     onProgress?: GenerationProgressCallback;
 }
 
+export const PLAN_GENERATION_RESPONSE_SCHEMA = {
+    type: 'object',
+    properties: {
+        analysis: {
+            type: 'object',
+            properties: {
+                constraintAnalysis: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            constraint: { type: 'string' },
+                            understanding: { type: 'string' },
+                            plannedApproach: { type: 'string' },
+                        },
+                        required: ['constraint', 'understanding', 'plannedApproach'],
+                    },
+                },
+                evidenceAnalysis: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            evidenceFile: { type: 'string' },
+                            keyFindings: { type: 'string' },
+                            impactOnPlan: { type: 'string' },
+                        },
+                        required: ['evidenceFile', 'keyFindings', 'impactOnPlan'],
+                    },
+                },
+                approachAnalysis: {
+                    type: 'object',
+                    properties: {
+                        selectedApproach: { type: 'string' },
+                        commitments: { type: 'string' },
+                        implementationStrategy: { type: 'string' },
+                    },
+                },
+                risks: {
+                    type: 'array',
+                    items: { type: 'string' },
+                },
+            },
+            required: ['constraintAnalysis'],
+        },
+        summary: { type: 'string' },
+        approach: { type: 'string' },
+        successCriteria: { type: 'string' },
+        steps: {
+            type: 'array',
+            items: {
+                type: 'object',
+                properties: {
+                    number: { type: 'number' },
+                    title: { type: 'string' },
+                    objective: { type: 'string' },
+                    background: { type: 'string' },
+                    tasks: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                id: { type: 'string' },
+                                description: { type: 'string' },
+                            },
+                            required: ['id', 'description'],
+                        },
+                    },
+                    acceptanceCriteria: {
+                        type: 'array',
+                        items: { type: 'string' },
+                    },
+                    testing: { type: 'string' },
+                    filesChanged: {
+                        type: 'array',
+                        items: { type: 'string' },
+                    },
+                    notes: { type: 'string' },
+                    provenance: {
+                        type: 'object',
+                        properties: {
+                            constraintsAddressed: {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                            evidenceUsed: {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                            rationale: { type: 'string' },
+                        },
+                    },
+                },
+                required: ['number', 'title', 'objective', 'background', 'tasks', 'acceptanceCriteria', 'testing', 'filesChanged', 'notes'],
+            },
+        },
+    },
+    required: ['analysis', 'summary', 'approach', 'successCriteria', 'steps'],
+} as const;
+
+export function getPlanGenerationSystemPrompt(): string {
+    return SYSTEM_PROMPT;
+}
+
 /**
  * Generate a plan using AI
  */
@@ -204,105 +308,7 @@ export async function generatePlan(
             json_schema: {
                 name: 'plan_generation',
                 description: 'Generate a detailed execution plan',
-                schema: {
-                    type: 'object',
-                    properties: {
-                        analysis: {
-                            type: 'object',
-                            properties: {
-                                constraintAnalysis: {
-                                    type: 'array',
-                                    items: {
-                                        type: 'object',
-                                        properties: {
-                                            constraint: { type: 'string' },
-                                            understanding: { type: 'string' },
-                                            plannedApproach: { type: 'string' },
-                                        },
-                                        required: ['constraint', 'understanding', 'plannedApproach'],
-                                    },
-                                },
-                                evidenceAnalysis: {
-                                    type: 'array',
-                                    items: {
-                                        type: 'object',
-                                        properties: {
-                                            evidenceFile: { type: 'string' },
-                                            keyFindings: { type: 'string' },
-                                            impactOnPlan: { type: 'string' },
-                                        },
-                                        required: ['evidenceFile', 'keyFindings', 'impactOnPlan'],
-                                    },
-                                },
-                                approachAnalysis: {
-                                    type: 'object',
-                                    properties: {
-                                        selectedApproach: { type: 'string' },
-                                        commitments: { type: 'string' },
-                                        implementationStrategy: { type: 'string' },
-                                    },
-                                },
-                                risks: {
-                                    type: 'array',
-                                    items: { type: 'string' },
-                                },
-                            },
-                            required: ['constraintAnalysis'],
-                        },
-                        summary: { type: 'string' },
-                        approach: { type: 'string' },
-                        successCriteria: { type: 'string' },
-                        steps: {
-                            type: 'array',
-                            items: {
-                                type: 'object',
-                                properties: {
-                                    number: { type: 'number' },
-                                    title: { type: 'string' },
-                                    objective: { type: 'string' },
-                                    background: { type: 'string' },
-                                    tasks: {
-                                        type: 'array',
-                                        items: {
-                                            type: 'object',
-                                            properties: {
-                                                id: { type: 'string' },
-                                                description: { type: 'string' },
-                                            },
-                                            required: ['id', 'description'],
-                                        },
-                                    },
-                                    acceptanceCriteria: {
-                                        type: 'array',
-                                        items: { type: 'string' },
-                                    },
-                                    testing: { type: 'string' },
-                                    filesChanged: {
-                                        type: 'array',
-                                        items: { type: 'string' },
-                                    },
-                                    notes: { type: 'string' },
-                                    provenance: {
-                                        type: 'object',
-                                        properties: {
-                                            constraintsAddressed: {
-                                                type: 'array',
-                                                items: { type: 'string' },
-                                            },
-                                            evidenceUsed: {
-                                                type: 'array',
-                                                items: { type: 'string' },
-                                            },
-                                            rationale: { type: 'string' },
-                                        },
-                                    },
-                                },
-                                required: ['number', 'title', 'objective', 'background', 'tasks', 'acceptanceCriteria', 'testing', 'filesChanged', 'notes'],
-                            },
-                        },
-                    },
-                    required: ['analysis', 'summary', 'approach', 'successCriteria', 'steps'],
-                },
+                schema: PLAN_GENERATION_RESPONSE_SCHEMA,
             },
         },
         addMessage: function(message) {
@@ -403,7 +409,7 @@ CRITICAL: You must output ONLY valid JSON. Do not include any text before or aft
  * constructs a rich prompt with labeled sections. Otherwise, falls back to the simple
  * description-based prompt for backward compatibility.
  */
-function buildPlanPrompt(context: GenerationContext): string {
+export function buildPlanPrompt(context: GenerationContext): string {
     // Check if we have structured artifacts to use
     const hasStructuredArtifacts = 
         (context.constraints && context.constraints.length > 0) ||
@@ -740,44 +746,59 @@ JSON structure:
 /**
  * Parse the LLM response into a structured plan
  */
-function parsePlanResponse(content: string, _stepCount: number): GeneratedPlan {
-    try {
-        // Try to extract JSON from markdown code blocks if present
-        let jsonContent = content.trim();
-        
-        // Remove markdown code blocks
-        // Use indexOf to avoid polynomial regex
-        const startMarker = jsonContent.indexOf('```');
-        if (startMarker !== -1) {
-            const endMarker = jsonContent.indexOf('```', startMarker + 3);
-            if (endMarker !== -1) {
-                jsonContent = jsonContent.substring(startMarker + 3, endMarker).trim();
-                // Remove optional language identifier (json)
-                if (jsonContent.startsWith('json')) {
-                    jsonContent = jsonContent.substring(4).trim();
-                }
+function stripMarkdownFences(content: string): string {
+    const trimmed = content.trim();
+    if (!trimmed.startsWith('```')) return trimmed;
+
+    const firstNewline = trimmed.indexOf('\n');
+    if (firstNewline === -1) return trimmed;
+    const closingFence = trimmed.lastIndexOf('```');
+    if (closingFence <= firstNewline) return trimmed;
+    return trimmed.slice(firstNewline + 1, closingFence).trim();
+}
+
+function extractFirstJsonObject(content: string): string | null {
+    let inString = false;
+    let escape = false;
+    let depth = 0;
+    let start = -1;
+
+    for (let i = 0; i < content.length; i++) {
+        const ch = content[i];
+        if (escape) {
+            escape = false;
+            continue;
+        }
+        if (ch === '\\') {
+            escape = true;
+            continue;
+        }
+        if (ch === '"') {
+            inString = !inString;
+            continue;
+        }
+        if (inString) continue;
+        if (ch === '{') {
+            if (depth === 0) start = i;
+            depth += 1;
+            continue;
+        }
+        if (ch === '}') {
+            if (depth === 0) continue;
+            depth -= 1;
+            if (depth === 0 && start !== -1) {
+                return content.slice(start, i + 1);
             }
         }
-        
-        // Try to find JSON object (first { to last })
-        const firstBrace = jsonContent.indexOf('{');
-        const lastBrace = jsonContent.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
-        }
-        
-        let parsed;
-        try {
-            parsed = JSON.parse(jsonContent);
-        } catch {
-            // If JSON parsing fails, try to clean up common issues
-            jsonContent = jsonContent
-                .replace(/\n/g, '\\n')  // Escape newlines
-                .replace(/\t/g, '\\t')  // Escape tabs
-                .replace(/\r/g, '\\r'); // Escape carriage returns
-            
-            parsed = JSON.parse(jsonContent);
-        }
+    }
+    return null;
+}
+
+export function parsePlanResponse(content: string, _stepCount: number): GeneratedPlan {
+    try {
+        const cleanedContent = stripMarkdownFences(content);
+        const jsonCandidate = extractFirstJsonObject(cleanedContent) || cleanedContent;
+        const parsed = JSON.parse(jsonCandidate);
         
         // Validate structure
         if (!parsed.summary || !parsed.approach || !parsed.successCriteria || !parsed.steps) {
@@ -795,7 +816,11 @@ function parsePlanResponse(content: string, _stepCount: number): GeneratedPlan {
         
         return parsed as GeneratedPlan;
     } catch (error) {
-        throw new Error(`Failed to parse plan response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(
+            `Failed to parse plan response: ${message}. ` +
+            'Expected a valid JSON object (markdown fences are allowed).'
+        );
     }
 }
 

@@ -54,7 +54,7 @@ Understand the evolution of thinking:
 
 Transition from idea:
 ```
-riotplan_shaping_start()
+riotplan_shaping({ action: "start" })
 ```
 
 ### 2. Identify Approaches
@@ -71,7 +71,8 @@ For each approach, capture:
 - Assumptions (what must be true)
 
 ```
-riotplan_shaping_add_approach({
+riotplan_shaping({
+  action: "add_approach",
   name: "REST API with Polling",
   description: "Traditional REST endpoints with client-side polling every 30s",
   tradeoffs: [
@@ -92,7 +93,8 @@ riotplan_shaping_add_approach({
 As you discuss approaches, capture the user's thinking:
 
 ```
-riotplan_shaping_add_feedback({
+riotplan_shaping({
+  action: "add_feedback",
   feedback: "Concerned about polling load. We have 10k active users. That's 333 requests/second just for notifications."
 })
 ```
@@ -107,7 +109,8 @@ Encourage evidence-based decision making:
 - Research papers
 
 ```
-riotplan_shaping_add_evidence({
+riotplan_shaping({
+  action: "add_evidence",
   evidencePath: "./benchmarks/polling-vs-websocket.md",
   description: "Performance comparison from similar scale system",
   relatedTo: "REST API with Polling"
@@ -118,7 +121,7 @@ riotplan_shaping_add_evidence({
 
 When ready to decide:
 ```
-riotplan_shaping_compare()
+riotplan_shaping({ action: "compare" })
 ```
 
 This shows all approaches side-by-side with their tradeoffs.
@@ -127,7 +130,8 @@ This shows all approaches side-by-side with their tradeoffs.
 
 Once aligned:
 ```
-riotplan_shaping_select({
+riotplan_shaping({
+  action: "select",
   approach: "Server-Sent Events (SSE)",
   reason: "Balances real-time updates with infrastructure simplicity. Team has SSE experience. Lower server load than polling."
 })

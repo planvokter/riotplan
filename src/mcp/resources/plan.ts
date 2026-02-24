@@ -3,8 +3,8 @@
  */
 
 import type { PlanResource } from '../types.js';
-import { loadPlan } from '../../plan/loader.js';
 import { existsSync } from 'node:fs';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 
 export async function readPlanResource(path: string): Promise<PlanResource> {
     const exists = existsSync(path);
@@ -19,26 +19,29 @@ export async function readPlanResource(path: string): Promise<PlanResource> {
     }
 
     try {
-        const plan = await loadPlan(path);
+        if (!path.endsWith('.plan')) {
+            throw new Error('Directory-based plans are no longer supported.');
+        }
+        const provider = createSqliteProvider(path);
+        const metadataResult = await provider.getMetadata();
+        await provider.close();
+        if (!metadataResult.success || !metadataResult.data) {
+            throw new Error(metadataResult.error || 'Failed to read sqlite metadata');
+        }
+        const metadata = metadataResult.data;
         
         return {
-            planId: plan.metadata.code,
-            code: plan.metadata.code,
-            name: plan.metadata.name,
+            planId: metadata.id,
+            code: metadata.id,
+            name: metadata.name,
             exists: true,
             metadata: {
-                code: plan.metadata.code,
-                name: plan.metadata.name,
-                description: plan.metadata.description,
-                created: plan.metadata.createdAt,
-                projectPath: plan.metadata.projectPath,
+                code: metadata.id,
+                name: metadata.name,
+                description: metadata.description,
             },
             state: {
-                status: plan.state.status,
-                currentStep: plan.state.currentStep,
-                lastCompleted: plan.state.lastCompletedStep,
-                startedAt: plan.state.startedAt,
-                lastUpdated: plan.state.lastUpdatedAt,
+                status: metadata.stage,
             },
         };
     } catch (error) {

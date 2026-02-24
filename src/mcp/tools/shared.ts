@@ -30,40 +30,36 @@ export function formatDate(): string {
  * @param context - Tool execution context with workingDirectory
  * @returns Resolved absolute path to the directory
  */
-function isPlanDirectorySync(dirPath: string): boolean {
-    try {
-        const entries = readdirSync(dirPath);
-        return (
-            entries.includes('LIFECYCLE.md') ||
-            entries.includes('STATUS.md') ||
-            entries.includes('IDEA.md') ||
-            entries.includes('plan.yaml') ||
-            entries.includes('plan')
-        );
-    } catch {
-        return false;
-    }
-}
-
 function findPlanById(baseDir: string, planId: string, maxDepth = 4): string | null {
     const normalized = planId.trim();
     if (!normalized) return null;
+    const normalizedLower = normalized.toLowerCase();
+
+    if (normalized.startsWith('/') && normalized.endsWith('.plan')) {
+        if (existsSync(normalized)) {
+            try {
+                const stats = statSync(normalized);
+                if (stats.isFile()) {
+                    return normalized;
+                }
+            } catch {
+                // ignore unreadable path
+            }
+        }
+    }
 
     const directCandidates = [
+        resolve(baseDir, `${normalized}.plan`),
         resolve(baseDir, normalized),
         resolve(baseDir, 'plans', normalized),
         resolve(baseDir, 'done', normalized),
         resolve(baseDir, 'hold', normalized),
-        resolve(baseDir, `${normalized}.plan`),
     ];
 
     for (const candidate of directCandidates) {
         if (existsSync(candidate)) {
             try {
                 const stats = statSync(candidate);
-                if (stats.isDirectory() && isPlanDirectorySync(candidate)) {
-                    return candidate;
-                }
                 if (stats.isFile() && candidate.endsWith('.plan')) {
                     return candidate;
                 }
@@ -94,15 +90,17 @@ function findPlanById(baseDir: string, planId: string, maxDepth = 4): string | n
 
             if (stats.isFile() && entry.endsWith('.plan')) {
                 const name = basename(entry, '.plan');
-                if (name === normalized || name.startsWith(`${normalized}-`) || name.endsWith(`-${normalized}`)) {
+                const lowerName = name.toLowerCase();
+                if (
+                    lowerName === normalizedLower ||
+                    lowerName.startsWith(`${normalizedLower}-`) ||
+                    lowerName.endsWith(`-${normalizedLower}`)
+                ) {
                     return fullPath;
                 }
             }
 
             if (stats.isDirectory()) {
-                if (entry === normalized && isPlanDirectorySync(fullPath)) {
-                    return fullPath;
-                }
                 const nested = walk(fullPath, depth + 1);
                 if (nested) return nested;
             }
@@ -122,11 +120,17 @@ export function resolveDirectory(args: any, context: ToolExecutionContext): stri
         }
         return resolvedById;
     }
-    // Legacy fallback; kept for backward compatibility.
-    if (args.path) {
-        return resolve(base, args.path);
-    }
     return base;
+}
+
+export function resolveSqlitePlanPath(args: any, context: ToolExecutionContext): string {
+    const resolvedPath = resolveDirectory(args, context);
+    if (!resolvedPath.endsWith('.plan')) {
+        throw new Error(
+            'Directory-based plans are no longer supported. Use a SQLite .plan identifier/path.'
+        );
+    }
+    return resolvedPath;
 }
 
 /**

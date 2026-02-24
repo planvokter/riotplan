@@ -28,7 +28,7 @@ When working in plan directories or with RiotPlan MCP tools, **RiotPlan owns the
 
 2. **Stay in plan development mode**: When using RiotPlan tools, you are exploring or shaping a plan—not implementing it. Do not write code or make file changes unless the user explicitly says to execute.
 
-3. **Capture insights in the plan**: Every significant thought, decision, or finding should be captured using RiotPlan tools (\`riotplan_idea_add_note\`, \`riotplan_idea_add_narrative\`, etc.). Do not just discuss—document.
+3. **Capture insights in the plan**: Every significant thought, decision, or finding should be captured using RiotPlan tools (\`riotplan_idea\` with actions like \`add_note\` and \`add_narrative\`). Do not just discuss—document.
 
 4. **Ask before transitioning stages**: Do not move from idea → shaping → execution without explicit user consent. Ask: "Are you ready to move to [next stage]?" and wait for confirmation.
 
@@ -44,7 +44,7 @@ When working in plan directories or with RiotPlan MCP tools, **RiotPlan owns the
 ✅ Ask clarifying questions to explore the idea
 ✅ Propose approaches and tradeoffs during shaping
 ✅ Wait for user to explicitly request implementation
-✅ Mark steps complete using \`riotplan_step_complete\` during execution
+✅ Mark steps complete using \`riotplan_step\` with \`action: "complete"\` during execution
 
 ### What You Should NOT Do
 

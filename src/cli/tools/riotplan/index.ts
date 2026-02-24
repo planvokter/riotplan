@@ -9,83 +9,45 @@ import { wrapMcpTool } from './wrapper.js';
 
 // Import MCP tool definitions
 import {
-    ideaCreateTool,
-    ideaAddNoteTool,
-    ideaAddConstraintTool,
-    ideaAddQuestionTool,
-    ideaAddEvidenceTool,
-    ideaAddNarrativeTool,
-    ideaKillTool,
+    ideaTool,
 } from '../../../mcp/tools/idea.js';
 
 import {
-    shapingStartTool,
-    shapingAddApproachTool,
-    shapingAddFeedbackTool,
-    shapingAddEvidenceTool,
-    shapingCompareTool,
-    shapingSelectTool,
+    shapingTool,
 } from '../../../mcp/tools/shaping.js';
 
 import { buildTool } from '../../../mcp/tools/build.js';
 import { statusTool } from '../../../mcp/tools/status.js';
-import { stepStartTool, stepCompleteTool, stepAddTool, stepListTool, stepRemoveTool, stepMoveTool } from '../../../mcp/tools/step.js';
+import { stepTool } from '../../../mcp/tools/step.js';
 import { stepReflectTool } from '../../../mcp/tools/reflect.js';
 import { transitionTool } from '../../../mcp/tools/transition.js';
 import { readContextTool } from '../../../mcp/tools/context.js';
-import { checkpointCreateTool, checkpointListTool, historyShowTool } from '../../../mcp/tools/history.js';
+import { checkpointTool, historyShowTool } from '../../../mcp/tools/history.js';
 import { validateTool } from '../../../mcp/tools/validate.js';
-import { switchPlanTool, listPlansTool } from '../../../mcp/tools/switch.js';
+import { planTool, listPlansTool } from '../../../mcp/tools/switch.js';
 import { bindProjectTool, getProjectBindingTool, resolveProjectContextTool } from '../../../mcp/tools/project.js';
 
 // ===== IDEA TOOLS =====
 
-export const rpIdeaCreate = wrapMcpTool(ideaCreateTool, { category: 'idea' });
-export const rpIdeaAddNote = wrapMcpTool(ideaAddNoteTool, { category: 'idea' });
-export const rpIdeaAddConstraint = wrapMcpTool(ideaAddConstraintTool, { category: 'idea' });
-export const rpIdeaAddQuestion = wrapMcpTool(ideaAddQuestionTool, { category: 'idea' });
-export const rpIdeaAddEvidence = wrapMcpTool(ideaAddEvidenceTool, { category: 'idea' });
-export const rpIdeaAddNarrative = wrapMcpTool(ideaAddNarrativeTool, { category: 'idea' });
-export const rpIdeaKill = wrapMcpTool(ideaKillTool, { category: 'idea' });
+export const rpIdea = wrapMcpTool(ideaTool, { category: 'idea' });
 
 export const ideaTools: Tool[] = [
-    rpIdeaCreate,
-    rpIdeaAddNote,
-    rpIdeaAddConstraint,
-    rpIdeaAddQuestion,
-    rpIdeaAddEvidence,
-    rpIdeaAddNarrative,
-    rpIdeaKill,
+    rpIdea,
 ];
 
 // ===== SHAPING TOOLS =====
 
-export const rpShapingStart = wrapMcpTool(shapingStartTool, { category: 'shaping' });
-export const rpShapingAddApproach = wrapMcpTool(shapingAddApproachTool, { category: 'shaping' });
-export const rpShapingAddFeedback = wrapMcpTool(shapingAddFeedbackTool, { category: 'shaping' });
-export const rpShapingAddEvidence = wrapMcpTool(shapingAddEvidenceTool, { category: 'shaping' });
-export const rpShapingCompare = wrapMcpTool(shapingCompareTool, { category: 'shaping' });
-export const rpShapingSelect = wrapMcpTool(shapingSelectTool, { category: 'shaping' });
+export const rpShaping = wrapMcpTool(shapingTool, { category: 'shaping' });
 
 export const shapingTools: Tool[] = [
-    rpShapingStart,
-    rpShapingAddApproach,
-    rpShapingAddFeedback,
-    rpShapingAddEvidence,
-    rpShapingCompare,
-    rpShapingSelect,
+    rpShaping,
 ];
 
 // ===== BUILD/EXECUTION TOOLS =====
 
 export const rpBuild = wrapMcpTool(buildTool, { category: 'build' });
 export const rpStatus = wrapMcpTool(statusTool, { category: 'execution' });
-export const rpStepStart = wrapMcpTool(stepStartTool, { category: 'execution' });
-export const rpStepComplete = wrapMcpTool(stepCompleteTool, { category: 'execution' });
-export const rpStepAdd = wrapMcpTool(stepAddTool, { category: 'execution' });
-export const rpStepRemove = wrapMcpTool(stepRemoveTool, { category: 'execution' });
-export const rpStepMove = wrapMcpTool(stepMoveTool, { category: 'execution' });
-export const rpStepList = wrapMcpTool(stepListTool, { category: 'execution' });
+export const rpStep = wrapMcpTool(stepTool, { category: 'execution' });
 export const rpStepReflect = wrapMcpTool(stepReflectTool, { category: 'execution' });
 export const rpReadContext = wrapMcpTool(readContextTool, { category: 'execution' });
 
@@ -95,12 +57,7 @@ export const buildTools: Tool[] = [
 
 export const executionTools: Tool[] = [
     rpStatus,
-    rpStepStart,
-    rpStepComplete,
-    rpStepAdd,
-    rpStepRemove,
-    rpStepMove,
-    rpStepList,
+    rpStep,
     rpStepReflect,
     rpReadContext,
 ];
@@ -108,11 +65,10 @@ export const executionTools: Tool[] = [
 // ===== UTILITY TOOLS =====
 
 export const rpTransition = wrapMcpTool(transitionTool, { category: 'utility' });
-export const rpCheckpointCreate = wrapMcpTool(checkpointCreateTool, { category: 'utility' });
-export const rpCheckpointList = wrapMcpTool(checkpointListTool, { category: 'utility' });
+export const rpCheckpoint = wrapMcpTool(checkpointTool, { category: 'utility' });
 export const rpHistoryShow = wrapMcpTool(historyShowTool, { category: 'utility' });
 export const rpValidate = wrapMcpTool(validateTool, { category: 'utility' });
-export const rpSwitchPlan = wrapMcpTool(switchPlanTool, { category: 'utility' });
+export const rpPlan = wrapMcpTool(planTool, { category: 'utility' });
 export const rpListPlans = wrapMcpTool(listPlansTool, { category: 'utility' });
 export const rpBindProject = wrapMcpTool(bindProjectTool, { category: 'utility' });
 export const rpGetProjectBinding = wrapMcpTool(getProjectBindingTool, { category: 'utility' });
@@ -120,11 +76,10 @@ export const rpResolveProjectContext = wrapMcpTool(resolveProjectContextTool, { 
 
 export const utilityTools: Tool[] = [
     rpTransition,
-    rpCheckpointCreate,
-    rpCheckpointList,
+    rpCheckpoint,
     rpHistoryShow,
     rpValidate,
-    rpSwitchPlan,
+    rpPlan,
     rpListPlans,
     rpBindProject,
     rpGetProjectBinding,
@@ -151,7 +106,7 @@ export const allRiotPlanTools: Tool[] = [
  * - Idea tools: create, add notes/constraints/questions/evidence
  * - Shaping tools: start shaping, add approaches, compare, select
  * - Build tool: generate detailed plan from shaped idea
- * - Step management tools: add, remove, move, list steps
+ * - Step management tool: action-based start/complete/add/remove/move
  * - Utility tools: status, context, history, validation
  */
 export const exploreRiotPlanTools: Tool[] = [
@@ -159,15 +114,12 @@ export const exploreRiotPlanTools: Tool[] = [
     ...shapingTools,
     ...buildTools,
     rpStatus,
-    rpStepAdd,
-    rpStepRemove,
-    rpStepMove,
-    rpStepList,
+    rpStep,
     rpReadContext,
     rpHistoryShow,
     rpValidate,
     rpTransition,
-    rpSwitchPlan,
+    rpPlan,
     rpListPlans,
     rpBindProject,
     rpGetProjectBinding,
@@ -183,7 +135,7 @@ export const buildRiotPlanTools: Tool[] = [
     rpStatus,
     rpReadContext,
     rpTransition,
-    rpCheckpointCreate,
+    rpCheckpoint,
     rpHistoryShow,
 ];
 
@@ -193,7 +145,7 @@ export const buildRiotPlanTools: Tool[] = [
 export const executeRiotPlanTools: Tool[] = [
     ...executionTools,
     rpTransition,
-    rpCheckpointCreate,
+    rpCheckpoint,
     rpHistoryShow,
 ];
 

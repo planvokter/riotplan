@@ -60,7 +60,7 @@ async function executeGenerate(
                     '**Recommended approach:**\n' +
                     'Instead of using `riotplan_generate`, you can create the plan steps manually:\n' +
                     '1. Break down the requirements into specific, actionable steps\n' +
-                    '2. Use `riotplan_step_add` to add each step to the plan\n' +
+                    '2. Use `riotplan_step` with `action: "add"` to add each step to the plan\n' +
                     '3. This gives you more control over the plan structure\n\n' +
                     '**Alternative (if you need auto-generation):**\n' +
                     'Install an AI provider package:\n' +
@@ -80,7 +80,7 @@ async function executeGenerate(
                     suggestedProvider: providerName,
                 },
                 recovery: [
-                    'Use riotplan_step_add to manually create plan steps',
+                    'Use riotplan_step with action=add to manually create plan steps',
                     'Install @kjerneverk/execution-anthropic and configure ANTHROPIC_API_KEY',
                     'Install @kjerneverk/execution-openai and configure OPENAI_API_KEY',
                     'Install @kjerneverk/execution-gemini and configure GOOGLE_API_KEY',
@@ -98,7 +98,7 @@ export const generateTool: McpTool = {
         'Generate plan content using AI. ' +
         'Creates detailed, actionable steps from a description. ' +
         'Note: Requires an AI provider package to be installed. ' +
-        'When using RiotPlan via MCP, consider using riotplan_step_add for manual step creation instead.',
+        'When using RiotPlan via MCP, consider using riotplan_step(action=add) for manual step creation instead.',
     schema: {
         description: z.string().describe('Plan description/requirements'),
         steps: z.number().optional().describe('Number of steps to generate (default: auto-determined)'),

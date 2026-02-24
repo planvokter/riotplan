@@ -38,8 +38,8 @@ RiotPlan encourages analysis before action:
 
 ### Lifecycle Tools
 
-- `riotplan_idea_create`: Start exploring an idea
-- `riotplan_shaping_start`: Begin comparing approaches
+- `riotplan_idea`: Start exploring an idea
+- `riotplan_shaping`: Begin comparing approaches
 - `riotplan_build`: Generate detailed plan with AI
 - `riotplan_transition`: Move between stages manually
 
@@ -52,37 +52,37 @@ RiotPlan encourages analysis before action:
 riotplan_status({ path: './my-plan' })
 
 // 2. Mark step as started BEFORE doing work
-riotplan_step_start({ path: './my-plan', step: 1 })
+riotplan_step({ planId: './my-plan', action: 'start', step: 1 })
 
 // 3. Do the actual work (implement, test, document)
 
 // 4. Mark step as complete AFTER finishing
-riotplan_step_complete({ path: './my-plan', step: 1 })
+riotplan_step({ planId: './my-plan', action: 'complete', step: 1 })
 ```
 
-**Common Mistake**: Executing steps without calling `riotplan_step_start` and `riotplan_step_complete`. This bypasses RiotPlan's execution management.
+**Common Mistake**: Executing steps without calling `riotplan_step` with `action: "start"` and `action: "complete"`. This bypasses RiotPlan's execution management.
 
 **Key Principle**: If you're working on a RiotPlan, RiotPlan should manage the execution, not just the planning.
 
 ### Idea Stage Tools
 
-- `riotplan_idea_add_note`: Capture thoughts during exploration
-- `riotplan_idea_add_constraint`: Document requirements
-- `riotplan_idea_add_question`: Raise uncertainties
-- `riotplan_idea_add_evidence`: Attach supporting materials
-- `riotplan_idea_kill`: Abandon idea with reason
+- `riotplan_idea`: Capture thoughts during exploration
+- `riotplan_idea`: Document requirements
+- `riotplan_idea`: Raise uncertainties
+- `riotplan_idea`: Attach supporting materials
+- `riotplan_idea`: Abandon idea with reason
 
 ### Shaping Stage Tools (CRITICAL)
 
-- `riotplan_shaping_add_approach`: Propose solution approaches
-- `riotplan_shaping_add_feedback`: Comment on approaches
-- `riotplan_shaping_compare`: Generate comparison of all approaches
-- `riotplan_shaping_select`: Choose best approach
+- `riotplan_shaping`: Propose solution approaches
+- `riotplan_shaping`: Comment on approaches
+- `riotplan_shaping`: Generate comparison of all approaches
+- `riotplan_shaping`: Choose best approach
 
-**CRITICAL: After calling `riotplan_shaping_select`, you MUST immediately call `riotplan_build`.**
+**CRITICAL: After calling `riotplan_shaping`, you MUST immediately call `riotplan_build`.**
 
 This is the most common mistake when using RiotPlan. The workflow is:
-1. Call `riotplan_shaping_select` to record the chosen approach
+1. Call `riotplan_shaping` to record the chosen approach
 2. **Immediately** call `riotplan_build` to generate PROVENANCE.md, EXECUTION_PLAN.md, SUMMARY.md, and step files
 3. Only then can you begin executing steps
 
@@ -90,8 +90,8 @@ This is the most common mistake when using RiotPlan. The workflow is:
 
 ### History & Checkpoints
 
-- `riotplan_checkpoint_create`: Save state snapshot
-- `riotplan_checkpoint_restore`: Restore previous state
+- `riotplan_checkpoint`: Save state snapshot
+- `riotplan_checkpoint`: Restore previous state
 - `riotplan_history_show`: View timeline of events
 
 ## Catalysts: Planning Intelligence
@@ -110,19 +110,19 @@ This is the most common mistake when using RiotPlan. The workflow is:
 **List available catalysts:**
 
 ```typescript
-riotplan_catalyst_list()
+riotplan_catalyst({ action: 'list' })
 ```
 
 **Show catalyst details:**
 
 ```typescript
-riotplan_catalyst_show({ catalyst: '@kjerneverk/catalyst-project' })
+riotplan_catalyst({ action: 'show', catalyst: '@kjerneverk/catalyst-project' })
 ```
 
 **Associate catalysts with a plan:**
 
 ```typescript
-riotplan_catalyst_associate({
+riotplan_catalyst({
   path: './my-plan',
   action: 'add',
   catalysts: ['@kjerneverk/catalyst-nodejs']
@@ -198,7 +198,7 @@ RiotPlan includes a verification system to prevent incomplete steps from being m
 
 ### How Verification Works
 
-When you call `riotplan_step_complete`, RiotPlan:
+When you call `riotplan_step` with `action: "complete"`, RiotPlan:
 
 1. Checks acceptance criteria (if configured)
 2. Verifies artifacts exist (if configured)
@@ -243,12 +243,12 @@ needs to be done to make it accessible.
 
 Don't skip stages. If a user wants to create a plan:
 
-- **Good**: Suggest starting with `riotplan_idea_create` to explore first
-- **Bad**: Jump straight to `riotplan_create` without understanding requirements
+- **Good**: Suggest starting with `riotplan_idea` to explore first
+- **Bad**: Jump straight to `riotplan_plan` without understanding requirements
 
 ### 2. Use Tracking Tools
 
-Always use `riotplan_step_start` and `riotplan_step_complete`:
+Always use `riotplan_step` for step tracking (`action: "start"` and `action: "complete"`):
 
 - **Good**: Call tracking tools before and after work
 - **Bad**: Do the work without tracking, then manually update STATUS.md
@@ -315,34 +315,39 @@ Workflow templates for common tasks:
 
 ```typescript
 // 1. Start with an idea
-riotplan_idea_create({
+riotplan_idea({
+  action: 'create',
   code: 'my-feature',
   description: 'Implement user authentication'
 })
 
 // 2. Add constraints
-riotplan_idea_add_constraint({
+riotplan_idea({
+  action: 'add_constraint',
   constraint: 'Must use JWT tokens'
 })
 
 // 3. Add evidence
-riotplan_idea_add_evidence({
+riotplan_idea({
+  action: 'add_evidence',
   description: 'JWT best practices article',
   source: 'https://...'
 })
 
 // 4. Move to shaping
-riotplan_shaping_start()
+riotplan_shaping({ action: 'start' })
 
 // 5. Add approaches
-riotplan_shaping_add_approach({
+riotplan_shaping({
+  action: 'add_approach',
   name: 'Passport.js',
   description: 'Use Passport.js middleware',
   tradeoffs: ['Pros: Well-tested, Cons: Heavy dependency']
 })
 
 // 6. Select approach
-riotplan_shaping_select({
+riotplan_shaping({
+  action: 'select',
   approach: 'Passport.js',
   reason: 'Most mature and well-documented'
 })
@@ -364,13 +369,13 @@ const status = riotplan_status({ path: './my-plan' })
 const step = fetch('riotplan://step/./my-plan?number=1')
 
 // 3. Mark started
-riotplan_step_start({ path: './my-plan', step: 1 })
+riotplan_step({ planId: './my-plan', action: 'start', step: 1 })
 
 // 4. Do the work
 // ... implement, test, document ...
 
 // 5. Mark complete
-riotplan_step_complete({ path: './my-plan', step: 1 })
+riotplan_step({ planId: './my-plan', action: 'complete', step: 1 })
 
 // 6. Check progress
 riotplan_status({ path: './my-plan' })
@@ -380,15 +385,16 @@ riotplan_status({ path: './my-plan' })
 
 ```typescript
 // 1. List available catalysts
-const catalysts = riotplan_catalyst_list()
+const catalysts = riotplan_catalyst({ action: 'list' })
 
 // 2. Show details
-const details = riotplan_catalyst_show({
+const details = riotplan_catalyst({
+  action: 'show',
   catalyst: '@kjerneverk/catalyst-nodejs'
 })
 
 // 3. Associate with plan
-riotplan_catalyst_associate({
+riotplan_catalyst({
   path: './my-plan',
   action: 'add',
   catalysts: ['@kjerneverk/catalyst-nodejs']
@@ -437,7 +443,7 @@ RiotPlan uses a four-tier configuration system:
 As an AI assistant working with RiotPlan:
 
 1. **Respect the lifecycle**: Idea → Shaping → Built → Executing → Done
-2. **Use tracking tools**: Always call step_start and step_complete
+2. **Use tracking tools**: Always call `riotplan_step` with `action: "start"` and `action: "complete"`
 3. **Leverage catalysts**: Check for and apply relevant guidance
 4. **Read evidence**: Don't implement from memory alone
 5. **Document decisions**: Use history and checkpoints

@@ -15,6 +15,7 @@
  * Config file (riotplan-http.config.yaml in cwd or any parent directory):
  *   plansDir: /path/to/plans
  *   port: 3002
+ *   debug: false
  *   cors: true
  *   sessionTimeout: 3600000
  */
@@ -29,6 +30,7 @@ import { startServer } from './server-hono.js';
 const HttpServerConfigSchema = z.object({
     port: z.number().min(1).max(65535).optional(),
     plansDir: z.string().optional(),
+    debug: z.boolean().default(false),
     cors: z.boolean().default(true),
     sessionTimeout: z.number().min(0).default(3600000),
 });
@@ -75,6 +77,7 @@ async function main() {
     program
         .option('-p, --port <port>', 'Port to listen on (overrides MCP_PORT / PORT env vars, default: 3000)', parseInt)
         .option('-d, --plans-dir <path>', 'Plans directory path (required if not set in config file)')
+        .option('--debug', 'Enable debug logging (or set RIOTPLAN_DEBUG=true)')
         .option('--no-cors', 'Disable CORS')
         .option('-t, --session-timeout <ms>', 'Session timeout in milliseconds', parseInt);
 
@@ -89,12 +92,14 @@ async function main() {
         ...fileConfig,
         ...(opts.plansDir !== undefined && { plansDir: opts.plansDir }),
         ...(opts.port !== undefined && { port: opts.port }),
+        ...(opts.debug !== undefined && { debug: opts.debug }),
         ...(opts.cors !== undefined && { cors: opts.cors }),
         ...(opts.sessionTimeout !== undefined && { sessionTimeout: opts.sessionTimeout }),
     };
 
     const port = resolvePort(config.port as number | undefined);
     const plansDir = config.plansDir ? resolve(config.plansDir as string) : undefined;
+    const debug = (config.debug as boolean) === true;
     const cors = (config.cors as boolean) !== false;
     const sessionTimeout = (config.sessionTimeout as number) ?? 3600000;
 
@@ -114,7 +119,7 @@ async function main() {
     }
 
     try {
-        await startServer({ port, plansDir, cors, sessionTimeout });
+        await startServer({ port, plansDir, debug, cors, sessionTimeout });
     } catch (error) {
         console.error('Error starting server:', error);
         process.exit(1);

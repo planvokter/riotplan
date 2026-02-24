@@ -197,7 +197,8 @@ Prior reflections contain:
 **ALWAYS mark the step as started BEFORE doing any work:**
 
 ```typescript
-riotplan_step_start({
+riotplan_step({
+  action: "start",
   planId: "${planId}",
   step: N
 })
@@ -248,7 +249,8 @@ Let me complete [Criterion 3]..."
 When all tasks and criteria are met:
 
 ```typescript
-riotplan_step_complete({
+riotplan_step({
+  action: "complete",
   planId: "${planId}",
   step: N
 })
@@ -307,7 +309,7 @@ Create checkpoints during execution:
 
 **Before risky changes:**
 ```typescript
-riotplan_checkpoint_create({
+riotplan_checkpoint({
   planId: "${planId}",
   name: "before-step-5",
   message: "Checkpoint before implementing database migration (Step 5)"
@@ -316,7 +318,7 @@ riotplan_checkpoint_create({
 
 **After completing major phases:**
 ```typescript
-riotplan_checkpoint_create({
+riotplan_checkpoint({
   planId: "${planId}",
   name: "phase-1-complete",
   message: "Completed Phase 1: Data model and core types (Steps 1-4)"
@@ -325,7 +327,7 @@ riotplan_checkpoint_create({
 
 **When user wants to pause:**
 ```typescript
-riotplan_checkpoint_create({
+riotplan_checkpoint({
   planId: "${planId}",
   name: "pause-after-step-7",
   message: "Pausing execution after Step 7. Ready to resume with Step 8."
@@ -338,7 +340,7 @@ As you work, capture the narrative of execution:
 
 **When starting a step:**
 ```typescript
-riotplan_idea_add_narrative({
+riotplan_idea({
   planId: "${planId}",
   content: "Starting Step 3: Implement Narrative Capture. The objective is to create MCP tool for capturing raw conversational input. This builds on the timeline extensions from Step 2.",
   speaker: "assistant",
@@ -348,7 +350,7 @@ riotplan_idea_add_narrative({
 
 **When encountering challenges:**
 ```typescript
-riotplan_idea_add_narrative({
+riotplan_idea({
   planId: "${planId}",
   content: "Ran into an issue with the timeline event types - the NarrativeChunkEvent interface wasn't exported. Fixed by adding export to types.ts. This is a common pattern we should watch for in future steps.",
   speaker: "assistant",
@@ -358,7 +360,7 @@ riotplan_idea_add_narrative({
 
 **When making decisions:**
 ```typescript
-riotplan_idea_add_narrative({
+riotplan_idea({
   planId: "${planId}",
   content: "Decided to store inline evidence in .history/evidence/ rather than embedding in timeline. This keeps the timeline lean and makes evidence files easier to browse. User can view evidence directly as markdown files.",
   speaker: "assistant",
@@ -447,7 +449,7 @@ Ready to start?"
 
 **AI**: *Starts step*
 ```typescript
-riotplan_step_start({ planId: "${planId}", step: 1 })
+riotplan_step({ action: "start", planId: "${planId}", step: 1 })
 ```
 
 **AI**: *Reads step file and begins work*
@@ -477,7 +479,7 @@ Let me also add the TypeScript types to src/types.ts..."
 All criteria met! Marking Step 01 complete."
 
 ```typescript
-riotplan_step_complete({ planId: "${planId}", step: 1 })
+riotplan_step({ action: "complete", planId: "${planId}", step: 1 })
 ```
 
 **AI**: "Step 01 complete! We've defined the complete data model for narrative evolution.
@@ -527,7 +529,7 @@ Step 05 is about creating the MCP tool for checkpoint creation. Let me check wha
 ✅ **Do**: Implement everything specified in the step
 
 ❌ **Don't**: Execute steps without using RiotPlan tracking tools
-✅ **Do**: ALWAYS use `riotplan_step_start` before work and `riotplan_step_complete` after work
+✅ **Do**: ALWAYS use `riotplan_step` with `action: "start"` before work and `action: "complete"` after work
 
 ❌ **Don't**: Just do the work and skip STATUS.md updates
 ✅ **Do**: Let RiotPlan manage execution state through its tools
@@ -544,7 +546,7 @@ When you complete the final step of a plan, the system will signal that all step
 
 ### The Completion Sequence
 
-1. **Complete the final step** with `riotplan_step_complete`
+1. **Complete the final step** with `riotplan_step` (`action: "complete"`)
 2. **System signals**: "All steps completed! Generate plan retrospective."
 3. **Write final step reflection** with `riotplan_step_reflect`
 4. **Consider model switching**: Retrospectives benefit from highest-tier models
@@ -565,7 +567,7 @@ The retrospective is the final deliverable of plan execution. It's worth using t
 
 **Agent completes final step:**
 ```typescript
-riotplan_step_complete({ planId: "${planId}", step: 8 })
+riotplan_step({ action: "complete", planId: "${planId}", step: 8 })
 ```
 
 **System response:**
@@ -646,9 +648,9 @@ For plans with independent steps:
    - Step files are REQUIRED for RiotPlan execution tracking
 
 2. **For each step you execute:**
-   - Call `riotplan_step_start` with step number BEFORE doing any work
+   - Call `riotplan_step` with `action: "start"` BEFORE doing any work
    - Do the actual work (implement, test, document)
-   - Call `riotplan_step_complete` with step number AFTER completing the work
+   - Call `riotplan_step` with `action: "complete"` AFTER completing the work
    - Let RiotPlan update STATUS.md automatically
 
 3. **Don't just do the work** - Use RiotPlan's infrastructure to track progress
