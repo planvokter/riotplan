@@ -25,9 +25,13 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
+import { createReadStream } from 'node:fs';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
 import { executeTool, tools } from './tools/index.js';
 import { getResources, readResource } from './resources/index.js';
 import { getPrompts, getPrompt } from './prompts/index.js';
+import { resolveDirectory } from './tools/shared.js';
 
 /**
  * Server configuration
@@ -37,6 +41,8 @@ export interface ServerConfig {
     port: number;
     /** Plans directory path - single source of truth for all plan operations */
     plansDir: string;
+    /** Optional context directory root (falls back to plansDir) */
+    contextDir?: string;
     /** Enable debug logging */
     debug?: boolean;
     /** Enable CORS (default: true) */
@@ -57,6 +63,8 @@ interface SessionContext {
     transport: StreamableHTTPTransport;
     /** Plans directory for this session */
     plansDir: string;
+    /** Context directory for this session */
+    contextDir: string;
     /** Session creation time */
     createdAt: Date;
     /** Last activity time */
@@ -90,6 +98,41 @@ function debugLog(enabled: boolean, message: string, details?: unknown): void {
     }
 }
 
+function formatIncomingParams(params: unknown): string {
+    if (params === undefined || params === null) {
+        return '(none)';
+    }
+    if (typeof params === 'object' && !Array.isArray(params) && Object.keys(params as Record<string, unknown>).length === 0) {
+        return '(none)';
+    }
+    try {
+        return JSON.stringify(params, null, 2);
+    } catch {
+        return '(unserializable)';
+    }
+}
+
+function logIncomingJsonRpcMessage(
+    enabled: boolean,
+    sessionId: string,
+    message: { method?: string; id?: string | number | null; params?: unknown }
+): void {
+    if (!enabled || !message.method) {
+        return;
+    }
+    const kind = message.id === undefined ? 'NOTIFICATION' : 'REQUEST';
+    const separator = '-----------------------------------------------------------------';
+    console.error('');
+    console.error(separator);
+    console.error(`Incoming ${kind}`);
+    console.error(separator);
+    console.error(`Method:     ${message.method}`);
+    console.error(`ID:         ${message.id === undefined ? '(none)' : String(message.id)}`);
+    console.error(`Session:    ${sessionId}`);
+    console.error(`Parameters: ${formatIncomingParams(message.params)}`);
+    console.error(separator);
+}
+
 function normalizePlanRef(value: unknown): string | null {
     if (typeof value !== 'string') {
         return null;
@@ -105,6 +148,10 @@ function isMutatingTool(toolName: string, args?: Record<string, unknown>): boole
     if (toolName === 'riotplan_plan') {
         const action = typeof args?.action === 'string' ? args.action : '';
         return action !== 'switch';
+    }
+    if (toolName === 'riotplan_context') {
+        const action = typeof args?.action === 'string' ? args.action : '';
+        return action !== 'list' && action !== 'get';
     }
     const nonMutating = new Set([
         'riotplan_status',
@@ -169,7 +216,7 @@ function schemaToJsonSchema(schema: z.ZodRawShape): Record<string, unknown> {
  * Create a new MCP server instance for a session
  * All operations use plansDir - no config discovery
  */
-function createMcpServer(plansDir: string, sessionId: string, config: ServerConfig): Server {
+function createMcpServer(plansDir: string, contextDir: string, sessionId: string, config: ServerConfig): Server {
     const debugEnabled = config.debug === true || envDebugEnabled();
     const server = new Server(
         {
@@ -215,6 +262,7 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
         try {
             const context = {
                 workingDirectory: plansDir,
+                contextDir,
                 config: undefined,
                 logger: undefined,
             };
@@ -407,13 +455,14 @@ function createMcpServer(plansDir: string, sessionId: string, config: ServerConf
 async function getOrCreateSession(
     sessionId: string,
     plansDir: string,
+    contextDir: string,
     config: ServerConfig
 ): Promise<SessionContext> {
     const debugEnabled = config.debug === true || envDebugEnabled();
     let session = sessions.get(sessionId);
 
     if (!session) {
-        const server = createMcpServer(plansDir, sessionId, config);
+        const server = createMcpServer(plansDir, contextDir, sessionId, config);
         const transport = new StreamableHTTPTransport({ enableJsonResponse: true });
 
         await server.connect(transport);
@@ -423,13 +472,14 @@ async function getOrCreateSession(
             server,
             transport,
             plansDir,
+            contextDir,
             createdAt: new Date(),
             lastActivity: new Date(),
             subscriptions: new Set<string>(),
         };
 
         sessions.set(sessionId, session);
-        debugLog(debugEnabled, 'session.created', { sessionId, plansDir });
+        debugLog(debugEnabled, 'session.created', { sessionId, plansDir, contextDir });
     } else {
         session.lastActivity = new Date();
         debugLog(debugEnabled, 'session.reused', { sessionId });
@@ -470,9 +520,11 @@ function cleanupSessions(timeout: number): void {
  */
 export function createApp(config: ServerConfig): Hono {
     const app = new Hono();
+    const contextDir = resolveContextDir(config);
 
     if (config.cors !== false) {
         app.use('/mcp/*', cors());
+        app.use('/plan/*', cors());
     }
 
     app.get('/health', (c) => {
@@ -482,16 +534,104 @@ export function createApp(config: ServerConfig): Hono {
             version: '1.0.0',
             sessions: sessions.size,
             plansDir: config.plansDir,
+            contextDir,
             tools: tools.length,
             resources: getResources().length,
             prompts: getPrompts().length,
+            endpoints: {
+                mcp: '/mcp',
+                downloadPlan: '/plan/{planId}',
+                uploadPlan: '/plan/upload',
+                health: '/health',
+            },
         });
+    });
+
+    app.get('/plan/:planId', async (c) => {
+        try {
+            const planId = c.req.param('planId');
+            if (!planId) {
+                return c.json({ error: 'Missing planId' }, 400);
+            }
+
+            const decodedPlanId = decodeURIComponent(planId);
+            const planPath = resolveDirectory({ planId: decodedPlanId }, { workingDirectory: config.plansDir });
+            if (!planPath.endsWith('.plan')) {
+                return c.json({ error: 'Resolved plan is not a .plan file' }, 400);
+            }
+
+            const planStats = await stat(planPath);
+            const fileName = basename(planPath);
+            c.header('Content-Type', 'application/octet-stream');
+            c.header('Content-Length', String(planStats.size));
+            c.header('Content-Disposition', `attachment; filename="${fileName}"`);
+            return c.body(createReadStream(planPath) as any);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (message.toLowerCase().includes('plan not found')) {
+                return c.json({ error: message }, 404);
+            }
+            return c.json({ error: 'Failed to download plan', details: message }, 500);
+        }
+    });
+
+    app.post('/plan/upload', async (c) => {
+        try {
+            const body = await c.req.parseBody();
+            const file = body.plan;
+            const upload = file as
+                | {
+                    name?: string;
+                    arrayBuffer?: () => Promise<ArrayBuffer>;
+                }
+                | undefined;
+            if (!upload || typeof upload.name !== 'string' || typeof upload.arrayBuffer !== 'function') {
+                return c.json({ error: 'No .plan file provided in multipart field "plan"' }, 400);
+            }
+            if (extname(upload.name).toLowerCase() !== '.plan') {
+                return c.json({ error: 'Uploaded file must have .plan extension' }, 400);
+            }
+
+            const targetDir = config.plansDir;
+            await mkdir(targetDir, { recursive: true });
+
+            const originalName = basename(upload.name);
+            const baseName = originalName.slice(0, -5);
+            let targetName = originalName;
+            let counter = 1;
+            while (true) {
+                const candidate = join(targetDir, targetName);
+                try {
+                    await stat(candidate);
+                    counter += 1;
+                    targetName = `${baseName}-${counter}.plan`;
+                } catch {
+                    break;
+                }
+            }
+
+            const bytes = await upload.arrayBuffer();
+            const targetPath = join(targetDir, targetName);
+            await writeFile(targetPath, Buffer.from(bytes));
+
+            return c.json({
+                success: true,
+                planId: targetName.replace(/\.plan$/i, ''),
+                filename: targetName,
+                path: targetPath,
+                size: bytes.byteLength,
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return c.json({ error: 'Failed to upload plan', details: message }, 500);
+        }
     });
 
     app.post('/mcp', async (c: Context) => {
         try {
             const sessionId = c.req.header('Mcp-Session-Id') || generateSessionId();
-            const session = await getOrCreateSession(sessionId, config.plansDir, config);
+            const debugEnabled = config.debug === true || envDebugEnabled();
+            const session = await getOrCreateSession(sessionId, config.plansDir, contextDir, config);
 
             const bodyClone = c.req.raw.clone();
             try {
@@ -502,6 +642,7 @@ export function createApp(config: ServerConfig): Hono {
                     id?: string | number | null;
                     params?: { uri?: string };
                 };
+                logIncomingJsonRpcMessage(debugEnabled, sessionId, message);
                 if (message.method === 'resources/subscribe') {
                     const uri = message.params?.uri;
                     if (uri) {
@@ -617,10 +758,12 @@ export function createApp(config: ServerConfig): Hono {
  */
 export async function startServer(config: ServerConfig): Promise<void> {
     const app = createApp(config);
+    const contextDir = resolveContextDir(config);
     const debugEnabled = config.debug === true || envDebugEnabled();
 
     console.error(`[RiotPlan HTTP] Starting server on port ${config.port}`);
     console.error(`[RiotPlan HTTP] Plans directory: ${config.plansDir} (single source of truth)`);
+    console.error(`[RiotPlan HTTP] Context directory: ${contextDir}`);
     console.error(`[RiotPlan HTTP] CORS: ${config.cors !== false ? 'enabled' : 'disabled'}`);
     if (debugEnabled) {
         console.error('[RiotPlan HTTP] Debug logging enabled (debug config or RIOTPLAN_DEBUG)');
@@ -637,4 +780,8 @@ export async function startServer(config: ServerConfig): Promise<void> {
             console.error(`[RiotPlan HTTP] Server listening on http://localhost:${info.port}`);
         }
     );
+}
+
+export function resolveContextDir(config: Pick<ServerConfig, 'plansDir' | 'contextDir'>): string {
+    return config.contextDir || config.plansDir;
 }

@@ -30,6 +30,7 @@ import { startServer } from './server-hono.js';
 const HttpServerConfigSchema = z.object({
     port: z.number().min(1).max(65535).optional(),
     plansDir: z.string().optional(),
+    contextDir: z.string().optional(),
     debug: z.boolean().default(false),
     cors: z.boolean().default(true),
     sessionTimeout: z.number().min(0).default(3600000),
@@ -38,10 +39,10 @@ const HttpServerConfigSchema = z.object({
 const cardigantime = Cardigantime.create({
     defaults: {
         configDirectory: process.cwd(),
-        configFile: 'riotplan-http.config',
+        configFile: 'riotplan-http.config.yaml',
         isRequired: false,
         pathResolution: {
-            pathFields: ['plansDir'],
+            pathFields: ['plansDir', 'contextDir'],
         },
     },
     configShape: HttpServerConfigSchema.shape,
@@ -77,6 +78,7 @@ async function main() {
     program
         .option('-p, --port <port>', 'Port to listen on (overrides MCP_PORT / PORT env vars, default: 3000)', parseInt)
         .option('-d, --plans-dir <path>', 'Plans directory path (required if not set in config file)')
+        .option('--context-dir <path>', 'Context directory path (defaults to plans directory)')
         .option('--debug', 'Enable debug logging (or set RIOTPLAN_DEBUG=true)')
         .option('--no-cors', 'Disable CORS')
         .option('-t, --session-timeout <ms>', 'Session timeout in milliseconds', parseInt);
@@ -91,6 +93,7 @@ async function main() {
     const config = {
         ...fileConfig,
         ...(opts.plansDir !== undefined && { plansDir: opts.plansDir }),
+        ...(opts.contextDir !== undefined && { contextDir: opts.contextDir }),
         ...(opts.port !== undefined && { port: opts.port }),
         ...(opts.debug !== undefined && { debug: opts.debug }),
         ...(opts.cors !== undefined && { cors: opts.cors }),
@@ -99,6 +102,7 @@ async function main() {
 
     const port = resolvePort(config.port as number | undefined);
     const plansDir = config.plansDir ? resolve(config.plansDir as string) : undefined;
+    const contextDir = config.contextDir ? resolve(config.contextDir as string) : plansDir;
     const debug = (config.debug as boolean) === true;
     const cors = (config.cors as boolean) !== false;
     const sessionTimeout = (config.sessionTimeout as number) ?? 3600000;
@@ -112,6 +116,10 @@ async function main() {
         console.error(`Error: Plans directory does not exist: ${plansDir}`);
         process.exit(1);
     }
+    if (!contextDir || !existsSync(contextDir)) {
+        console.error(`Error: Context directory does not exist: ${contextDir}`);
+        process.exit(1);
+    }
 
     if (isNaN(sessionTimeout) || sessionTimeout < 0) {
         console.error(`Error: Invalid session timeout: ${sessionTimeout}`);
@@ -119,7 +127,7 @@ async function main() {
     }
 
     try {
-        await startServer({ port, plansDir, debug, cors, sessionTimeout });
+        await startServer({ port, plansDir, contextDir, debug, cors, sessionTimeout });
     } catch (error) {
         console.error('Error starting server:', error);
         process.exit(1);

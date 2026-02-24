@@ -25,9 +25,10 @@ import {
 } from './history.js';
 import { transitionTool } from './transition.js';
 import { buildTool } from './build.js';
-import { buildValidatePlanTool, buildWriteArtifactTool, buildWriteStepTool } from './build-write.js';
+import { buildApplyTool, buildValidatePlanTool, buildWriteArtifactTool, buildWriteStepTool } from './build-write.js';
 import { generateRuleTool } from './generate-rule.js';
 import { readContextTool } from './context.js';
+import { contextEntityTool } from './context-entity.js';
 import { evidenceTool } from './evidence.js';
 import {
     catalystTool,
@@ -57,6 +58,7 @@ export const tools: McpTool[] = [
     transitionTool,
     // Build tool
     buildTool,
+    buildApplyTool,
     buildValidatePlanTool,
     buildWriteArtifactTool,
     buildWriteStepTool,
@@ -64,6 +66,7 @@ export const tools: McpTool[] = [
     generateRuleTool,
     // Context tool
     readContextTool,
+    contextEntityTool,
     // Structured evidence writer
     evidenceTool,
     // Catalyst tools

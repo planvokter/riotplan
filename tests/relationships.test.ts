@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { join } from "node:path";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import {
     parseRelationshipsFromContent,
@@ -18,8 +18,10 @@ import {
     getBlockedPlans,
     getParentPlan,
     getChildPlans,
+    getRelatedPlans,
     createBidirectionalRelationship,
     generateRelationshipsMarkdown,
+    updatePlanRelationships,
 } from "../src/relationships/index.js";
 import { loadPlan } from "../src/plan/loader.js";
 import type { Plan, PlanRelationship } from "../src/types.js";
@@ -489,6 +491,40 @@ Just a plan with no relationships.
 
             expect(getParentPlan(plan)).toBeNull();
         });
+
+        it("should return related plans", () => {
+            const plan: Plan = {
+                metadata: { code: "test", name: "Test", path: "/test" },
+                files: { steps: [], subdirectories: [] },
+                steps: [],
+                state: {
+                    status: "pending",
+                    lastUpdatedAt: new Date(),
+                    blockers: [],
+                    issues: [],
+                    progress: 0,
+                },
+                relationships: [
+                    {
+                        type: "related",
+                        planPath: "../alpha",
+                        createdAt: new Date(),
+                    },
+                    {
+                        type: "blocks",
+                        planPath: "../beta",
+                        createdAt: new Date(),
+                    },
+                    {
+                        type: "related",
+                        planPath: "../gamma",
+                        createdAt: new Date(),
+                    },
+                ],
+            };
+
+            expect(getRelatedPlans(plan)).toEqual(["../alpha", "../gamma"]);
+        });
     });
 
     describe("generateRelationshipsMarkdown", () => {
@@ -555,6 +591,111 @@ Just a plan with no relationships.
                 join(FIXTURES_DIR, "valid-plan")
             );
             expect(Array.isArray(rels)).toBe(true);
+        });
+    });
+
+    describe("updatePlanRelationships", () => {
+        let testDir: string;
+
+        beforeEach(async () => {
+            testDir = join(tmpdir(), `riotplan-rel-update-${Date.now()}`);
+            await mkdir(testDir, { recursive: true });
+        });
+
+        afterEach(async () => {
+            try {
+                await rm(testDir, { recursive: true });
+            } catch {
+                // Ignore cleanup errors
+            }
+        });
+
+        it("creates SUMMARY.md when missing and appends relationships", async () => {
+            const planPath = join(testDir, "no-summary-plan");
+            await mkdir(planPath, { recursive: true });
+
+            const plan: Plan = {
+                metadata: {
+                    code: "no-summary-plan",
+                    name: "No Summary Plan",
+                    path: planPath,
+                    description: "Generated description",
+                },
+                files: { steps: [], subdirectories: [] },
+                steps: [],
+                state: {
+                    status: "pending",
+                    lastUpdatedAt: new Date(),
+                    blockers: [],
+                    issues: [],
+                    progress: 0,
+                },
+                relationships: [
+                    {
+                        type: "related",
+                        planPath: "../other-plan",
+                        reason: "Shared domain",
+                        createdAt: new Date(),
+                    },
+                ],
+            };
+
+            await updatePlanRelationships(plan);
+            const content = await readFile(join(planPath, "SUMMARY.md"), "utf-8");
+            expect(content).toContain("# No Summary Plan");
+            expect(content).toContain("## Related Plans");
+            expect(content).toContain("../other-plan");
+        });
+
+        it("replaces existing Related Plans section without touching other sections", async () => {
+            const planPath = join(testDir, "with-summary-plan");
+            await mkdir(planPath, { recursive: true });
+            await writeFile(
+                join(planPath, "SUMMARY.md"),
+                `# Existing Plan
+
+Intro text.
+
+## Related Plans
+
+- **related**: ../old-one
+
+## Implementation Notes
+
+Keep this section.
+`,
+            );
+
+            const plan: Plan = {
+                metadata: {
+                    code: "with-summary-plan",
+                    name: "Existing Plan",
+                    path: planPath,
+                },
+                files: { steps: [], subdirectories: [] },
+                steps: [],
+                state: {
+                    status: "pending",
+                    lastUpdatedAt: new Date(),
+                    blockers: [],
+                    issues: [],
+                    progress: 0,
+                },
+                relationships: [
+                    {
+                        type: "blocks",
+                        planPath: "../new-target",
+                        steps: [2],
+                        createdAt: new Date(),
+                    },
+                ],
+            };
+
+            await updatePlanRelationships(plan);
+            const content = await readFile(join(planPath, "SUMMARY.md"), "utf-8");
+            expect(content).not.toContain("../old-one");
+            expect(content).toContain("../new-target");
+            expect(content).toContain("## Implementation Notes");
         });
     });
 });

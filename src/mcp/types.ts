@@ -114,6 +114,8 @@ export interface ProgressCallback {
  */
 export interface ToolExecutionContext {
     workingDirectory: string;
+    /** Optional context root used by context entity tools */
+    contextDir?: string;
     config?: any;
     logger?: any;
     session?: any; // SessionContext from session module

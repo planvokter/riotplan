@@ -3,6 +3,7 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { z } from 'zod';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import type { ToolExecutionContext } from '../types.js';
 import { ensurePlanManifest, resolveDirectory } from './shared.js';
 
@@ -16,6 +17,7 @@ export const ProjectRepoSchema = z.object({
 });
 
 export const ProjectWorkspaceSchema = z.object({
+    id: z.string().optional(),
     relativeRoot: z.string().optional().default('.'),
     pathHints: z.array(z.string()).optional().default([]),
 });
@@ -45,6 +47,9 @@ type ManifestLike = {
     project?: ProjectBinding;
     [k: string]: unknown;
 };
+
+const SQLITE_PROJECT_BINDING_FILE = 'project-binding.json';
+const SQLITE_PROJECT_BINDING_TYPE = 'other';
 
 type RepoIdentity = {
     provider: string;
@@ -93,6 +98,7 @@ export function normalizeProjectBinding(input: ProjectBinding): ProjectBinding {
     const project: ProjectBinding = {
         ...input,
         workspace: {
+            id: input.workspace?.id,
             relativeRoot: input.workspace?.relativeRoot || '.',
             pathHints: input.workspace?.pathHints || [],
         },
@@ -132,6 +138,15 @@ export function getProjectMatchKeys(project?: ProjectBinding | null): string[] {
             keys.add(parsed.key);
             keys.add(`${parsed.owner}/${parsed.name}`.toLowerCase());
         }
+    }
+    return [...keys];
+}
+
+export function getWorkspaceMatchKeys(project?: ProjectBinding | null): string[] {
+    if (!project) return [];
+    const keys = new Set<string>();
+    if (project.workspace?.id) {
+        keys.add(project.workspace.id.toLowerCase());
     }
     return [...keys];
 }
@@ -214,10 +229,22 @@ export async function readProjectBinding(
     options?: { createManifestIfMissing?: boolean }
 ): Promise<{
     project: ProjectBinding | null;
-    source: 'manifest' | 'inferred' | 'none';
+    source: 'explicit' | 'inferred' | 'none';
     migration: { manifestCreated: boolean };
 }> {
     const migration = { manifestCreated: false };
+    if (planPath.endsWith('.plan')) {
+        const explicit = await readSqliteProjectBinding(planPath);
+        if (explicit) {
+            return { project: explicit, source: 'explicit', migration };
+        }
+        const inferred = await inferProjectBindingFromPath(planPath);
+        if (inferred) {
+            return { project: inferred, source: 'inferred', migration };
+        }
+        return { project: null, source: 'none', migration };
+    }
+
     let manifest = await readManifestRaw(planPath);
 
     if (!manifest && options?.createManifestIfMissing) {
@@ -228,7 +255,7 @@ export async function readProjectBinding(
 
     if (manifest?.project) {
         const normalized = normalizeProjectBinding(ProjectBindingSchema.parse(manifest.project));
-        return { project: normalized, source: 'manifest', migration };
+        return { project: normalized, source: 'explicit', migration };
     }
 
     const inferred = await inferProjectBindingFromPath(planPath);
@@ -244,6 +271,11 @@ export async function bindProjectToPlan(planPath: string, project: ProjectBindin
     migration: { manifestCreated: boolean };
 }> {
     const validated = normalizeProjectBinding(ProjectBindingSchema.parse(project));
+    if (planPath.endsWith('.plan')) {
+        await writeSqliteProjectBinding(planPath, validated);
+        return { project: validated, migration: { manifestCreated: false } };
+    }
+
     let manifest = await readManifestRaw(planPath);
     let manifestCreated = false;
     if (!manifest) {
@@ -259,6 +291,39 @@ export async function bindProjectToPlan(planPath: string, project: ProjectBindin
     };
     await writeManifestRaw(planPath, nextManifest);
     return { project: validated, migration: { manifestCreated } };
+}
+
+async function readSqliteProjectBinding(planPath: string): Promise<ProjectBinding | null> {
+    const provider = createSqliteProvider(planPath);
+    try {
+        const fileResult = await provider.getFile(SQLITE_PROJECT_BINDING_TYPE, SQLITE_PROJECT_BINDING_FILE);
+        if (!fileResult.success || !fileResult.data?.content) {
+            return null;
+        }
+        const parsed = JSON.parse(fileResult.data.content);
+        return normalizeProjectBinding(ProjectBindingSchema.parse(parsed));
+    } catch {
+        return null;
+    } finally {
+        await provider.close();
+    }
+}
+
+async function writeSqliteProjectBinding(planPath: string, project: ProjectBinding): Promise<void> {
+    const provider = createSqliteProvider(planPath);
+    try {
+        const existing = await provider.getFile(SQLITE_PROJECT_BINDING_TYPE, SQLITE_PROJECT_BINDING_FILE);
+        const now = new Date().toISOString();
+        await provider.saveFile({
+            type: SQLITE_PROJECT_BINDING_TYPE,
+            filename: SQLITE_PROJECT_BINDING_FILE,
+            content: JSON.stringify(project, null, 2),
+            createdAt: existing.success && existing.data?.createdAt ? existing.data.createdAt : now,
+            updatedAt: now,
+        });
+    } finally {
+        await provider.close();
+    }
 }
 
 function normalizeMappings(rawMappings: unknown): WorkspaceMapping[] {

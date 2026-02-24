@@ -1,6 +1,6 @@
 {
   "name": "@kjerneverk/riotplan",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "Framework for long-lived, stateful AI workflows (plans)",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,7 +21,7 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "vite build && node scripts/build-mcp.js && chmod 755 ./dist/mcp-server.js 2>/dev/null || true",
+    "build": "vite build && node scripts/build-mcp.js && chmod 755 ./dist/mcp-server.js 2>/dev/null",
     "test": "vitest run --coverage",
     "test:coverage": "vitest run --coverage",
     "test:sampling": "bash scripts/run-sampling-tests.sh",
@@ -29,7 +29,7 @@
     "lint": "eslint src",
     "precommit": "npm run build && npm run lint && npm run test && npm run test:sampling",
     "prepublishOnly": "npm run clean && npm run build",
-    "mcp:build": "vite build && chmod 755 ./dist/mcp-server.js 2>/dev/null || true",
+    "mcp:build": "vite build && chmod 755 ./dist/mcp-server.js 2>/dev/null",
     "mcp:inspect": "mcp-inspector npx -y @kjerneverk/riotplan",
     "docs:dev": "cd docs && cp ../README.md public/ && npm install && npm run dev",
     "docs:build": "cd docs && cp ../README.md public/ && npm install && npm run build",
@@ -63,6 +63,7 @@
     "@kjerneverk/riotplan-catalyst": "^1.0.5",
     "@kjerneverk/riotplan-format": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.25.3",
+    "@redaksjon/context": "^0.0.10",
     "@types/inquirer": "^9.0.9",
     "@utilarium/cardigantime": "^0.0.25",
     "better-sqlite3": "^12.6.2",

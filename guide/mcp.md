@@ -160,6 +160,44 @@ Mark a step as completed.
 
 Updates STATUS.md and advances to next step.
 
+### Project Binding and Workspace-Scoped Listing
+
+RiotPlan supports a portable one-project-per-plan binding model that works across machines.
+
+#### Binding resolution order
+
+When a client asks for project information (`riotplan_get_project_binding`), RiotPlan resolves in this order:
+
+1. **Explicit** binding persisted with `riotplan_bind_project`
+2. **Inferred** repo identity (from surrounding git metadata)
+3. **None** (`unresolved` / unassigned)
+
+Unresolved plans are still returned by list APIs so clients can prompt users to map them.
+
+#### One-project-per-plan semantics
+
+- Each plan stores at most one `project` binding object.
+- Directory plans store binding under `plan.yaml`.
+- SQLite plans store binding metadata inside `.plan` as `other/project-binding.json`.
+
+#### Workspace filtering
+
+`riotplan_list_plans` supports:
+
+- `projectId` filter (existing behavior)
+- `workspaceId` filter (optional)
+
+When `workspaceId` is omitted, behavior is unchanged for older clients.
+
+**Example:**
+
+```typescript
+riotplan_list_plans({
+  filter: "active",
+  workspaceId: "workspace-alpha"
+})
+```
+
 #### `riotplan_step_add`
 
 Add a new step to the plan.

@@ -4,7 +4,6 @@ import {
     ProjectBindingSchema,
     bindProjectToPlan,
     getProjectMatchKeys,
-    inferProjectBindingFromPath,
     readProjectBinding,
     resolvePlanPathFromId,
     resolveProjectContext,
@@ -39,13 +38,6 @@ async function executeBindProject(args: unknown, context: ToolExecutionContext):
     try {
         const validated = bindProjectSchema.parse(args);
         const planPath = await resolvePlanPathFromId(validated.planId, context);
-        if (planPath.endsWith('.plan')) {
-            return {
-                success: false,
-                error: 'Explicit project binding metadata is not yet persisted for SQLite plans.',
-            };
-        }
-
         const result = await bindProjectToPlan(planPath, validated.project as ProjectBinding);
         return {
             success: true,
@@ -69,22 +61,6 @@ async function executeGetProjectBinding(args: unknown, context: ToolExecutionCon
     try {
         const validated = getProjectBindingSchema.parse(args);
         const planPath = await resolvePlanPathFromId(validated.planId, context);
-        if (planPath.endsWith('.plan')) {
-            const inferred = await inferProjectBindingFromPath(planPath);
-            return {
-                success: true,
-                data: {
-                    planId: validated.planId,
-                    project: inferred,
-                    source: inferred ? 'inferred' : 'none',
-                    migration: { manifestCreated: false },
-                    note: inferred
-                        ? 'Project identity inferred from surrounding git repository.'
-                        : 'No project identity could be inferred for this SQLite plan.',
-                },
-            };
-        }
-
         const binding = await readProjectBinding(planPath);
         return {
             success: true,
@@ -108,29 +84,6 @@ async function executeResolveProjectContext(args: unknown, context: ToolExecutio
     try {
         const validated = resolveProjectContextSchema.parse(args);
         const planPath = await resolvePlanPathFromId(validated.planId, context);
-        if (planPath.endsWith('.plan')) {
-            const project = await inferProjectBindingFromPath(planPath);
-            const resolved = await resolveProjectContext({
-                planPath,
-                cwd: validated.cwd || context.workingDirectory,
-                project,
-                workspaceMappings: validated.workspaceMappings,
-                contextConfig: context.config,
-            });
-            return {
-                success: true,
-                data: {
-                    planId: validated.planId,
-                    ...resolved,
-                    source: project ? 'inferred' : 'none',
-                    migration: { manifestCreated: false },
-                    note: project
-                        ? 'Resolved from inferred project binding for SQLite plan.'
-                        : 'No inferred project binding available for this SQLite plan.',
-                },
-            };
-        }
-
         const binding = await readProjectBinding(planPath);
         const resolved = await resolveProjectContext({
             planPath,
