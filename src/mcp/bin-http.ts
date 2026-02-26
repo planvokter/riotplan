@@ -34,6 +34,17 @@ const HttpServerConfigSchema = z.object({
     debug: z.boolean().default(false),
     cors: z.boolean().default(true),
     sessionTimeout: z.number().min(0).default(3600000),
+    cloud: z.object({
+        enabled: z.boolean().optional(),
+        planBucket: z.string().optional(),
+        planPrefix: z.string().optional(),
+        contextBucket: z.string().optional(),
+        contextPrefix: z.string().optional(),
+        projectId: z.string().optional(),
+        keyFilename: z.string().optional(),
+        credentialsJson: z.string().optional(),
+        cacheDirectory: z.string().optional(),
+    }).optional(),
 });
 
 const cardigantime = Cardigantime.create({
@@ -42,7 +53,7 @@ const cardigantime = Cardigantime.create({
         configFile: 'riotplan-http.config.yaml',
         isRequired: false,
         pathResolution: {
-            pathFields: ['plansDir', 'contextDir'],
+            pathFields: ['plansDir', 'contextDir', 'cloud.keyFilename', 'cloud.cacheDirectory'],
         },
     },
     configShape: HttpServerConfigSchema.shape,
@@ -81,7 +92,16 @@ async function main() {
         .option('--context-dir <path>', 'Context directory path (defaults to plans directory)')
         .option('--debug', 'Enable debug logging (or set RIOTPLAN_DEBUG=true)')
         .option('--no-cors', 'Disable CORS')
-        .option('-t, --session-timeout <ms>', 'Session timeout in milliseconds', parseInt);
+        .option('-t, --session-timeout <ms>', 'Session timeout in milliseconds', parseInt)
+        .option('--cloud-enabled', 'Enable GCS-backed cloud mode')
+        .option('--cloud-plan-bucket <bucket>', 'GCS bucket for plan files')
+        .option('--cloud-plan-prefix <prefix>', 'GCS object prefix for plan files')
+        .option('--cloud-context-bucket <bucket>', 'GCS bucket for context files')
+        .option('--cloud-context-prefix <prefix>', 'GCS object prefix for context files')
+        .option('--cloud-project-id <id>', 'Google Cloud project ID')
+        .option('--cloud-key-filename <path>', 'Path to Google service account JSON file')
+        .option('--cloud-credentials-json <json>', 'Inline Google credentials JSON payload')
+        .option('--cloud-cache-directory <path>', 'Local cache directory for mirrored cloud data');
 
     program.parse();
 
@@ -90,6 +110,28 @@ async function main() {
 
     // CardiganTime's read() loads from config files but does not merge CLI args into the result.
     // Overlay CLI opts (higher precedence) for our schema fields.
+    const mergedCloud = {
+        ...(fileConfig.cloud as Record<string, unknown> | undefined),
+        ...(opts.cloudEnabled !== undefined && { enabled: opts.cloudEnabled }),
+        ...(opts.cloudPlanBucket !== undefined && { planBucket: opts.cloudPlanBucket }),
+        ...(opts.cloudPlanPrefix !== undefined && { planPrefix: opts.cloudPlanPrefix }),
+        ...(opts.cloudContextBucket !== undefined && { contextBucket: opts.cloudContextBucket }),
+        ...(opts.cloudContextPrefix !== undefined && { contextPrefix: opts.cloudContextPrefix }),
+        ...(opts.cloudProjectId !== undefined && { projectId: opts.cloudProjectId }),
+        ...(opts.cloudKeyFilename !== undefined && { keyFilename: opts.cloudKeyFilename }),
+        ...(opts.cloudCredentialsJson !== undefined && { credentialsJson: opts.cloudCredentialsJson }),
+        ...(opts.cloudCacheDirectory !== undefined && { cacheDirectory: opts.cloudCacheDirectory }),
+        ...(process.env.RIOTPLAN_CLOUD_ENABLED !== undefined && { enabled: /^(1|true|yes|on)$/i.test(process.env.RIOTPLAN_CLOUD_ENABLED) }),
+        ...(process.env.RIOTPLAN_PLAN_BUCKET !== undefined && { planBucket: process.env.RIOTPLAN_PLAN_BUCKET }),
+        ...(process.env.RIOTPLAN_PLAN_PREFIX !== undefined && { planPrefix: process.env.RIOTPLAN_PLAN_PREFIX }),
+        ...(process.env.RIOTPLAN_CONTEXT_BUCKET !== undefined && { contextBucket: process.env.RIOTPLAN_CONTEXT_BUCKET }),
+        ...(process.env.RIOTPLAN_CONTEXT_PREFIX !== undefined && { contextPrefix: process.env.RIOTPLAN_CONTEXT_PREFIX }),
+        ...(process.env.GOOGLE_CLOUD_PROJECT !== undefined && { projectId: process.env.GOOGLE_CLOUD_PROJECT }),
+        ...(process.env.GOOGLE_APPLICATION_CREDENTIALS !== undefined && { keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS }),
+        ...(process.env.GOOGLE_CREDENTIALS_JSON !== undefined && { credentialsJson: process.env.GOOGLE_CREDENTIALS_JSON }),
+        ...(process.env.RIOTPLAN_CLOUD_CACHE_DIR !== undefined && { cacheDirectory: process.env.RIOTPLAN_CLOUD_CACHE_DIR }),
+    };
+
     const config = {
         ...fileConfig,
         ...(opts.plansDir !== undefined && { plansDir: opts.plansDir }),
@@ -98,6 +140,7 @@ async function main() {
         ...(opts.debug !== undefined && { debug: opts.debug }),
         ...(opts.cors !== undefined && { cors: opts.cors }),
         ...(opts.sessionTimeout !== undefined && { sessionTimeout: opts.sessionTimeout }),
+        ...(Object.keys(mergedCloud).length > 0 && { cloud: mergedCloud }),
     };
 
     const port = resolvePort(config.port as number | undefined);
@@ -127,7 +170,7 @@ async function main() {
     }
 
     try {
-        await startServer({ port, plansDir, contextDir, debug, cors, sessionTimeout });
+        await startServer({ port, plansDir, contextDir, debug, cors, sessionTimeout, cloud: config.cloud as any });
     } catch (error) {
         console.error('Error starting server:', error);
         process.exit(1);

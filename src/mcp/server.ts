@@ -19,6 +19,8 @@ import { executeTool, tools } from './tools/index.js';
 import { getResources, readResource } from './resources/index.js';
 import { getPrompts, getPrompt } from './prompts/index.js';
 import { resolvePlanDirectory } from '../config/index.js';
+import { loadConfig } from '../config/loader.js';
+import { createCloudRuntime } from '../cloud/runtime.js';
 import { createSessionManager, generateSessionId } from './session/index.js';
 import { generateHeartbeat } from './heartbeat.js';
 
@@ -47,6 +49,29 @@ function removeUndefinedValues(obj: any): any {
         return cleaned;
     }
     return obj;
+}
+
+function isMutatingTool(toolName: string, args?: Record<string, unknown>): boolean {
+    if (toolName === 'riotplan_plan') {
+        const action = typeof args?.action === 'string' ? args.action : '';
+        return action !== 'switch';
+    }
+    if (toolName === 'riotplan_context') {
+        const action = typeof args?.action === 'string' ? args.action : '';
+        return action !== 'list' && action !== 'get';
+    }
+    const nonMutating = new Set([
+        'riotplan_status',
+        'riotplan_read_context',
+        'riotplan_list_plans',
+        'riotplan_history_show',
+        'riotplan_validate',
+        'riotplan_resolve_project_context',
+        'riotplan_get_project_binding',
+        'riotplan_catalyst',
+        'riotplan_checkpoint',
+    ]);
+    return !nonMutating.has(toolName);
 }
 
 async function main() {
@@ -210,10 +235,14 @@ async function main() {
                     
                     // Resolve plan directory using four-tier strategy
                     const planDirectory = await resolvePlanDirectory();
+                    const config = await loadConfig();
+                    const cloudRuntime = await createCloudRuntime(config, planDirectory);
+                    await cloudRuntime.syncDown();
                     
                     const context = {
-                        workingDirectory: planDirectory,
-                        config: undefined,
+                        workingDirectory: cloudRuntime.workingDirectory,
+                        contextDir: cloudRuntime.contextDirectory,
+                        config,
                         logger: undefined,
                         session: currentSession,  // Add session context for provider loading
                         mcpServer: samplingClient,  // Sampling client wrapper with sendRequest()
@@ -247,6 +276,13 @@ async function main() {
                     };
 
                     const result = await executeTool(name, args, context);
+
+                    if (cloudRuntime.enabled && isMutatingTool(name, args as Record<string, unknown>)) {
+                        await cloudRuntime.syncUpPlans();
+                        if (name === 'riotplan_context') {
+                            await cloudRuntime.syncUpContext();
+                        }
+                    }
 
                     if (result.success) {
                         const content: Array<{ type: 'text'; text: string }> = [];

@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess } from './shared.js';
+import { assertNoClientDirectoryOverride, resolveDirectory, formatError, createSuccess } from './shared.js';
 import { join } from 'node:path';
 import {
     createSqliteProvider,
@@ -43,10 +43,12 @@ function buildInitialSteps(count: number): SqlitePlanStep[] {
 
 export async function executeCreate(
     args: any,
-    context: ToolExecutionContext
+    context: ToolExecutionContext,
+    toolName = 'riotplan_create'
 ): Promise<ToolResult> {
     try {
-        const parentDir = args.directory ? args.directory : resolveDirectory(args, context);
+        assertNoClientDirectoryOverride(args, context, toolName);
+        const parentDir = resolveDirectory(args, context);
         const uuid = generatePlanUuid();
         const planFilename = formatPlanFilename(uuid, args.code);
         const planPath = join(parentDir, planFilename);
@@ -130,7 +132,6 @@ export const createTool: McpTool = {
         code: z.string().describe('Plan code/identifier (e.g., "my-feature")'),
         name: z.string().optional().describe('Human-readable plan name'),
         description: z.string().describe('Plan description/prompt'),
-        directory: z.string().optional().describe('Parent directory for plan (defaults to current directory)'),
         steps: z.number().optional().describe('Number of steps to generate (default: auto-determined)'),
         direct: z.boolean().optional().describe('Skip analysis, generate directly (default: false)'),
         provider: z.string().optional().describe('AI provider (anthropic, openai, gemini)'),

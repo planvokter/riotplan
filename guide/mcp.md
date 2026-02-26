@@ -59,6 +59,50 @@ This means most users don't need any configuration - RiotPlan will automatically
 
 See the [Configuration Guide](./configuration.md) for complete details.
 
+## Optional GCS Mode (MCP Server)
+
+RiotPlan MCP supports an opt-in cloud mode for Google Cloud Storage.
+
+- Default behavior remains local file-based (`.plan` SQLite files under the resolved plans directory).
+- Cloud mode is enabled only when you set `cloud.enabled` (or `RIOTPLAN_CLOUD_ENABLED=true`).
+- You must provide two buckets:
+  - one for plan files (`cloud.planBucket`)
+  - one for context data (`cloud.contextBucket`)
+
+### Example (`riotplan.config.yaml`)
+
+```yaml
+planDirectory: ./plans
+
+cloud:
+  enabled: true
+  planBucket: riotplan-plan-bucket
+  planPrefix: riotplan/plans
+  contextBucket: riotplan-context-bucket
+  contextPrefix: riotplan/context
+  projectId: my-gcp-project
+  keyFilename: ~/.config/gcloud/riotplan-sa.json
+  cacheDirectory: ./.riotplan-cloud-cache
+```
+
+### Environment variable overrides
+
+```bash
+export RIOTPLAN_CLOUD_ENABLED=true
+export RIOTPLAN_PLAN_BUCKET=riotplan-plan-bucket
+export RIOTPLAN_CONTEXT_BUCKET=riotplan-context-bucket
+export RIOTPLAN_PLAN_PREFIX=riotplan/plans
+export RIOTPLAN_CONTEXT_PREFIX=riotplan/context
+export GOOGLE_CLOUD_PROJECT=my-gcp-project
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+```
+
+### How it works
+
+- RiotPlan MCP mirrors plan/context files between local cache and GCS.
+- Local mode is still the default and requires no cloud settings.
+- In cloud mode, mutating tool calls sync updates back to the configured bucket(s).
+
 ## Tools
 
 ### Plan Management
@@ -67,11 +111,12 @@ See the [Configuration Guide](./configuration.md) for complete details.
 
 Create a new plan with AI-generated steps.
 
+Plan storage location is server-managed and not client-configurable.
+
 **Parameters:**
 - `code` (required) - Plan identifier (e.g., "auth-system")
 - `description` (required) - What you want to accomplish
 - `name` (optional) - Human-readable name
-- `directory` (optional) - Parent directory
 - `steps` (optional) - Number of steps to generate
 - `direct` (optional) - Skip analysis phase
 - `provider` (optional) - AI provider (anthropic, openai, gemini)
@@ -186,6 +231,8 @@ Unresolved plans are still returned by list APIs so clients can prompt users to 
 
 - `projectId` filter (existing behavior)
 - `workspaceId` filter (optional)
+
+Plan storage/search location is server-managed and not client-configurable.
 
 When `workspaceId` is omitted, behavior is unchanged for older clients.
 

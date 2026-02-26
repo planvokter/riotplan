@@ -12,6 +12,7 @@ import { mkdir, rename, access } from 'node:fs/promises';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import { executeCreate } from './create.js';
+import { assertNoClientDirectoryOverride } from './shared.js';
 import {
     getProjectMatchKeys,
     getWorkspaceMatchKeys,
@@ -24,7 +25,7 @@ type PlanCategory = 'active' | 'done' | 'hold';
 // Schema for switch plan
 export const SwitchPlanSchema = z.object({
     planId: z.string().describe("Plan identifier to switch to (from riotplan_list_plans)"),
-});
+}).strict();
 
 /**
  * Find all .plan (SQLite) files recursively in a directory
@@ -70,11 +71,7 @@ async function resolvePlanPath(planId: string, context: ToolExecutionContext): P
         }
     }
 
-    const basePaths = [
-        context.workingDirectory,
-        resolve(context.workingDirectory, '..'),
-        resolve(context.workingDirectory, '../..'),
-    ];
+    const basePaths = [resolve(context.workingDirectory)];
 
     const normalizedPlanId = planId.trim().toLowerCase();
     for (const basePath of basePaths) {
@@ -158,7 +155,6 @@ async function executeSwitchPlan(
  * List available plans in the current context
  */
 export const ListPlansSchema = z.object({
-    directory: z.string().optional().describe("Optional search scope for SQLite .plan files"),
     filter: z
         .enum(['all', 'active', 'done', 'hold'])
         .optional()
@@ -171,7 +167,7 @@ export const ListPlansSchema = z.object({
         .string()
         .optional()
         .describe('Optional workspace filter (matches project.workspace.id)'),
-});
+}).strict();
 
 function getPlanCategory(planFile: string): PlanCategory {
     const segments = planFile.split(/[\\/]+/).map((segment) => segment.toLowerCase());
@@ -203,8 +199,9 @@ async function executeListPlans(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
+        assertNoClientDirectoryOverride(args, context, 'riotplan_list_plans');
         const validated = ListPlansSchema.parse(args);
-        const searchDir = validated.directory || context.workingDirectory;
+        const searchDir = context.workingDirectory;
         
         // SQLite plans only
         const plans: Array<{
@@ -336,7 +333,7 @@ async function executeListPlans(
 export const MovePlanSchema = z.object({
     planId: z.string().describe('Plan identifier to move (id, uuid, filename, or absolute .plan path)'),
     target: z.enum(['active', 'done', 'hold']).describe('Target category'),
-});
+}).strict();
 
 function resolveDestinationDir(sourcePath: string, target: PlanCategory): string {
     const sourceDir = dirname(sourcePath);
@@ -484,7 +481,6 @@ const PlanActionSchema = z.discriminatedUnion('action', [
         code: z.string(),
         name: z.string().optional(),
         description: z.string(),
-        directory: z.string().optional(),
         steps: z.number().optional(),
         direct: z.boolean().optional(),
         provider: z.string().optional(),
@@ -494,16 +490,16 @@ const PlanActionSchema = z.discriminatedUnion('action', [
         ideaContent: z.string().optional(),
         idea: z.string().optional(),
         motivation: z.string().optional(),
-    }),
+    }).strict(),
     z.object({
         action: z.literal('switch'),
         planId: z.string(),
-    }),
+    }).strict(),
     z.object({
         action: z.literal('move'),
         planId: z.string(),
         target: z.enum(['active', 'done', 'hold']),
-    }),
+    }).strict(),
 ]);
 
 const PlanToolSchema = {
@@ -513,7 +509,6 @@ const PlanToolSchema = {
     code: z.string().optional().describe('Plan code when action=create'),
     name: z.string().optional().describe('Plan display name when action=create'),
     description: z.string().optional().describe('Plan description when action=create'),
-    directory: z.string().optional().describe('Parent directory when action=create'),
     steps: z.number().optional().describe('Initial step count when action=create'),
     direct: z.boolean().optional().describe('Forwarded create option'),
     provider: z.string().optional().describe('Forwarded create option'),
@@ -527,10 +522,11 @@ const PlanToolSchema = {
 
 async function executePlan(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
     try {
+        assertNoClientDirectoryOverride(args, context, 'riotplan_plan');
         const validated = PlanActionSchema.parse(args);
         switch (validated.action) {
             case 'create':
-                return executeCreate(validated, context);
+                return executeCreate(validated, context, 'riotplan_plan');
             case 'switch':
                 return executeSwitchPlan(validated, context);
             case 'move':

@@ -7,6 +7,9 @@ import { access, readFile } from 'node:fs/promises';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import type { ToolResult, ToolExecutionContext } from '../types.js';
 
+const CLIENT_DIRECTORY_OVERRIDE_KEYS = ['directory', 'path', 'root', 'planDirectory'] as const;
+const CLIENT_DIRECTORY_OVERRIDE_ERROR = 'E_INVALID_ARGUMENT: directory is server-managed and cannot be provided by client';
+
 export function formatTimestamp(): string {
     return new Date().toISOString();
 }
@@ -131,6 +134,36 @@ export function resolveSqlitePlanPath(args: any, context: ToolExecutionContext):
         );
     }
     return resolvedPath;
+}
+
+export function assertNoClientDirectoryOverride(
+    args: unknown,
+    context: ToolExecutionContext,
+    toolName: string
+): void {
+    if (!args || typeof args !== 'object' || Array.isArray(args)) {
+        return;
+    }
+
+    const record = args as Record<string, unknown>;
+    const blockedKey = CLIENT_DIRECTORY_OVERRIDE_KEYS.find((key) =>
+        Object.prototype.hasOwnProperty.call(record, key)
+    );
+
+    if (!blockedKey) {
+        return;
+    }
+
+    const metadata = {
+        code: 'E_INVALID_ARGUMENT',
+        tool: toolName,
+        argument: blockedKey,
+    };
+    if (context.logger && typeof context.logger.warn === 'function') {
+        context.logger.warn('mcp.directory_override_blocked', metadata);
+    }
+
+    throw new Error(CLIENT_DIRECTORY_OVERRIDE_ERROR);
 }
 
 /**

@@ -30,7 +30,7 @@ const cardigantime = create({
         configDirectory: process.cwd(),
         isRequired: false, // Config file is optional
         pathResolution: {
-            pathFields: ['planDirectory', 'templateDirectory', 'catalystDirectory'],
+            pathFields: ['planDirectory', 'templateDirectory', 'catalystDirectory', 'cloud.cacheDirectory', 'cloud.keyFilename'],
         },
     },
     configShape: RiotPlanConfigSchema.shape,
@@ -119,7 +119,16 @@ export async function loadConfig(): Promise<RiotPlanConfig | null> {
                     `- verification.checkAcceptanceCriteria: boolean\n` +
                     `- verification.checkArtifacts: boolean\n` +
                     `- verification.autoRetrospective: boolean\n` +
-                    `- verification.requireEvidence: boolean\n\n` +
+                    `- verification.requireEvidence: boolean\n` +
+                    `- cloud.enabled: boolean\n` +
+                    `- cloud.planBucket: string\n` +
+                    `- cloud.contextBucket: string\n` +
+                    `- cloud.planPrefix: string\n` +
+                    `- cloud.contextPrefix: string\n` +
+                    `- cloud.projectId: string\n` +
+                    `- cloud.keyFilename: string\n` +
+                    `- cloud.credentialsJson: string\n` +
+                    `- cloud.cacheDirectory: string\n\n` +
                     `Original error: ${error.message}`
                 );
             }
