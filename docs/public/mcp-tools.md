@@ -2,17 +2,29 @@
 
 Complete reference for all MCP tools available in RiotPlan.
 
+## Storage Modes
+
+RiotPlan MCP supports two server-side storage modes:
+
+- **Default local mode:** file-based SQLite (`.plan`) under server-managed plan directories.
+- **Optional GCS mode:** enabled via server configuration (`cloud.enabled`) with separate buckets:
+  - `cloud.planBucket` for plan files
+  - `cloud.contextBucket` for context data
+
+Clients do not choose storage locations through tool arguments.
+
 ## Plan Management Tools
 
 ### riotplan_plan
 
 Create a new plan with AI-generated steps.
 
+Plan storage location is server-managed and not client-configurable.
+
 **Parameters:**
 - `code` (required) - Plan identifier (e.g., "auth-system")
 - `description` (required) - What you want to accomplish
 - `name` (optional) - Human-readable name
-- `directory` (optional) - Parent directory
 - `steps` (optional) - Number of steps to generate
 - `direct` (optional) - Skip analysis phase
 - `provider` (optional) - AI provider (anthropic, openai, gemini)
@@ -129,10 +141,11 @@ riotplan_step({ action: "move", planId: "./my-plan", from: 5, to: 3 })
 
 Create a new SQLite-backed idea plan without commitment. Starts in the `idea` stage and returns sqlite storage metadata (`planId`, `planPath`, `storage`).
 
+Plan storage location is server-managed and not client-configurable.
+
 **Parameters:**
 - `code` (required) - Idea identifier
 - `description` (required) - What you want to explore
-- `directory` (optional) - Parent directory for generated `.plan` file
 
 **Example:**
 

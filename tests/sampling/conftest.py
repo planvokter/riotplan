@@ -138,7 +138,7 @@ def temp_plan_dir():
 
 
 @pytest_asyncio.fixture(params=["mock"])
-async def sampling_client(request, riotplan_server_path):
+async def sampling_client(request, riotplan_server_path, temp_plan_dir, monkeypatch):
     """
     Create a FastMCP client with mock sampling handler.
     
@@ -148,6 +148,7 @@ async def sampling_client(request, riotplan_server_path):
     
     handler_type = request.param
     handler = MockSamplingHandler(name=handler_type)
+    monkeypatch.setenv("RIOTPLAN_PLAN_DIRECTORY", temp_plan_dir)
     
     client = Client(riotplan_server_path, sampling_handler=handler)
     
@@ -156,7 +157,7 @@ async def sampling_client(request, riotplan_server_path):
 
 
 @pytest_asyncio.fixture
-async def mock_client(riotplan_server_path):
+async def mock_client(riotplan_server_path, temp_plan_dir, monkeypatch):
     """
     Create a FastMCP client with mock sampling handler.
     
@@ -165,6 +166,7 @@ async def mock_client(riotplan_server_path):
     from fastmcp.client import Client
     
     handler = MockSamplingHandler(name="mock")
+    monkeypatch.setenv("RIOTPLAN_PLAN_DIRECTORY", temp_plan_dir)
     client = Client(riotplan_server_path, sampling_handler=handler)
     
     async with client:
@@ -176,7 +178,7 @@ async def mock_client(riotplan_server_path):
 # =============================================================================
 
 @pytest_asyncio.fixture
-async def openai_client(riotplan_server_path):
+async def openai_client(riotplan_server_path, temp_plan_dir, monkeypatch):
     """
     Create a FastMCP client with REAL OpenAI sampling handler.
     
@@ -191,6 +193,7 @@ async def openai_client(riotplan_server_path):
     
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     handler = OpenAISamplingHandler(default_model=model)
+    monkeypatch.setenv("RIOTPLAN_PLAN_DIRECTORY", temp_plan_dir)
     client = Client(riotplan_server_path, sampling_handler=handler)
     
     async with client:
@@ -198,7 +201,7 @@ async def openai_client(riotplan_server_path):
 
 
 @pytest_asyncio.fixture
-async def anthropic_client(riotplan_server_path):
+async def anthropic_client(riotplan_server_path, temp_plan_dir, monkeypatch):
     """
     Create a FastMCP client with REAL Anthropic sampling handler.
     
@@ -213,6 +216,7 @@ async def anthropic_client(riotplan_server_path):
     
     model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
     handler = AnthropicSamplingHandler(default_model=model)
+    monkeypatch.setenv("RIOTPLAN_PLAN_DIRECTORY", temp_plan_dir)
     client = Client(riotplan_server_path, sampling_handler=handler)
     
     async with client:

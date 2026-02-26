@@ -107,6 +107,25 @@ export const RiotPlanConfigSchema = z.object({
         autoRetrospective: true,
         requireEvidence: false,
     }),
+
+    /**
+     * Optional cloud storage mode for MCP plan/context operations.
+     *
+     * Cloud mode is opt-in and never replaces local mode by default.
+     * When enabled, RiotPlan MCP mirrors plan and context data between GCS buckets
+     * and a local cache directory.
+     */
+    cloud: z.object({
+        enabled: z.boolean().default(false),
+        planBucket: z.string().optional(),
+        planPrefix: z.string().optional(),
+        contextBucket: z.string().optional(),
+        contextPrefix: z.string().optional(),
+        projectId: z.string().optional(),
+        keyFilename: z.string().optional(),
+        credentialsJson: z.string().optional(),
+        cacheDirectory: z.string().optional(),
+    }).optional(),
 });
 
 /**

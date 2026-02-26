@@ -72,6 +72,10 @@ describe("riotplan_idea_create sqlite enforcement", () => {
         await expect(access(join(testRoot, code))).rejects.toBeDefined();
     });
 
+    it("does not expose directory override fields in public idea schema", async () => {
+        expect(Object.keys(ideaTool.schema)).not.toContain("directory");
+    });
+
     it("fails with migration hint when a legacy directory with same code exists", async () => {
         const code = "legacy-collision";
         await mkdir(join(testRoot, code), { recursive: true });
@@ -91,5 +95,31 @@ describe("riotplan_idea_create sqlite enforcement", () => {
 
         const rootFiles = await readdir(testRoot);
         expect(rootFiles.some((entry) => entry.endsWith(".plan"))).toBe(false);
+    });
+
+    it("rejects directory/path/root overrides on idea create", async () => {
+        const blockedArgs = [
+            { directory: "/tmp/evil" },
+            { path: "/tmp/evil" },
+            { root: "/tmp/evil" },
+            { planDirectory: "/tmp/evil" },
+        ];
+
+        for (const [index, blocked] of blockedArgs.entries()) {
+            const createResult = await ideaTool.execute(
+                {
+                    action: "create",
+                    code: `blocked-idea-${index}`,
+                    description: "Should fail for security hardening",
+                    ...blocked,
+                },
+                context
+            );
+
+            expect(createResult.success).toBe(false);
+            expect(createResult.error).toContain(
+                "E_INVALID_ARGUMENT: directory is server-managed and cannot be provided by client"
+            );
+        }
     });
 });

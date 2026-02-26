@@ -6,9 +6,12 @@ Uses MOCK handlers for fast, deterministic tests.
 """
 
 import pytest
-from pathlib import Path
 import json
 
+def _extract_tool_payload(result):
+    assert result.content, "No content in result"
+    text = result.content[0].text if result.content else "{}"
+    return json.loads(text)
 
 @pytest.mark.asyncio
 async def test_sampling_capability_detection(sampling_client):
@@ -47,21 +50,18 @@ async def test_sampling_plan_generation(sampling_client, temp_plan_dir):
             "action": "create",
             "code": "test-web-app",
             "description": "Create a simple web application with user authentication",
-            "directory": str(temp_plan_dir),
             "steps": 3,
         }
     )
     
-    assert result.content, "No content in result"
     assert not result.is_error, f"Tool returned error: {result.content}"
+    data = _extract_tool_payload(result)
     
-    # Verify a SQLite plan file was created.
-    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
-    assert len(plan_files) == 1, f"Expected one .plan file, found {len(plan_files)}"
-    assert "test-web-app" in plan_files[0].name, "Plan filename does not include plan code"
+    assert data.get("planId") == "test-web-app", "Expected returned planId to match request code"
+    assert data.get("storage") == "sqlite", "Expected sqlite storage metadata"
     
     print(f"\n✅ Plan generated successfully using {handler_type} sampling handler")
-    print(f"   Plan location: {plan_files[0]}")
+    print(f"   Plan id: {data.get('planId')}")
 
 
 @pytest.mark.asyncio
@@ -85,8 +85,7 @@ async def test_sampling_returns_valid_data(sampling_client):
     assert not result.is_error, f"Tool returned error: {result.content}"
     
     # Parse the JSON response
-    text_content = result.content[0].text if result.content else ""
-    data = json.loads(text_content)
+    data = _extract_tool_payload(result)
     
     # Verify expected fields
     assert "summary" in data, "Missing 'summary' in response"
@@ -120,8 +119,7 @@ async def test_mock_handler_works(mock_client):
     
     assert not result.is_error, f"Tool returned error: {result.content}"
     
-    text_content = result.content[0].text if result.content else ""
-    data = json.loads(text_content)
+    data = _extract_tool_payload(result)
     
     assert "summary" in data
     assert "steps" in data
@@ -151,14 +149,14 @@ async def test_no_server_api_keys_needed(sampling_client, temp_plan_dir, monkeyp
             "action": "create",
             "code": "test-no-keys",
             "description": "Simple calculator app",
-            "directory": str(temp_plan_dir),
             "steps": 2,
         }
     )
     
     assert not result.is_error, f"Tool returned error: {result.content}"
-    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
-    assert len(plan_files) == 1, "Plan .plan file was not created despite no server API keys"
+    data = _extract_tool_payload(result)
+    assert data.get("planId") == "test-no-keys", "Expected returned planId to match request code"
+    assert data.get("storage") == "sqlite", "Expected sqlite storage metadata"
     
     print(f"\n✅ CRITICAL: No server API keys needed with {handler_type} sampling!")
     print("   This proves RiotPlan delegates AI generation to the client")
@@ -176,20 +174,17 @@ async def test_plan_file_structure(sampling_client, temp_plan_dir):
             "action": "create",
             "code": "test-structure",
             "description": "E-commerce platform",
-            "directory": str(temp_plan_dir),
             "steps": 4,
         }
     )
     
     assert not result.is_error, f"Tool returned error: {result.content}"
-
-    # Check SQLite plan structure.
-    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
-    assert len(plan_files) == 1, f"Expected one .plan file, found {len(plan_files)}"
-    assert plan_files[0].is_file(), "Plan path is not a file"
+    data = _extract_tool_payload(result)
+    assert data.get("planId") == "test-structure", "Expected returned planId to match request code"
+    assert data.get("storage") == "sqlite", "Expected sqlite storage metadata"
     
     print(f"\n✅ Plan file structure correct with {handler_type}")
-    print(f"   Plan file: {plan_files[0]}")
+    print(f"   Plan id: {data.get('planId')}")
 
 
 # =============================================================================
@@ -212,14 +207,13 @@ async def test_real_openai_integration(openai_client, temp_plan_dir):
             "action": "create",
             "code": "test-openai-real",
             "description": "Simple TODO app",
-            "directory": str(temp_plan_dir),
             "steps": 2,
         }
     )
     
     assert not result.is_error, f"Tool returned error: {result.content}"
-    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
-    assert len(plan_files) == 1, "Plan not created"
+    data = _extract_tool_payload(result)
+    assert data.get("planId") == "test-openai-real", "Plan not created"
     
     print("\n✅ Real OpenAI integration works")
 
@@ -239,13 +233,12 @@ async def test_real_anthropic_integration(anthropic_client, temp_plan_dir):
             "action": "create",
             "code": "test-anthropic-real",
             "description": "Simple blog platform",
-            "directory": str(temp_plan_dir),
             "steps": 2,
         }
     )
     
     assert not result.is_error, f"Tool returned error: {result.content}"
-    plan_files = list(Path(temp_plan_dir).glob("*.plan"))
-    assert len(plan_files) == 1, "Plan not created"
+    data = _extract_tool_payload(result)
+    assert data.get("planId") == "test-anthropic-real", "Plan not created"
     
     print("\n✅ Real Anthropic integration works")

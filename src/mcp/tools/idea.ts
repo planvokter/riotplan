@@ -6,7 +6,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
-import { formatTimestamp, resolveDirectory } from "./shared.js";
+import { assertNoClientDirectoryOverride, formatTimestamp, resolveDirectory } from "./shared.js";
 import { logEvent } from "./history.js";
 import type { EvidenceType } from "../../types.js";
 import {
@@ -180,11 +180,10 @@ async function getUniqueEvidenceFilename(evidenceDir: string, baseFilename: stri
 export const IdeaCreateSchema = z.object({
     code: z.string().describe("Plan identifier (kebab-case)"),
     description: z.string().describe("Initial idea description"),
-    directory: z.string().optional().describe("Parent directory for the idea"),
     ideaContent: z.string().optional().describe("Optional initial idea/motivation content to persist as IDEA.md"),
     idea: z.string().optional().describe("Alias for ideaContent"),
     motivation: z.string().optional().describe("Alias for ideaContent"),
-});
+}).strict();
 
 export const IdeaAddNoteSchema = z.object({
     planId: z.string().optional().describe("Plan identifier"),
@@ -262,14 +261,14 @@ async function ensureNoLegacyDirectoryConflict(parentDir: string, code: string):
     }
 }
 
-export async function ideaCreate(args: z.infer<typeof IdeaCreateSchema>): Promise<IdeaCreateResult> {
-    const { code, description, directory } = args;
-    const parentDir = directory || process.cwd();
-    await ensureNoLegacyDirectoryConflict(parentDir, code);
+export async function ideaCreate(args: z.infer<typeof IdeaCreateSchema> & { parentDir?: string }): Promise<IdeaCreateResult> {
+    const { code, description, parentDir } = args;
+    const resolvedParentDir = parentDir || process.cwd();
+    await ensureNoLegacyDirectoryConflict(resolvedParentDir, code);
 
     const planUuid = generatePlanUuid();
     const planFilename = formatPlanFilename(planUuid, code);
-    const planPath = join(parentDir, planFilename);
+    const planPath = join(resolvedParentDir, planFilename);
     const now = formatTimestamp();
     const provider = createSqliteProvider(planPath);
 
@@ -758,11 +757,16 @@ import type { ToolResult, ToolExecutionContext } from '../types.js';
 
 export async function executeIdeaCreate(args: any, context: ToolExecutionContext): Promise<ToolResult> {
     try {
-        const validated = IdeaCreateSchema.parse(args);
-        // Use directory resolution logic when no explicit directory is provided
-        // This matches the behavior of executeCreate and uses the four-tier resolution strategy
-        const resolvedDirectory = validated.directory || resolveDirectory(args, context);
-        const result = await ideaCreate({ ...validated, directory: resolvedDirectory });
+        assertNoClientDirectoryOverride(args, context, 'riotplan_idea');
+        const validated = IdeaCreateSchema.parse({
+            code: args.code,
+            description: args.description,
+            ideaContent: args.ideaContent,
+            idea: args.idea,
+            motivation: args.motivation,
+        });
+        const resolvedDirectory = resolveDirectory(args, context);
+        const result = await ideaCreate({ ...validated, parentDir: resolvedDirectory });
         
         // Automatically switch context to the newly created plan
         // This ensures subsequent tool calls operate on the new plan
@@ -871,26 +875,25 @@ const IdeaActionSchema = z.discriminatedUnion("action", [
         action: z.literal("create"),
         code: z.string(),
         description: z.string(),
-        directory: z.string().optional(),
         ideaContent: z.string().optional(),
         idea: z.string().optional(),
         motivation: z.string().optional(),
-    }),
+    }).strict(),
     z.object({
         action: z.literal("add_note"),
         planId: z.string().optional(),
         note: z.string(),
-    }),
+    }).strict(),
     z.object({
         action: z.literal("add_constraint"),
         planId: z.string().optional(),
         constraint: z.string(),
-    }),
+    }).strict(),
     z.object({
         action: z.literal("add_question"),
         planId: z.string().optional(),
         question: z.string(),
-    }),
+    }).strict(),
     z.object({
         action: z.literal("add_evidence"),
         planId: z.string().optional(),
@@ -903,7 +906,7 @@ const IdeaActionSchema = z.discriminatedUnion("action", [
         gatheringMethod: z.enum(["manual", "model-assisted"]).optional(),
         relevanceScore: z.number().min(0).max(1).optional(),
         summary: z.string().optional(),
-    }),
+    }).strict(),
     z.object({
         action: z.literal("add_narrative"),
         planId: z.string().optional(),
@@ -911,18 +914,18 @@ const IdeaActionSchema = z.discriminatedUnion("action", [
         source: z.enum(["typing", "voice", "paste", "import"]).optional(),
         context: z.string().optional(),
         speaker: z.string().optional(),
-    }),
+    }).strict(),
     z.object({
         action: z.literal("set_content"),
         planId: z.string().optional(),
         path: z.string().optional(),
         content: z.string(),
-    }),
+    }).strict(),
     z.object({
         action: z.literal("kill"),
         planId: z.string().optional(),
         reason: z.string(),
-    }),
+    }).strict(),
 ]);
 
 const IdeaToolSchema = {
@@ -940,7 +943,6 @@ const IdeaToolSchema = {
         .describe("Idea action to perform"),
     code: z.string().optional().describe("Plan identifier when action=create"),
     description: z.string().optional().describe("Description when action=create|add_evidence"),
-    directory: z.string().optional().describe("Parent directory for action=create"),
     ideaContent: z.string().optional().describe("Optional initial idea/motivation content for action=create"),
     idea: z.string().optional().describe("Alias for ideaContent"),
     motivation: z.string().optional().describe("Alias for ideaContent"),
@@ -964,6 +966,7 @@ const IdeaToolSchema = {
 
 async function executeIdea(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
     try {
+        assertNoClientDirectoryOverride(args, context, 'riotplan_idea');
         const validated = IdeaActionSchema.parse(args);
         switch (validated.action) {
             case "create":

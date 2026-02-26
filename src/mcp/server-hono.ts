@@ -32,6 +32,7 @@ import { executeTool, tools } from './tools/index.js';
 import { getResources, readResource } from './resources/index.js';
 import { getPrompts, getPrompt } from './prompts/index.js';
 import { resolveDirectory } from './tools/shared.js';
+import { createCloudRuntime } from '../cloud/runtime.js';
 
 /**
  * Server configuration
@@ -49,6 +50,18 @@ export interface ServerConfig {
     cors?: boolean;
     /** Session timeout in milliseconds (default: 1 hour) */
     sessionTimeout?: number;
+    /** Optional cloud storage settings (opt-in). */
+    cloud?: {
+        enabled?: boolean;
+        planBucket?: string;
+        planPrefix?: string;
+        contextBucket?: string;
+        contextPrefix?: string;
+        projectId?: string;
+        keyFilename?: string;
+        credentialsJson?: string;
+        cacheDirectory?: string;
+    };
 }
 
 /**
@@ -261,13 +274,27 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
 
         try {
             const context = {
-                workingDirectory: plansDir,
-                contextDir,
-                config: undefined,
+                ...(await (async () => {
+                    const cloudRuntime = await createCloudRuntime({ cloud: config.cloud } as any, plansDir);
+                    await cloudRuntime.syncDown();
+                    return {
+                        workingDirectory: cloudRuntime.workingDirectory,
+                        contextDir: cloudRuntime.contextDirectory,
+                        cloudRuntime,
+                    };
+                })()),
+                config,
                 logger: undefined,
             };
 
             const result = await executeTool(toolName, request.params.arguments || {}, context);
+
+            if (context.cloudRuntime?.enabled && isMutatingTool(toolName, request.params.arguments as Record<string, unknown> | undefined)) {
+                await context.cloudRuntime.syncUpPlans();
+                if (toolName === 'riotplan_context') {
+                    await context.cloudRuntime.syncUpContext();
+                }
+            }
 
             if (!result.success) {
                 debugLog(debugEnabled, 'tool.call.error', {
@@ -535,6 +562,7 @@ export function createApp(config: ServerConfig): Hono {
             sessions: sessions.size,
             plansDir: config.plansDir,
             contextDir,
+            cloudEnabled: config.cloud?.enabled === true,
             tools: tools.length,
             resources: getResources().length,
             prompts: getPrompts().length,

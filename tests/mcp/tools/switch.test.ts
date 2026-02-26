@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import type { ToolExecutionContext } from '../../../src/mcp/types.js';
-import { listPlansTool } from '../../../src/mcp/tools/switch.js';
+import { listPlansTool, planTool } from '../../../src/mcp/tools/switch.js';
 import { bindProjectTool } from '../../../src/mcp/tools/project.js';
 
 const execFileAsync = promisify(execFile);
@@ -66,6 +66,60 @@ describe('riotplan_list_plans workspace filtering', () => {
             expect(typeof plan.updatedAt).toBe('string');
             expect(Number.isNaN(new Date(plan.createdAt).getTime())).toBe(false);
             expect(Number.isNaN(new Date(plan.updatedAt).getTime())).toBe(false);
+        }
+    });
+
+    it('does not expose directory override fields in public plan schemas', async () => {
+        expect(Object.keys(planTool.schema)).not.toContain('directory');
+        expect(Object.keys(listPlansTool.schema)).not.toContain('directory');
+    });
+
+    it('creates and lists plans using server-managed directory resolution', async () => {
+        const created = await planTool.execute(
+            {
+                action: 'create',
+                code: 'secure-default-root',
+                description: 'Server-owned root test',
+            },
+            context
+        );
+
+        expect(created.success).toBe(true);
+        expect(created.data?.planId).toBe('secure-default-root');
+
+        const listed = await listPlansTool.execute({}, context);
+        expect(listed.success).toBe(true);
+        expect((listed.data?.plans || []).some((plan: { id: string }) => plan.id === 'secure-default-root')).toBe(true);
+    });
+
+    it('rejects directory/path/root overrides for create and list operations', async () => {
+        const blockedArgs = [
+            { directory: '/tmp/evil' },
+            { path: '/tmp/evil' },
+            { root: '/tmp/evil' },
+            { planDirectory: '/tmp/evil' },
+        ];
+
+        for (const [index, blocked] of blockedArgs.entries()) {
+            const createResult = await planTool.execute(
+                {
+                    action: 'create',
+                    code: `blocked-${index}`,
+                    description: 'should fail',
+                    ...blocked,
+                },
+                context
+            );
+            expect(createResult.success).toBe(false);
+            expect(createResult.error).toContain(
+                'E_INVALID_ARGUMENT: directory is server-managed and cannot be provided by client'
+            );
+
+            const listResult = await listPlansTool.execute(blocked, context);
+            expect(listResult.success).toBe(false);
+            expect(listResult.error).toContain(
+                'E_INVALID_ARGUMENT: directory is server-managed and cannot be provided by client'
+            );
         }
     });
 
