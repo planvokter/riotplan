@@ -63,7 +63,7 @@ function resolveFreshnessTtlMs(config: RiotPlanConfig | null | undefined): numbe
     if (typeof fromConfig === 'number' && Number.isFinite(fromConfig) && fromConfig >= 0) {
         return fromConfig;
     }
-    return toInt(process.env.RIOTPLAN_CLOUD_SYNC_FRESHNESS_TTL_MS) || 0;
+    return toInt(process.env.RIOTPLAN_CLOUD_SYNC_FRESHNESS_TTL_MS) || 5_000;
 }
 
 function resolveSyncTimeoutMs(config: RiotPlanConfig | null | undefined): number {

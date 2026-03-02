@@ -207,7 +207,7 @@ Key options:
 
 - `cloud.enabled` (`boolean`): enables GCS mirror mode.
 - `cloud.incrementalSyncEnabled` (`boolean`, default `true`): enables incremental diff/coalescing/TTL optimizations.
-- `cloud.syncFreshnessTtlMs` (`number`, default `0`): freshness window for read sync short-circuit.
+- `cloud.syncFreshnessTtlMs` (`number`, default `5000`): freshness window for read sync short-circuit.
 - `cloud.syncTimeoutMs` (`number`, default `120000`): timeout for coalesced sync operations.
 - `cloud.planBucket` / `cloud.contextBucket` (`string`): GCS buckets for plans/context.
 - `cloud.planPrefix` / `cloud.contextPrefix` (`string`): optional object prefixes.

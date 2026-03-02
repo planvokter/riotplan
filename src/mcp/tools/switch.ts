@@ -507,12 +507,18 @@ async function executePlan(args: unknown, context: ToolExecutionContext): Promis
         assertNoClientDirectoryOverride(args, context, 'riotplan_plan');
         const validated = PlanActionSchema.parse(args);
         switch (validated.action) {
-            case 'create':
-                return executeCreate(validated, context, 'riotplan_plan');
-            case 'switch':
-                return executeSwitchPlan(validated, context);
-            case 'move':
-                return executeMovePlan(validated, context);
+            case 'create': {
+                const { action: _, ...createArgs } = validated;
+                return executeCreate(createArgs, context, 'riotplan_plan');
+            }
+            case 'switch': {
+                const { action: _, ...switchArgs } = validated;
+                return executeSwitchPlan(switchArgs, context);
+            }
+            case 'move': {
+                const { action: _, ...moveArgs } = validated;
+                return executeMovePlan(moveArgs, context);
+            }
         }
     } catch (error: any) {
         return { success: false, error: error.message };
