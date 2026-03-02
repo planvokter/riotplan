@@ -237,7 +237,9 @@ async function main() {
                     const planDirectory = await resolvePlanDirectory();
                     const config = await loadConfig();
                     const cloudRuntime = await createCloudRuntime(config, planDirectory);
-                    await cloudRuntime.syncDown();
+                    await cloudRuntime.syncDown({
+                        forceRefresh: isMutatingTool(name, args as Record<string, unknown>),
+                    });
                     
                     const context = {
                         workingDirectory: cloudRuntime.workingDirectory,

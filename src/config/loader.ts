@@ -121,6 +121,9 @@ export async function loadConfig(): Promise<RiotPlanConfig | null> {
                     `- verification.autoRetrospective: boolean\n` +
                     `- verification.requireEvidence: boolean\n` +
                     `- cloud.enabled: boolean\n` +
+                    `- cloud.incrementalSyncEnabled: boolean (set false for rollback to full sync)\n` +
+                    `- cloud.syncFreshnessTtlMs: number (milliseconds, 0 disables TTL)\n` +
+                    `- cloud.syncTimeoutMs: number (milliseconds before sync timeout)\n` +
                     `- cloud.planBucket: string\n` +
                     `- cloud.contextBucket: string\n` +
                     `- cloud.planPrefix: string\n` +
@@ -139,6 +142,15 @@ export async function loadConfig(): Promise<RiotPlanConfig | null> {
             `Failed to load RiotPlan configuration: ${error instanceof Error ? error.message : String(error)}`
         );
     }
+}
+
+/**
+ * Run CardiganTime's built-in configuration diagnostics output.
+ *
+ * This prints source-tracked configuration details directly via CardiganTime.
+ */
+export async function checkConfigWithCardiganTime(args: Record<string, unknown> = {}): Promise<void> {
+    await cardigantime.checkConfig(args);
 }
 
 /**

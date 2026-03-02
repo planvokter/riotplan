@@ -1,4 +1,5 @@
-import { mkdir, readdir, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, mkdir, readdir, rm, stat, writeFile, rename } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 export interface GcsAuthConfig {
@@ -12,11 +13,146 @@ export interface GcsBucketLocation {
     prefix?: string;
 }
 
+export interface GcsSyncDownStats {
+    bucket: string;
+    prefix: string;
+    localDirectory: string;
+    remoteListedCount: number;
+    remoteIncludedCount: number;
+    changedCount: number;
+    skippedUnchangedCount: number;
+    downloadedCount: number;
+    downloadedBytes: number;
+    localScannedCount: number;
+    removedCount: number;
+    elapsedMs: number;
+    phases: {
+        mkdirMs: number;
+        createClientMs: number;
+        listRemoteMs: number;
+        downloadMs: number;
+        listLocalMs: number;
+        cleanupMs: number;
+    };
+}
+
+export interface GcsSyncUpStats {
+    bucket: string;
+    prefix: string;
+    localDirectory: string;
+    localScannedCount: number;
+    localIncludedCount: number;
+    uploadedCount: number;
+    remoteListedCount: number;
+    removedRemoteCount: number;
+    elapsedMs: number;
+    phases: {
+        mkdirMs: number;
+        createClientMs: number;
+        listLocalMs: number;
+        uploadMs: number;
+        listRemoteMs: number;
+        cleanupMs: number;
+    };
+}
+
+type MirrorDebugEvent = (
+    event: string,
+    details: Record<string, unknown>
+) => void;
+
 type StorageFile = {
     name: string;
     download: (options: { destination: string }) => Promise<void>;
     delete: (options?: { ignoreNotFound?: boolean }) => Promise<void>;
+    getMetadata?: () => Promise<Array<Record<string, unknown>>>;
+    metadata?: {
+        md5Hash?: string;
+    };
 };
+
+export interface SyncManifestObject {
+    path: string;
+    generation?: string;
+    etag?: string;
+    md5Hash?: string;
+    size?: number;
+    updatedAt?: string;
+    localPath: string;
+    lastSyncedAt: string;
+}
+
+export interface SyncManifest {
+    version: number;
+    createdAt: string;
+    updatedAt: string;
+    objects: Record<string, SyncManifestObject>;
+}
+
+const SYNC_MANIFEST_VERSION = 1;
+const SYNC_MANIFEST_FILE = '.riotplan-sync-manifest.json';
+
+export interface RemoteObjectState {
+    path: string;
+    generation?: string;
+    etag?: string;
+    md5Hash?: string;
+    size?: number;
+    updatedAt?: string;
+}
+
+export function buildSyncDiff(
+    remoteObjects: Record<string, RemoteObjectState>,
+    manifestObjects: Record<string, SyncManifestObject> | undefined,
+    localFiles: Set<string>
+): {
+    added: string[];
+    changed: string[];
+    unchanged: string[];
+    deletedLocal: string[];
+} {
+    const added: string[] = [];
+    const changed: string[] = [];
+    const unchanged: string[] = [];
+    const remotePaths = new Set(Object.keys(remoteObjects));
+
+    for (const relativePath of remotePaths) {
+        const remote = remoteObjects[relativePath];
+        const localExists = localFiles.has(relativePath);
+        const manifest = manifestObjects?.[relativePath];
+
+        if (!localExists) {
+            added.push(relativePath);
+            continue;
+        }
+        if (!manifest) {
+            changed.push(relativePath);
+            continue;
+        }
+
+        const byGeneration =
+            manifest.generation &&
+            remote.generation &&
+            manifest.generation === remote.generation;
+        const byEtag = manifest.etag && remote.etag && manifest.etag === remote.etag;
+        const byMd5 = manifest.md5Hash && remote.md5Hash && manifest.md5Hash === remote.md5Hash;
+
+        if (byGeneration || byEtag || byMd5) {
+            unchanged.push(relativePath);
+        } else {
+            changed.push(relativePath);
+        }
+    }
+
+    const deletedLocal: string[] = [];
+    for (const localRelative of localFiles) {
+        if (!remotePaths.has(localRelative)) {
+            deletedLocal.push(localRelative);
+        }
+    }
+
+    return { added, changed, unchanged, deletedLocal };
+}
 
 type BucketLike = {
     getFiles: (options?: { prefix?: string }) => Promise<[StorageFile[]]>;
@@ -26,6 +162,34 @@ type BucketLike = {
 type StorageLike = {
     bucket: (name: string) => BucketLike;
 };
+
+function isRetryableError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const code = (error as any).code;
+    const message = String((error as any).message || '').toLowerCase();
+    if (typeof code === 'number' && [408, 429, 500, 502, 503, 504].includes(code)) return true;
+    if (typeof code === 'string' && ['ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(code)) return true;
+    return message.includes('timeout') || message.includes('temporar') || message.includes('rate');
+}
+
+async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+    let attempt = 0;
+    let lastError: unknown;
+    while (attempt <= retries) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error;
+            if (attempt >= retries || !isRetryableError(error)) {
+                throw error;
+            }
+            const backoffMs = 100 * Math.pow(2, attempt);
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        }
+        attempt += 1;
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
 
 function normalizePrefix(prefix?: string): string {
     if (!prefix) {
@@ -66,6 +230,103 @@ async function collectLocalFiles(rootDir: string): Promise<string[]> {
     return files;
 }
 
+async function fileMd5Base64(path: string): Promise<string> {
+    const buffer = await readFile(path);
+    return createHash('md5').update(buffer).digest('base64');
+}
+
+async function fileExists(path: string): Promise<boolean> {
+    try {
+        await stat(path);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function resolveRemoteMd5(file: StorageFile): Promise<string | undefined> {
+    if (file.metadata?.md5Hash) {
+        return file.metadata.md5Hash;
+    }
+    if (typeof file.getMetadata === 'function') {
+        try {
+            const [metadata] = await file.getMetadata();
+            const md5Hash = typeof metadata?.md5Hash === 'string' ? metadata.md5Hash : undefined;
+            if (md5Hash) {
+                file.metadata = { ...(file.metadata || {}), md5Hash };
+            }
+            return md5Hash;
+        } catch {
+            return undefined;
+        }
+    }
+    return undefined;
+}
+
+async function resolveRemoteMetadata(file: StorageFile): Promise<{
+    md5Hash?: string;
+    generation?: string;
+    etag?: string;
+    size?: number;
+    updatedAt?: string;
+}> {
+    if (typeof file.getMetadata !== 'function') {
+        return {
+            md5Hash: file.metadata?.md5Hash,
+        };
+    }
+    try {
+        const [metadata] = await file.getMetadata();
+        const md5Hash = typeof metadata?.md5Hash === 'string' ? metadata.md5Hash : file.metadata?.md5Hash;
+        const generation = typeof metadata?.generation === 'string' ? metadata.generation : undefined;
+        const etag = typeof metadata?.etag === 'string' ? metadata.etag : undefined;
+        const size = typeof metadata?.size === 'string' ? Number.parseInt(metadata.size, 10) : undefined;
+        const updatedAt = typeof metadata?.updated === 'string' ? metadata.updated : undefined;
+        if (md5Hash) {
+            file.metadata = { ...(file.metadata || {}), md5Hash };
+        }
+        return { md5Hash, generation, etag, size, updatedAt };
+    } catch {
+        return {
+            md5Hash: file.metadata?.md5Hash,
+        };
+    }
+}
+
+export async function loadSyncManifest(localDirectory: string): Promise<{
+    manifest: SyncManifest | null;
+    invalidated: boolean;
+}> {
+    const manifestPath = join(localDirectory, SYNC_MANIFEST_FILE);
+    try {
+        const raw = await readFile(manifestPath, 'utf8');
+        const parsed = JSON.parse(raw) as SyncManifest;
+        if (!parsed || typeof parsed !== 'object' || parsed.version !== SYNC_MANIFEST_VERSION || !parsed.objects) {
+            return { manifest: null, invalidated: true };
+        }
+        return { manifest: parsed, invalidated: false };
+    } catch (error: any) {
+        if (error?.code === 'ENOENT') {
+            return { manifest: null, invalidated: false };
+        }
+        return { manifest: null, invalidated: true };
+    }
+}
+
+export async function writeSyncManifest(localDirectory: string, objects: Record<string, SyncManifestObject>): Promise<void> {
+    const manifestPath = join(localDirectory, SYNC_MANIFEST_FILE);
+    const tempManifestPath = `${manifestPath}.tmp`;
+    const now = new Date().toISOString();
+    const payload: SyncManifest = {
+        version: SYNC_MANIFEST_VERSION,
+        createdAt: now,
+        updatedAt: now,
+        objects,
+    };
+    await writeFile(tempManifestPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    await rename(tempManifestPath, manifestPath);
+}
+
 async function createStorageClient(auth: GcsAuthConfig): Promise<StorageLike> {
     let credentials: Record<string, unknown> | undefined;
     if (auth.credentialsJson) {
@@ -95,27 +356,65 @@ export class GcsMirror {
     private readonly prefix: string;
     private readonly localDirectory: string;
     private readonly includeFile: (relativePath: string) => boolean;
+    private readonly incrementalSyncEnabled: boolean;
+    private readonly onDebugEvent?: MirrorDebugEvent;
 
     constructor(options: {
         auth: GcsAuthConfig;
         location: GcsBucketLocation;
         localDirectory: string;
         includeFile?: (relativePath: string) => boolean;
+        incrementalSyncEnabled?: boolean;
+        onDebugEvent?: MirrorDebugEvent;
     }) {
         this.auth = options.auth;
         this.bucketName = options.location.bucket;
         this.prefix = normalizePrefix(options.location.prefix);
         this.localDirectory = resolve(options.localDirectory);
         this.includeFile = options.includeFile || (() => true);
+        this.incrementalSyncEnabled = options.incrementalSyncEnabled !== false;
+        this.onDebugEvent = options.onDebugEvent;
     }
 
-    async syncDown(): Promise<void> {
+    async syncDown(): Promise<GcsSyncDownStats> {
+        const startedAt = Date.now();
+        this.onDebugEvent?.('sync_down.start', {
+            bucket: this.bucketName,
+            prefix: this.prefix,
+            localDirectory: this.localDirectory,
+        });
+        const mkdirStartedAt = Date.now();
         await mkdir(this.localDirectory, { recursive: true });
-        const storage = await createStorageClient(this.auth);
-        const bucket = storage.bucket(this.bucketName);
-        const [files] = await bucket.getFiles({ prefix: this.prefix || undefined });
+        const mkdirMs = Date.now() - mkdirStartedAt;
+        this.onDebugEvent?.('sync_down.phase.mkdir', { elapsedMs: mkdirMs });
 
-        const remoteSet = new Set<string>();
+        const clientStartedAt = Date.now();
+        const storage = await createStorageClient(this.auth);
+        const createClientMs = Date.now() - clientStartedAt;
+        this.onDebugEvent?.('sync_down.phase.create_client', { elapsedMs: createClientMs });
+        const bucket = storage.bucket(this.bucketName);
+
+        const listRemoteStartedAt = Date.now();
+        const [files] = await withRetry(() => bucket.getFiles({ prefix: this.prefix || undefined }));
+        const listRemoteMs = Date.now() - listRemoteStartedAt;
+        this.onDebugEvent?.('sync_down.phase.list_remote', { elapsedMs: listRemoteMs, listedCount: files.length });
+
+        const { manifest, invalidated } = this.incrementalSyncEnabled
+            ? await loadSyncManifest(this.localDirectory)
+            : { manifest: null, invalidated: false };
+        if (invalidated) {
+            this.onDebugEvent?.('sync_down.manifest.invalidated', {
+                localDirectory: this.localDirectory,
+                reason: 'unsupported_or_corrupt_manifest',
+            });
+        }
+
+        const localFilesAtStart = await collectLocalFiles(this.localDirectory);
+        const localTrackedAtStart = new Set(
+            localFilesAtStart.filter((relativePath) => this.includeFile(relativePath))
+        );
+        const remoteStateByPath: Record<string, RemoteObjectState> = {};
+        const remoteFileByPath = new Map<string, StorageFile>();
         for (const file of files) {
             const objectName = file.name;
             if (objectName.endsWith('/')) {
@@ -125,42 +424,247 @@ export class GcsMirror {
             if (!relativePath || !this.includeFile(relativePath)) {
                 continue;
             }
-            remoteSet.add(relativePath);
-            const localPath = join(this.localDirectory, relativePath);
-            await mkdir(dirname(localPath), { recursive: true });
-            await file.download({ destination: localPath });
+            remoteFileByPath.set(relativePath, file);
+            const remoteMeta = await resolveRemoteMetadata(file);
+            remoteStateByPath[relativePath] = {
+                path: relativePath,
+                generation: remoteMeta.generation,
+                etag: remoteMeta.etag,
+                md5Hash: remoteMeta.md5Hash,
+                size: remoteMeta.size,
+                updatedAt: remoteMeta.updatedAt,
+            };
         }
 
-        const localFiles = await collectLocalFiles(this.localDirectory);
-        for (const localRelative of localFiles) {
-            if (!this.includeFile(localRelative)) {
+        const remoteSet = new Set(Object.keys(remoteStateByPath));
+        const remoteIncludedCount = remoteSet.size;
+        let diff: ReturnType<typeof buildSyncDiff>;
+        if (!this.incrementalSyncEnabled) {
+            diff = {
+                added: [...remoteSet],
+                changed: [],
+                unchanged: [],
+                deletedLocal: [...localTrackedAtStart].filter((path) => !remoteSet.has(path)),
+            };
+        } else {
+            try {
+                diff = buildSyncDiff(remoteStateByPath, manifest?.objects, localTrackedAtStart);
+            } catch (error) {
+                this.onDebugEvent?.('sync_down.diff_recovery', {
+                    reason: error instanceof Error ? error.message : String(error),
+                    strategy: 'full_resync',
+                });
+                diff = {
+                    added: [],
+                    changed: [...remoteSet],
+                    unchanged: [],
+                    deletedLocal: [...localTrackedAtStart].filter((path) => !remoteSet.has(path)),
+                };
+            }
+        }
+        let changedCount = diff.added.length + diff.changed.length;
+        let skippedUnchangedCount = diff.unchanged.length;
+        let downloadedCount = 0;
+        let downloadedBytes = 0;
+        const manifestObjects: Record<string, SyncManifestObject> = {};
+        const downloadStartedAt = Date.now();
+        const downloadTargets = [...diff.added, ...diff.changed];
+        for (const relativePath of downloadTargets) {
+            const file = remoteFileByPath.get(relativePath);
+            if (!file) {
                 continue;
             }
+            const localPath = join(this.localDirectory, relativePath);
+            let shouldDownload = true;
+            const remoteMeta = remoteStateByPath[relativePath];
+            const existingManifestEntry = manifest?.objects?.[relativePath];
+            const existsLocally = await fileExists(localPath);
+            if (this.incrementalSyncEnabled && existsLocally && existingManifestEntry) {
+                const unchangedByManifest =
+                    existingManifestEntry.generation &&
+                    remoteMeta?.generation &&
+                    existingManifestEntry.generation === remoteMeta.generation;
+                if (unchangedByManifest) {
+                    shouldDownload = false;
+                }
+            }
+            if (this.incrementalSyncEnabled && existsLocally && shouldDownload) {
+                const remoteMd5 = remoteMeta?.md5Hash || (await resolveRemoteMd5(file));
+                if (remoteMd5) {
+                    const localMd5 = await fileMd5Base64(localPath);
+                    shouldDownload = localMd5 !== remoteMd5;
+                }
+            }
+            if (!shouldDownload) {
+                skippedUnchangedCount += 1;
+                changedCount -= 1;
+                continue;
+            }
+            await mkdir(dirname(localPath), { recursive: true });
+            const downloadFileStartedAt = Date.now();
+            await withRetry(() => file.download({ destination: localPath }));
+            const fileElapsedMs = Date.now() - downloadFileStartedAt;
+            downloadedCount += 1;
+            try {
+                downloadedBytes += (await stat(localPath)).size;
+            } catch {
+                // best-effort metric, ignore stat failures
+            }
+            if (fileElapsedMs >= 250) {
+                this.onDebugEvent?.('sync_down.file_download', {
+                    path: relativePath,
+                    elapsedMs: fileElapsedMs,
+                });
+            }
+            manifestObjects[relativePath] = {
+                path: relativePath,
+                generation: remoteMeta?.generation,
+                etag: remoteMeta?.etag,
+                md5Hash: remoteMeta?.md5Hash,
+                size: remoteMeta?.size,
+                updatedAt: remoteMeta?.updatedAt,
+                localPath: relativePath,
+                lastSyncedAt: new Date().toISOString(),
+            };
+        }
+        for (const relativePath of remoteSet) {
+            if (!manifestObjects[relativePath] && manifest?.objects?.[relativePath]) {
+                manifestObjects[relativePath] = {
+                    ...manifest.objects[relativePath],
+                    lastSyncedAt: new Date().toISOString(),
+                };
+            }
+        }
+        const downloadMs = Date.now() - downloadStartedAt;
+        this.onDebugEvent?.('sync_down.phase.download', {
+            elapsedMs: downloadMs,
+            downloadedCount,
+            includedCount: remoteIncludedCount,
+            changedCount,
+            skippedUnchangedCount,
+            downloadedBytes,
+        });
+
+        const listLocalStartedAt = Date.now();
+        const localFiles = await collectLocalFiles(this.localDirectory);
+        const listLocalMs = Date.now() - listLocalStartedAt;
+        this.onDebugEvent?.('sync_down.phase.list_local', { elapsedMs: listLocalMs, scannedCount: localFiles.length });
+
+        const cleanupStartedAt = Date.now();
+        let removedCount = 0;
+        for (const localRelative of diff.deletedLocal) {
             if (!remoteSet.has(localRelative)) {
                 await rm(join(this.localDirectory, localRelative), { force: true });
+                removedCount += 1;
             }
         }
+        const cleanupMs = Date.now() - cleanupStartedAt;
+        if (this.incrementalSyncEnabled) {
+            await writeSyncManifest(this.localDirectory, manifestObjects);
+        }
+        const elapsedMs = Date.now() - startedAt;
+        const stats: GcsSyncDownStats = {
+            bucket: this.bucketName,
+            prefix: this.prefix,
+            localDirectory: this.localDirectory,
+            remoteListedCount: files.length,
+            remoteIncludedCount,
+            changedCount,
+            skippedUnchangedCount,
+            downloadedCount,
+            downloadedBytes,
+            localScannedCount: localFiles.length,
+            removedCount,
+            elapsedMs,
+            phases: {
+                mkdirMs,
+                createClientMs,
+                listRemoteMs,
+                downloadMs,
+                listLocalMs,
+                cleanupMs,
+            },
+        };
+        this.onDebugEvent?.('sync_down.complete', stats as unknown as Record<string, unknown>);
+        return stats;
     }
 
-    async syncUp(): Promise<void> {
+    async syncUp(): Promise<GcsSyncUpStats> {
+        const startedAt = Date.now();
+        this.onDebugEvent?.('sync_up.start', {
+            bucket: this.bucketName,
+            prefix: this.prefix,
+            localDirectory: this.localDirectory,
+        });
+        const mkdirStartedAt = Date.now();
         await mkdir(this.localDirectory, { recursive: true });
+        const mkdirMs = Date.now() - mkdirStartedAt;
+        const clientStartedAt = Date.now();
         const storage = await createStorageClient(this.auth);
+        const createClientMs = Date.now() - clientStartedAt;
         const bucket = storage.bucket(this.bucketName);
+        const listRemoteStartedAt = Date.now();
+        const [remoteFiles] = await withRetry(() => bucket.getFiles({ prefix: this.prefix || undefined }));
+        const listRemoteMs = Date.now() - listRemoteStartedAt;
+        const remoteByRelative = new Map<string, StorageFile>();
+        for (const remote of remoteFiles) {
+            if (remote.name.endsWith('/')) {
+                continue;
+            }
+            const relativePath = toRelativePath(this.prefix, remote.name);
+            if (!relativePath || !this.includeFile(relativePath)) {
+                continue;
+            }
+            remoteByRelative.set(relativePath, remote);
+        }
+
+        const listLocalStartedAt = Date.now();
         const localFiles = await collectLocalFiles(this.localDirectory);
+        const listLocalMs = Date.now() - listLocalStartedAt;
         const localSet = new Set<string>();
+        let localIncludedCount = 0;
+        let uploadedCount = 0;
+        const uploadStartedAt = Date.now();
 
         for (const localRelative of localFiles) {
             if (!this.includeFile(localRelative)) {
                 continue;
             }
+            localIncludedCount += 1;
             localSet.add(localRelative);
+            const localPath = join(this.localDirectory, localRelative);
+            const remoteFile = remoteByRelative.get(localRelative);
+            let shouldUpload = true;
+            if (remoteFile) {
+                const remoteMd5 = await resolveRemoteMd5(remoteFile);
+                if (remoteMd5) {
+                    const localMd5 = await fileMd5Base64(localPath);
+                    shouldUpload = localMd5 !== remoteMd5;
+                }
+            }
+            if (!shouldUpload) {
+                continue;
+            }
             const objectName = toObjectName(this.prefix, localRelative);
-            await bucket.upload(join(this.localDirectory, localRelative), {
-                destination: objectName,
-            });
+            const uploadFileStartedAt = Date.now();
+            await withRetry(() =>
+                bucket.upload(localPath, {
+                    destination: objectName,
+                })
+            );
+            const fileElapsedMs = Date.now() - uploadFileStartedAt;
+            uploadedCount += 1;
+            if (fileElapsedMs >= 250) {
+                this.onDebugEvent?.('sync_up.file_upload', {
+                    path: localRelative,
+                    elapsedMs: fileElapsedMs,
+                });
+            }
         }
+        const uploadMs = Date.now() - uploadStartedAt;
 
-        const [remoteFiles] = await bucket.getFiles({ prefix: this.prefix || undefined });
+        let removedRemoteCount = 0;
+        const cleanupStartedAt = Date.now();
         for (const remote of remoteFiles) {
             if (remote.name.endsWith('/')) {
                 continue;
@@ -170,8 +674,32 @@ export class GcsMirror {
                 continue;
             }
             if (!localSet.has(relativePath)) {
-                await remote.delete({ ignoreNotFound: true });
+                await withRetry(() => remote.delete({ ignoreNotFound: true }));
+                removedRemoteCount += 1;
             }
         }
+        const cleanupMs = Date.now() - cleanupStartedAt;
+        const elapsedMs = Date.now() - startedAt;
+        const stats: GcsSyncUpStats = {
+            bucket: this.bucketName,
+            prefix: this.prefix,
+            localDirectory: this.localDirectory,
+            localScannedCount: localFiles.length,
+            localIncludedCount,
+            uploadedCount,
+            remoteListedCount: remoteFiles.length,
+            removedRemoteCount,
+            elapsedMs,
+            phases: {
+                mkdirMs,
+                createClientMs,
+                listLocalMs,
+                uploadMs,
+                listRemoteMs,
+                cleanupMs,
+            },
+        };
+        this.onDebugEvent?.('sync_up.complete', stats as unknown as Record<string, unknown>);
+        return stats;
     }
 }

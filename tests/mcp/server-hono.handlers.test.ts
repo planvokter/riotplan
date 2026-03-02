@@ -36,6 +36,25 @@ const mocks = vi.hoisted(() => {
         }
     }
 
+    const cloudSyncDown = vi.fn(async () => ({
+        plan: {
+            remoteIncludedCount: 10,
+            changedCount: 2,
+            skippedUnchangedCount: 8,
+            downloadedCount: 2,
+            downloadedBytes: 1024,
+        },
+        context: {
+            remoteIncludedCount: 0,
+            changedCount: 0,
+            skippedUnchangedCount: 0,
+            downloadedCount: 0,
+            downloadedBytes: 0,
+        },
+        syncFreshHit: false,
+        coalescedWaiterCount: 0,
+    }));
+
     return {
         schemas,
         MockTransport,
@@ -52,6 +71,15 @@ const mocks = vi.hoisted(() => {
             { uri: 'riotplan://status/{planId}', name: 'Status', description: 'Status', mimeType: 'application/json' },
         ]),
         readResource: vi.fn(async () => ({ ok: true })),
+        cloudSyncDown,
+        createCloudRuntime: vi.fn(async () => ({
+            enabled: true,
+            workingDirectory: '/workspace/cloud-plans',
+            contextDirectory: '/workspace/cloud-context',
+            syncDown: cloudSyncDown,
+            syncUpPlans: vi.fn(async () => undefined),
+            syncUpContext: vi.fn(async () => undefined),
+        })),
         getPrompts: vi.fn(() => [{ name: 'p1', description: 'prompt', arguments: [{ name: 'path' }] }]),
         getPrompt: vi.fn(async () => []),
         serve: vi.fn((opts: { port: number }, cb?: (info: { port: number }) => void) => {
@@ -82,6 +110,10 @@ vi.mock('../../src/mcp/resources/index.js', () => ({
     readResource: mocks.readResource,
 }));
 
+vi.mock('../../src/cloud/runtime.js', () => ({
+    createCloudRuntime: mocks.createCloudRuntime,
+}));
+
 vi.mock('../../src/mcp/prompts/index.js', () => ({
     getPrompts: mocks.getPrompts,
     getPrompt: mocks.getPrompt,
@@ -99,6 +131,7 @@ describe('server-hono MCP handlers', () => {
         mocks.MockServer.instances.length = 0;
         mocks.MockTransport.instances.length = 0;
         mocks.MockTransport.handleRequest.mockResolvedValue(new Response('ok', { status: 200 }));
+        mocks.cloudSyncDown.mockClear();
     });
 
     function app() {
@@ -169,6 +202,7 @@ describe('server-hono MCP handlers', () => {
         expect(success.content[0].text).toContain('Command Output');
         expect(success.content[1].text).toContain('"updated": true');
         expect(mocks.MockTransport.instances.some((t) => t.send.mock.calls.length > 0)).toBe(true);
+        expect(mocks.cloudSyncDown).toHaveBeenCalledWith({ forceRefresh: true });
 
         for (const transport of mocks.MockTransport.instances) transport.send.mockClear();
         mocks.executeTool.mockResolvedValueOnce({ success: true, data: { planId: 'demo' } });
@@ -199,6 +233,9 @@ describe('server-hono MCP handlers', () => {
         const readResourceHandler = server!.handlers.get(mocks.schemas.ReadResourceRequestSchema);
         mocks.readResource.mockResolvedValueOnce({ hello: 'world' });
         const readOk = await readResourceHandler!({ params: { uri: 'riotplan://plan/demo' } });
+        expect(mocks.createCloudRuntime).toHaveBeenCalled();
+        expect(mocks.readResource).toHaveBeenCalledWith('riotplan://plan/demo', '/workspace/cloud-plans');
+        expect(mocks.cloudSyncDown).toHaveBeenCalledWith({ forceRefresh: false });
         expect(readOk.contents[0].mimeType).toBe('application/json');
         expect(readOk.contents[0].text).toContain('"hello": "world"');
 

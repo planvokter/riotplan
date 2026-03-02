@@ -99,6 +99,15 @@ export function createProgram(): Command {
         .option("-v, --verbose", "Verbose output")
         .option("--no-color", "Disable colored output");
 
+    // Root action ensures preAction hooks run for global-only invocations
+    // like `riotplan --check-config` and preserves default help behavior.
+    program.action(() => {
+        const opts = program.opts<{ initConfig?: boolean; checkConfig?: boolean }>();
+        if (!opts.initConfig && !opts.checkConfig) {
+            program.outputHelp();
+        }
+    });
+
     // Handle unknown commands
     program.on("command:*", () => {
          

@@ -117,6 +117,9 @@ export const RiotPlanConfigSchema = z.object({
      */
     cloud: z.object({
         enabled: z.boolean().default(false),
+        incrementalSyncEnabled: z.boolean().default(true),
+        syncFreshnessTtlMs: z.number().int().min(0).default(0),
+        syncTimeoutMs: z.number().int().min(1).default(120000),
         planBucket: z.string().optional(),
         planPrefix: z.string().optional(),
         contextBucket: z.string().optional(),

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createCloudRuntime } from '../../src/cloud/runtime.js';
+import { createCloudRuntime, runCoalescedOperation } from '../../src/cloud/runtime.js';
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -45,5 +45,63 @@ describe('createCloudRuntime', () => {
         expect(runtime.enabled).toBe(true);
         expect(runtime.workingDirectory).toContain('/tmp/riotplan-gcs-cache/plans');
         expect(runtime.contextDirectory).toContain('/tmp/riotplan-gcs-cache/context');
+    });
+
+    it('coalesces concurrent operations to a single execution', async () => {
+        let executions = 0;
+        const operation = async () => {
+            executions += 1;
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            return 'ok';
+        };
+
+        const [a, b, c] = await Promise.all([
+            runCoalescedOperation('coalesce:test', operation),
+            runCoalescedOperation('coalesce:test', operation),
+            runCoalescedOperation('coalesce:test', operation),
+        ]);
+
+        expect(executions).toBe(1);
+        expect(a.result).toBe('ok');
+        expect(b.result).toBe('ok');
+        expect(c.result).toBe('ok');
+        expect([a.coalesced, b.coalesced, c.coalesced].filter(Boolean).length).toBe(2);
+        expect(Math.max(a.waiterCount, b.waiterCount, c.waiterCount)).toBe(2);
+    });
+
+    it('releases coalesced entries after timeout/failure', async () => {
+        const longOperation = async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            return 'late';
+        };
+
+        await expect(
+            Promise.all([
+                runCoalescedOperation('coalesce:timeout', longOperation, { timeoutMs: 5 }),
+                runCoalescedOperation('coalesce:timeout', longOperation, { timeoutMs: 5 }),
+            ])
+        ).rejects.toThrow('timed out');
+
+        const quick = await runCoalescedOperation(
+            'coalesce:timeout',
+            async () => 'recovered',
+            { timeoutMs: 100 }
+        );
+        expect(quick.result).toBe('recovered');
+    });
+
+    it('handles parallel burst with single upstream execution', async () => {
+        let executions = 0;
+        const burstOperation = async () => {
+            executions += 1;
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            return 'burst-ok';
+        };
+        const burst = Array.from({ length: 10 }, () =>
+            runCoalescedOperation('coalesce:burst', burstOperation, { timeoutMs: 100 })
+        );
+        const results = await Promise.all(burst);
+        expect(executions).toBe(1);
+        expect(results.every((r) => r.result === 'burst-ok')).toBe(true);
     });
 });
