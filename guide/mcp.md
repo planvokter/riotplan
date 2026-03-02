@@ -72,10 +72,11 @@ RiotPlan MCP supports an opt-in cloud mode for Google Cloud Storage.
 ### Example (`riotplan.config.yaml`)
 
 ```yaml
-planDirectory: ./plans
-
 cloud:
   enabled: true
+  incrementalSyncEnabled: true
+  syncFreshnessTtlMs: 5000
+  syncTimeoutMs: 120000
   planBucket: riotplan-plan-bucket
   planPrefix: riotplan/plans
   contextBucket: riotplan-context-bucket
@@ -85,10 +86,15 @@ cloud:
   cacheDirectory: ./.riotplan-cloud-cache
 ```
 
+For `riotplan-mcp-http`, cloud mode no longer requires an explicit canonical `plansDir`. If omitted, runtime directories are derived from cache configuration (`<cacheRoot>/plans` and `<cacheRoot>/context`).
+
 ### Environment variable overrides
 
 ```bash
 export RIOTPLAN_CLOUD_ENABLED=true
+export RIOTPLAN_CLOUD_INCREMENTAL_SYNC_ENABLED=true
+export RIOTPLAN_CLOUD_SYNC_FRESHNESS_TTL_MS=5000
+export RIOTPLAN_CLOUD_SYNC_TIMEOUT_MS=120000
 export RIOTPLAN_PLAN_BUCKET=riotplan-plan-bucket
 export RIOTPLAN_CONTEXT_BUCKET=riotplan-context-bucket
 export RIOTPLAN_PLAN_PREFIX=riotplan/plans
@@ -102,6 +108,19 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 - RiotPlan MCP mirrors plan/context files between local cache and GCS.
 - Local mode is still the default and requires no cloud settings.
 - In cloud mode, mutating tool calls sync updates back to the configured bucket(s).
+- `incrementalSyncEnabled=true` enables manifest diff + coalescing + TTL short-circuit.
+- Set `incrementalSyncEnabled=false` to immediately roll back to full-sync behavior.
+
+### Operational guardrails
+
+- If sync latency spikes, set `RIOTPLAN_CLOUD_INCREMENTAL_SYNC_ENABLED=false` first to isolate optimization effects.
+- Keep `syncFreshnessTtlMs` low (for example 2000-5000ms) for interactive workloads.
+- Use `syncTimeoutMs` to prevent hanging sync operations under degraded GCS/network conditions.
+- Monitor:
+  - p50/p95 `tool.call.complete` latency
+  - `downloadedCount` trend
+  - `coalescedWaiterCount` utilization
+  - `syncFreshHit` rate
 
 ## Tools
 

@@ -197,6 +197,34 @@ Default model to use for plan generation. Examples:
 
 Path to custom plan templates directory. Can be relative (to config file) or absolute.
 
+### `cloud` (MCP/HTTP cloud mode)
+
+**Type:** `object`  
+**Default:** `undefined` (local mode)  
+**Required:** No
+
+Key options:
+
+- `cloud.enabled` (`boolean`): enables GCS mirror mode.
+- `cloud.incrementalSyncEnabled` (`boolean`, default `true`): enables incremental diff/coalescing/TTL optimizations.
+- `cloud.syncFreshnessTtlMs` (`number`, default `5000`): freshness window for read sync short-circuit.
+- `cloud.syncTimeoutMs` (`number`, default `120000`): timeout for coalesced sync operations.
+- `cloud.planBucket` / `cloud.contextBucket` (`string`): GCS buckets for plans/context.
+- `cloud.planPrefix` / `cloud.contextPrefix` (`string`): optional object prefixes.
+- `cloud.projectId`, `cloud.keyFilename`, `cloud.credentialsJson`: auth settings.
+- `cloud.cacheDirectory` (`string`): local mirror cache root.
+
+Rollback switch:
+
+- Set `cloud.incrementalSyncEnabled: false` (or `RIOTPLAN_CLOUD_INCREMENTAL_SYNC_ENABLED=false`) to disable optimization quickly and return to full-sync mode.
+
+Post-deploy verification checklist:
+
+- Confirm repeated read calls show low/zero `downloadedCount` when unchanged.
+- Confirm `syncFreshHit` appears for reads within TTL.
+- Confirm mutating tools still force refresh before write paths.
+- Confirm coalesced burst traffic shows non-zero `coalescedWaiterCount`.
+
 ## CLI Configuration Commands
 
 ### Initialize Configuration
@@ -274,6 +302,15 @@ riotplan-mcp-http --plans-dir /Users/me/projects/myapp/plans --context-dir /User
 - `plansDir` is required.
 - `contextDir` is optional.
 - If `contextDir` is not provided, RiotPlan uses deterministic fallback: `contextDir = plansDir`.
+
+Cloud mode behavior:
+
+- In local mode (default), `plansDir` must exist.
+- In cloud mode (`cloud.enabled: true` or `RIOTPLAN_CLOUD_ENABLED=true`), `plansDir` can be omitted.
+- When omitted in cloud mode, RiotPlan derives runtime mirror roots from cache config:
+  - `plansDir = <cacheRoot>/plans`
+  - `contextDir = <cacheRoot>/context`
+  - `cacheRoot` comes from `cloud.cacheDirectory`, `RIOTPLAN_CLOUD_CACHE_DIR`, or defaults to `./.riotplan-http-cache`.
 
 This is useful when `.plan` files live in one directory but `riotplan_context` entities (projects) are shared in another root.
 

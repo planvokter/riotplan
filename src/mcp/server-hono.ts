@@ -7,8 +7,6 @@
  * CRITICAL: In HTTP/remote mode, everything flows from plansDir configuration.
  * No config discovery or directory derivation - tools only process plan information.
  */
-/* eslint-disable no-console */
-
 import { z } from 'zod';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -28,11 +26,14 @@ import type { Context } from 'hono';
 import { createReadStream } from 'node:fs';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
+import { PerformanceObserver, constants as PerfConstants } from 'node:perf_hooks';
+import { getHeapStatistics } from 'node:v8';
 import { executeTool, tools } from './tools/index.js';
 import { getResources, readResource } from './resources/index.js';
 import { getPrompts, getPrompt } from './prompts/index.js';
 import { resolveDirectory } from './tools/shared.js';
 import { createCloudRuntime } from '../cloud/runtime.js';
+import Logging from '@fjell/logging';
 
 /**
  * Server configuration
@@ -53,6 +54,9 @@ export interface ServerConfig {
     /** Optional cloud storage settings (opt-in). */
     cloud?: {
         enabled?: boolean;
+        incrementalSyncEnabled?: boolean;
+        syncFreshnessTtlMs?: number;
+        syncTimeoutMs?: number;
         planBucket?: string;
         planPrefix?: string;
         contextBucket?: string;
@@ -91,59 +95,143 @@ interface SessionContext {
  */
 const sessions = new Map<string, SessionContext>();
 const TRUTHY_RE = /^(1|true|yes|on)$/i;
+const HttpLogger = Logging.getLogger('@kjerneverk/riotplan-http');
+const logger = HttpLogger.get('server');
+const requestLogger = HttpLogger.get('request');
+const toolLogger = HttpLogger.get('tool');
+const resourceLogger = HttpLogger.get('resource');
+const sessionLogger = HttpLogger.get('session');
+const startupLogger = HttpLogger.get('startup');
+const gcLogger = HttpLogger.get('gc');
+const SLOW_PHASE_MS = 200;
+const MEMORY_SNAPSHOT_INTERVAL_MS = 30_000;
+
+function summarizeSyncOutcome(sync: {
+    plan: { downloadedCount: number; changedCount?: number; remoteIncludedCount: number; skippedUnchangedCount?: number } | null;
+    context: { downloadedCount: number; changedCount?: number; remoteIncludedCount: number; skippedUnchangedCount?: number } | null;
+    syncFreshHit: boolean;
+    coalescedWaiterCount: number;
+}): {
+    syncOutcome: 'fresh-hit' | 'incremental' | 'full';
+    remoteIncludedCount: number;
+    changedCount: number;
+    skippedUnchangedCount: number;
+    downloadedCount: number;
+    downloadedBytes: number;
+    coalescedWaiterCount: number;
+    syncFreshHit: boolean;
+} {
+    const plan = sync.plan;
+    const context = sync.context;
+    const remoteIncludedCount = (plan?.remoteIncludedCount || 0) + (context?.remoteIncludedCount || 0);
+    const changedCount = (plan?.changedCount || 0) + (context?.changedCount || 0);
+    const skippedUnchangedCount = (plan?.skippedUnchangedCount || 0) + (context?.skippedUnchangedCount || 0);
+    const downloadedCount = (plan?.downloadedCount || 0) + (context?.downloadedCount || 0);
+    const downloadedBytes = ((plan as any)?.downloadedBytes || 0) + ((context as any)?.downloadedBytes || 0);
+
+    let syncOutcome: 'fresh-hit' | 'incremental' | 'full' = 'full';
+    if (sync.syncFreshHit || downloadedCount === 0) {
+        syncOutcome = 'fresh-hit';
+    } else if (downloadedCount < remoteIncludedCount) {
+        syncOutcome = 'incremental';
+    }
+
+    return {
+        syncOutcome,
+        remoteIncludedCount,
+        changedCount,
+        skippedUnchangedCount,
+        downloadedCount,
+        downloadedBytes,
+        coalescedWaiterCount: sync.coalescedWaiterCount,
+        syncFreshHit: sync.syncFreshHit,
+    };
+}
+
+function shouldForceRefreshForResourceUri(uri: string): boolean {
+    const lower = uri.toLowerCase();
+    return lower.includes('forcerefresh=true') || lower.includes('refresh=force');
+}
+
+function gcKindToName(kind: number): string {
+    if (kind === PerfConstants.NODE_PERFORMANCE_GC_MAJOR) return 'major';
+    if (kind === PerfConstants.NODE_PERFORMANCE_GC_MINOR) return 'minor';
+    if (kind === PerfConstants.NODE_PERFORMANCE_GC_INCREMENTAL) return 'incremental';
+    if (kind === PerfConstants.NODE_PERFORMANCE_GC_WEAKCB) return 'weakcb';
+    return `unknown(${kind})`;
+}
+
+function installGcDiagnostics(debugEnabled: boolean): void {
+    if (!debugEnabled) {
+        return;
+    }
+
+    try {
+        const observer = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+                const gcEntry = entry as unknown as { kind?: number; flags?: number; detail?: unknown };
+                gcLogger.info('event', {
+                    eventType: entry.entryType,
+                    kind: typeof gcEntry.kind === 'number' ? gcKindToName(gcEntry.kind) : 'unknown',
+                    kindCode: gcEntry.kind ?? null,
+                    flags: gcEntry.flags ?? null,
+                    durationMs: Number(entry.duration.toFixed(3)),
+                    heapUsedBytes: process.memoryUsage().heapUsed,
+                    heapTotalBytes: process.memoryUsage().heapTotal,
+                    totalHeapSizeBytes: getHeapStatistics().total_heap_size,
+                    usedHeapSizeBytes: getHeapStatistics().used_heap_size,
+                });
+            }
+        });
+        observer.observe({ entryTypes: ['gc'] });
+        startupLogger.info('gc.observer.installed', { pid: process.pid });
+    } catch (error) {
+        startupLogger.warning('gc.observer.unavailable', {
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+
+    const snapshotTimer = setInterval(() => {
+        const memory = process.memoryUsage();
+        const heap = getHeapStatistics();
+        gcLogger.debug('memory.snapshot', {
+            rssBytes: memory.rss,
+            heapUsedBytes: memory.heapUsed,
+            heapTotalBytes: memory.heapTotal,
+            externalBytes: memory.external,
+            arrayBuffersBytes: memory.arrayBuffers,
+            totalHeapSizeBytes: heap.total_heap_size,
+            usedHeapSizeBytes: heap.used_heap_size,
+            heapSizeLimitBytes: heap.heap_size_limit,
+        });
+    }, MEMORY_SNAPSHOT_INTERVAL_MS);
+    snapshotTimer.unref?.();
+}
 
 function envDebugEnabled(): boolean {
     return TRUTHY_RE.test(process.env.RIOTPLAN_DEBUG || '') || TRUTHY_RE.test(process.env.RIOTPLAN_HTTP_DEBUG || '');
 }
 
-function debugLog(enabled: boolean, message: string, details?: unknown): void {
-    if (!enabled) {
-        return;
-    }
-    if (details === undefined) {
-        console.error(`[RiotPlan HTTP][debug] ${message}`);
-        return;
-    }
-    try {
-        console.error(`[RiotPlan HTTP][debug] ${message} ${JSON.stringify(details)}`);
-    } catch {
-        console.error(`[RiotPlan HTTP][debug] ${message}`);
+function debugLog(enabled: boolean, event: string, details?: Record<string, unknown>): void {
+    if (enabled) {
+        toolLogger.debug(event, details ?? {});
     }
 }
 
-function formatIncomingParams(params: unknown): string {
-    if (params === undefined || params === null) {
-        return '(none)';
-    }
-    if (typeof params === 'object' && !Array.isArray(params) && Object.keys(params as Record<string, unknown>).length === 0) {
-        return '(none)';
-    }
-    try {
-        return JSON.stringify(params, null, 2);
-    } catch {
-        return '(unserializable)';
-    }
-}
-
-function logIncomingJsonRpcMessage(
-    enabled: boolean,
-    sessionId: string,
-    message: { method?: string; id?: string | number | null; params?: unknown }
+function logPhaseTiming(
+    component: { debug: (event: string, details?: Record<string, unknown>) => void; info: (event: string, details?: Record<string, unknown>) => void },
+    debugEnabled: boolean,
+    event: string,
+    details: Record<string, unknown>
 ): void {
-    if (!enabled || !message.method) {
+    if (debugEnabled) {
+        component.debug(event, details);
         return;
     }
-    const kind = message.id === undefined ? 'NOTIFICATION' : 'REQUEST';
-    const separator = '-----------------------------------------------------------------';
-    console.error('');
-    console.error(separator);
-    console.error(`Incoming ${kind}`);
-    console.error(separator);
-    console.error(`Method:     ${message.method}`);
-    console.error(`ID:         ${message.id === undefined ? '(none)' : String(message.id)}`);
-    console.error(`Session:    ${sessionId}`);
-    console.error(`Parameters: ${formatIncomingParams(message.params)}`);
-    console.error(separator);
+    const elapsed = typeof details.elapsedMs === 'number' ? details.elapsedMs : undefined;
+    if (elapsed !== undefined && elapsed >= SLOW_PHASE_MS) {
+        component.info(`${event}.slow`, details);
+    }
 }
 
 function normalizePlanRef(value: unknown): string | null {
@@ -258,14 +346,22 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
         const toolName = request.params.name;
         const tool = tools.find((t) => t.name === toolName);
         const startedAt = Date.now();
-        debugLog(debugEnabled, 'tool.call.start', {
+        const syncRunId = randomUUID();
+        toolLogger.info('call.start', {
             sessionId,
             tool: toolName,
             argKeys: Object.keys(request.params.arguments || {}),
+            syncRunId,
+        });
+        debugLog(debugEnabled, 'call.start', {
+            sessionId,
+            tool: toolName,
+            argKeys: Object.keys(request.params.arguments || {}),
+            syncRunId,
         });
 
         if (!tool) {
-            debugLog(debugEnabled, 'tool.call.unknown', { sessionId, tool: toolName });
+            toolLogger.warning('call.unknown_tool', { sessionId, tool: toolName });
             return {
                 content: [{ type: 'text', text: `Unknown tool: ${toolName}` }],
                 isError: true,
@@ -273,35 +369,96 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
         }
 
         try {
+            const runtimeStartedAt = Date.now();
+            const cloudRuntimeStartedAt = Date.now();
             const context = {
                 ...(await (async () => {
-                    const cloudRuntime = await createCloudRuntime({ cloud: config.cloud } as any, plansDir);
-                    await cloudRuntime.syncDown();
+                    const cloudRuntime = await createCloudRuntime(
+                        { cloud: config.cloud } as any,
+                        plansDir,
+                        {
+                            debug: (event, details) => {
+                                debugLog(debugEnabled, `cloud.${event}`, {
+                                    sessionId,
+                                    tool: toolName,
+                                    syncRunId,
+                                    ...(details || {}),
+                                });
+                            },
+                        }
+                    );
+                    const forceRefresh = isMutatingTool(toolName, request.params.arguments as Record<string, unknown> | undefined);
+                    const syncDown = await cloudRuntime.syncDown({ forceRefresh });
                     return {
                         workingDirectory: cloudRuntime.workingDirectory,
                         contextDir: cloudRuntime.contextDirectory,
                         cloudRuntime,
+                        syncDown,
                     };
                 })()),
                 config,
                 logger: undefined,
             };
+            const syncSummary = summarizeSyncOutcome(context.syncDown);
+            logPhaseTiming(toolLogger, debugEnabled, 'call.cloud_sync_down', {
+                sessionId,
+                tool: toolName,
+                elapsedMs: Date.now() - cloudRuntimeStartedAt,
+                cloudEnabled: context.cloudRuntime?.enabled === true,
+                syncRunId,
+                ...syncSummary,
+            });
+            debugLog(debugEnabled, 'call.runtime.ready', {
+                sessionId,
+                tool: toolName,
+                elapsedMs: Date.now() - runtimeStartedAt,
+                cloudEnabled: context.cloudRuntime?.enabled === true,
+                syncRunId,
+                ...syncSummary,
+            });
 
+            const executionStartedAt = Date.now();
             const result = await executeTool(toolName, request.params.arguments || {}, context);
+            logPhaseTiming(toolLogger, debugEnabled, 'call.execute', {
+                sessionId,
+                tool: toolName,
+                elapsedMs: Date.now() - executionStartedAt,
+                syncRunId,
+            });
+            debugLog(debugEnabled, 'call.execute.complete', {
+                sessionId,
+                tool: toolName,
+                elapsedMs: Date.now() - executionStartedAt,
+                syncRunId,
+            });
 
             if (context.cloudRuntime?.enabled && isMutatingTool(toolName, request.params.arguments as Record<string, unknown> | undefined)) {
+                const syncUpStartedAt = Date.now();
                 await context.cloudRuntime.syncUpPlans();
                 if (toolName === 'riotplan_context') {
                     await context.cloudRuntime.syncUpContext();
                 }
+                logPhaseTiming(toolLogger, debugEnabled, 'call.cloud_sync_up', {
+                    sessionId,
+                    tool: toolName,
+                    elapsedMs: Date.now() - syncUpStartedAt,
+                    syncRunId,
+                });
+                debugLog(debugEnabled, 'call.cloud_sync.complete', {
+                    sessionId,
+                    tool: toolName,
+                    elapsedMs: Date.now() - syncUpStartedAt,
+                    syncRunId,
+                });
             }
 
             if (!result.success) {
-                debugLog(debugEnabled, 'tool.call.error', {
+                toolLogger.error('call.error', {
                     sessionId,
                     tool: toolName,
                     elapsedMs: Date.now() - startedAt,
                     error: result.error || 'Tool execution failed',
+                    syncRunId,
                 });
                 const errorParts: string[] = [result.error || 'Tool execution failed'];
                 if (result.context && typeof result.context === 'object') {
@@ -348,20 +505,23 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
                     ? JSON.stringify(result.data, null, 2)
                     : result.message || 'Success';
             content.push({ type: 'text', text: textContent });
-            debugLog(debugEnabled, 'tool.call.success', {
+            toolLogger.info('call.complete', {
                 sessionId,
                 tool: toolName,
                 elapsedMs: Date.now() - startedAt,
+                status: 'ok',
+                syncRunId,
             });
 
             return { content };
         } catch (error) {
             const msg = error instanceof Error ? error.message : 'Unknown error';
-            debugLog(debugEnabled, 'tool.call.unhandled', {
+            toolLogger.error('call.unhandled', {
                 sessionId,
                 tool: toolName,
                 elapsedMs: Date.now() - startedAt,
                 error: msg,
+                syncRunId,
             });
             return {
                 content: [{ type: 'text', text: `=== Unhandled Error in ${toolName} ===\n\n${msg}` }],
@@ -400,14 +560,49 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
     server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
         const uri = request.params.uri;
         const startedAt = Date.now();
-        debugLog(debugEnabled, 'resource.read.start', { sessionId, uri });
+        const syncRunId = randomUUID();
+        resourceLogger.info('read.start', { sessionId, uri, syncRunId });
         try {
-            const data = await readResource(uri, plansDir);
+            const cloudRuntimeStartedAt = Date.now();
+            const cloudRuntime = await createCloudRuntime(
+                { cloud: config.cloud } as any,
+                plansDir,
+                {
+                    debug: (event, details) => {
+                        debugLog(debugEnabled, `cloud.${event}`, {
+                            sessionId,
+                            resourceUri: uri,
+                            syncRunId,
+                            ...(details || {}),
+                        });
+                    },
+                }
+            );
+            const syncDown = await cloudRuntime.syncDown({
+                forceRefresh: shouldForceRefreshForResourceUri(uri),
+            });
+            const syncSummary = summarizeSyncOutcome(syncDown);
+            logPhaseTiming(resourceLogger, debugEnabled, 'read.cloud_sync_down', {
+                sessionId,
+                uri,
+                elapsedMs: Date.now() - cloudRuntimeStartedAt,
+                cloudEnabled: cloudRuntime.enabled === true,
+                syncRunId,
+                ...syncSummary,
+            });
+            const data = await readResource(uri, cloudRuntime.workingDirectory);
             const resource = resources.find((r) => {
                 const base = r.uri.split('{')[0];
                 return uri.startsWith(base);
             });
             const mimeType = resource?.mimeType || 'application/json';
+            resourceLogger.info('read.complete', {
+                sessionId,
+                uri,
+                elapsedMs: Date.now() - startedAt,
+                status: 'ok',
+                syncRunId,
+            });
             return {
                 contents: [
                     {
@@ -419,11 +614,12 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
             };
         } catch (error) {
             const msg = error instanceof Error ? error.message : 'Unknown error';
-            debugLog(debugEnabled, 'resource.read.error', {
+            resourceLogger.error('read.error', {
                 sessionId,
                 uri,
                 elapsedMs: Date.now() - startedAt,
                 error: msg,
+                syncRunId,
             });
             return {
                 contents: [{ uri, mimeType: 'text/plain', text: `Error: ${msg}` }],
@@ -506,10 +702,12 @@ async function getOrCreateSession(
         };
 
         sessions.set(sessionId, session);
-        debugLog(debugEnabled, 'session.created', { sessionId, plansDir, contextDir });
+        sessionLogger.info('created', { sessionId, plansDir, contextDir });
     } else {
         session.lastActivity = new Date();
-        debugLog(debugEnabled, 'session.reused', { sessionId });
+        if (debugEnabled) {
+            sessionLogger.debug('reused', { sessionId });
+        }
     }
 
     return session;
@@ -538,7 +736,7 @@ function cleanupSessions(timeout: number): void {
     }
 
     if (expiredSessions.length > 0) {
-        console.error(`[RiotPlan HTTP] Cleaned up ${expiredSessions.length} expired sessions`);
+        sessionLogger.info('cleanup', { expiredSessions: expiredSessions.length });
     }
 }
 
@@ -576,15 +774,34 @@ export function createApp(config: ServerConfig): Hono {
     });
 
     app.get('/plan/:planId', async (c) => {
+        const startedAt = Date.now();
+        const method = 'GET';
+        const route = '/plan/:planId';
         try {
             const planId = c.req.param('planId');
             if (!planId) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: 400,
+                    elapsedMs: Date.now() - startedAt,
+                    reason: 'missing_plan_id',
+                });
                 return c.json({ error: 'Missing planId' }, 400);
             }
 
             const decodedPlanId = decodeURIComponent(planId);
+            debugLog(config.debug === true || envDebugEnabled(), 'plan.resolve.start', { planId: decodedPlanId });
             const planPath = resolveDirectory({ planId: decodedPlanId }, { workingDirectory: config.plansDir });
             if (!planPath.endsWith('.plan')) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: 400,
+                    elapsedMs: Date.now() - startedAt,
+                    reason: 'invalid_plan_extension',
+                    planId: decodedPlanId,
+                });
                 return c.json({ error: 'Resolved plan is not a .plan file' }, 400);
             }
 
@@ -593,17 +810,42 @@ export function createApp(config: ServerConfig): Hono {
             c.header('Content-Type', 'application/octet-stream');
             c.header('Content-Length', String(planStats.size));
             c.header('Content-Disposition', `attachment; filename="${fileName}"`);
+            requestLogger.info('complete', {
+                method,
+                route,
+                status: 200,
+                elapsedMs: Date.now() - startedAt,
+                planId: decodedPlanId,
+                bytes: planStats.size,
+            });
             return c.body(createReadStream(planPath) as any);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             if (message.toLowerCase().includes('plan not found')) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: 404,
+                    elapsedMs: Date.now() - startedAt,
+                    error: message,
+                });
                 return c.json({ error: message }, 404);
             }
+            requestLogger.error('complete', {
+                method,
+                route,
+                status: 500,
+                elapsedMs: Date.now() - startedAt,
+                error: message,
+            });
             return c.json({ error: 'Failed to download plan', details: message }, 500);
         }
     });
 
     app.post('/plan/upload', async (c) => {
+        const startedAt = Date.now();
+        const method = 'POST';
+        const route = '/plan/upload';
         try {
             const body = await c.req.parseBody();
             const file = body.plan;
@@ -614,9 +856,24 @@ export function createApp(config: ServerConfig): Hono {
                 }
                 | undefined;
             if (!upload || typeof upload.name !== 'string' || typeof upload.arrayBuffer !== 'function') {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: 400,
+                    elapsedMs: Date.now() - startedAt,
+                    reason: 'missing_upload',
+                });
                 return c.json({ error: 'No .plan file provided in multipart field "plan"' }, 400);
             }
             if (extname(upload.name).toLowerCase() !== '.plan') {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: 400,
+                    elapsedMs: Date.now() - startedAt,
+                    reason: 'invalid_extension',
+                    filename: upload.name,
+                });
                 return c.json({ error: 'Uploaded file must have .plan extension' }, 400);
             }
 
@@ -642,6 +899,14 @@ export function createApp(config: ServerConfig): Hono {
             const targetPath = join(targetDir, targetName);
             await writeFile(targetPath, Buffer.from(bytes));
 
+            requestLogger.info('complete', {
+                method,
+                route,
+                status: 200,
+                elapsedMs: Date.now() - startedAt,
+                filename: targetName,
+                bytes: bytes.byteLength,
+            });
             return c.json({
                 success: true,
                 planId: targetName.replace(/\.plan$/i, ''),
@@ -651,31 +916,84 @@ export function createApp(config: ServerConfig): Hono {
             });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            requestLogger.error('complete', {
+                method,
+                route,
+                status: 500,
+                elapsedMs: Date.now() - startedAt,
+                error: message,
+            });
             return c.json({ error: 'Failed to upload plan', details: message }, 500);
         }
     });
 
     app.post('/mcp', async (c: Context) => {
+        const startedAt = Date.now();
+        const method = 'POST';
+        const route = '/mcp';
+        const debugEnabled = config.debug === true || envDebugEnabled();
+        let rpcMethod: string | undefined;
+        let rpcToolName: string | undefined;
+        let rpcId: string | number | null | undefined;
         try {
-            const sessionId = c.req.header('Mcp-Session-Id') || generateSessionId();
-            const debugEnabled = config.debug === true || envDebugEnabled();
-            const session = await getOrCreateSession(sessionId, config.plansDir, contextDir, config);
+            const requestedSessionId = c.req.header('Mcp-Session-Id');
+            const sessionId = requestedSessionId || generateSessionId();
 
             const bodyClone = c.req.raw.clone();
             try {
+                const parseStartedAt = Date.now();
                 const rawBody = await bodyClone.text();
                 const message = JSON.parse(rawBody) as {
                     jsonrpc?: string;
                     method?: string;
                     id?: string | number | null;
-                    params?: { uri?: string };
+                    params?: { uri?: string; name?: string };
                 };
-                logIncomingJsonRpcMessage(debugEnabled, sessionId, message);
+                rpcMethod = message.method;
+                rpcToolName = message.method === 'tools/call' ? message.params?.name : undefined;
+                rpcId = message.id;
+                logPhaseTiming(requestLogger, debugEnabled, 'request.parse_jsonrpc', {
+                    method,
+                    route,
+                    sessionId,
+                    rpcMethod: message.method || '(unknown)',
+                    rpcToolName: rpcToolName || null,
+                    rpcId: message.id ?? null,
+                    elapsedMs: Date.now() - parseStartedAt,
+                });
+                if (!requestedSessionId || !sessions.has(sessionId)) {
+                    sessionLogger.warning('recovered.missing_session', {
+                        requestedSessionId: requestedSessionId || null,
+                        rpcMethod: message.method || '(unknown)',
+                        rpcToolName: rpcToolName || null,
+                        rpcId: message.id ?? null,
+                    });
+                }
+                const session = await getOrCreateSession(sessionId, config.plansDir, contextDir, config);
+                requestLogger.info('incoming', {
+                    method,
+                    route,
+                    sessionId,
+                    rpcMethod: message.method || '(unknown)',
+                    rpcToolName: rpcToolName || null,
+                    rpcId: message.id ?? null,
+                    rpcType: message.id === undefined ? 'notification' : 'request',
+                });
                 if (message.method === 'resources/subscribe') {
                     const uri = message.params?.uri;
                     if (uri) {
                         session.subscriptions.add(uri);
                     }
+                    requestLogger.info('complete', {
+                        method,
+                        route,
+                        sessionId,
+                        rpcMethod: message.method,
+                        rpcToolName: rpcToolName || null,
+                        rpcId: message.id ?? null,
+                        status: 200,
+                        elapsedMs: Date.now() - startedAt,
+                    });
                     return c.json({ jsonrpc: '2.0', result: {}, id: message.id ?? null });
                 }
                 if (message.method === 'resources/unsubscribe') {
@@ -683,23 +1001,76 @@ export function createApp(config: ServerConfig): Hono {
                     if (uri) {
                         session.subscriptions.delete(uri);
                     }
+                    requestLogger.info('complete', {
+                        method,
+                        route,
+                        sessionId,
+                        rpcMethod: message.method,
+                        rpcToolName: rpcToolName || null,
+                        rpcId: message.id ?? null,
+                        status: 200,
+                        elapsedMs: Date.now() - startedAt,
+                    });
                     return c.json({ jsonrpc: '2.0', result: {}, id: message.id ?? null });
                 }
                 if (message.method === 'notifications/initialized') {
+                    requestLogger.info('complete', {
+                        method,
+                        route,
+                        sessionId,
+                        rpcMethod: message.method,
+                        rpcToolName: rpcToolName || null,
+                        rpcId: message.id ?? null,
+                        status: 202,
+                        elapsedMs: Date.now() - startedAt,
+                    });
                     return c.body(null, 202);
                 }
             } catch {
                 // If parsing fails, let transport return the protocol-level error.
             }
 
+            const session = await getOrCreateSession(sessionId, config.plansDir, contextDir, config);
+
+            const transportStartedAt = Date.now();
             const response = await session.transport.handleRequest(c);
+            logPhaseTiming(requestLogger, debugEnabled, 'request.transport', {
+                method,
+                route,
+                sessionId,
+                rpcMethod: rpcMethod || '(unknown)',
+                rpcToolName: rpcToolName || null,
+                rpcId: rpcId ?? null,
+                elapsedMs: Date.now() - transportStartedAt,
+            });
 
             if (!response) {
+                requestLogger.error('complete', {
+                    method,
+                    route,
+                    sessionId,
+                    rpcMethod: rpcMethod || '(unknown)',
+                    rpcToolName: rpcToolName || null,
+                    rpcId: rpcId ?? null,
+                    status: 500,
+                    elapsedMs: Date.now() - startedAt,
+                    error: 'No response from transport',
+                });
                 return c.json({ error: { code: -32603, message: 'No response from transport' } }, 500);
             }
 
             const headers = new Headers(response.headers);
             headers.set('Mcp-Session-Id', sessionId);
+            requestLogger.info('complete', {
+                method,
+                route,
+                sessionId,
+                rpcMethod: rpcMethod || '(unknown)',
+                rpcToolName: rpcToolName || null,
+                rpcId: rpcId ?? null,
+                status: response.status,
+                elapsedMs: Date.now() - startedAt,
+            });
             return new Response(response.body, {
                 status: response.status,
                 statusText: response.statusText,
@@ -707,9 +1078,28 @@ export function createApp(config: ServerConfig): Hono {
             });
         } catch (error) {
             if (error instanceof HTTPException) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: error.status,
+                    elapsedMs: Date.now() - startedAt,
+                    rpcMethod: rpcMethod || '(unknown)',
+                    rpcToolName: rpcToolName || null,
+                    rpcId: rpcId ?? null,
+                    error: error.message,
+                });
                 return error.getResponse();
             }
-            console.error('[RiotPlan HTTP] Error handling POST /mcp:', error);
+            logger.error('request.error', {
+                method,
+                route,
+                status: 500,
+                elapsedMs: Date.now() - startedAt,
+                rpcMethod: rpcMethod || '(unknown)',
+                rpcToolName: rpcToolName || null,
+                rpcId: rpcId ?? null,
+                error: error instanceof Error ? error.message : String(error),
+            });
             return c.json(
                 {
                     error: {
@@ -724,51 +1114,135 @@ export function createApp(config: ServerConfig): Hono {
     });
 
     app.get('/mcp', async (c: Context) => {
+        const startedAt = Date.now();
+        const method = 'GET';
+        const route = '/mcp';
         try {
             const sessionId = c.req.header('Mcp-Session-Id');
             if (!sessionId) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: 400,
+                    elapsedMs: Date.now() - startedAt,
+                    reason: 'missing_session',
+                });
                 return c.json({ error: 'Missing Mcp-Session-Id header' }, 400);
             }
 
             const session = sessions.get(sessionId);
             if (!session) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: 404,
+                    elapsedMs: Date.now() - startedAt,
+                    reason: 'session_not_found',
+                    sessionId,
+                });
                 return c.json({ error: 'Session not found' }, 404);
             }
 
             const response = await session.transport.handleRequest(c);
             if (!response) {
+                requestLogger.error('complete', {
+                    method,
+                    route,
+                    status: 500,
+                    elapsedMs: Date.now() - startedAt,
+                    sessionId,
+                    error: 'No SSE stream available',
+                });
                 return c.json({ error: 'No SSE stream available' }, 500);
             }
+            requestLogger.info('complete', {
+                method,
+                route,
+                status: response.status,
+                elapsedMs: Date.now() - startedAt,
+                sessionId,
+            });
             return response;
         } catch (error) {
             if (error instanceof HTTPException) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: error.status,
+                    elapsedMs: Date.now() - startedAt,
+                    error: error.message,
+                });
                 return error.getResponse();
             }
-            console.error('[RiotPlan HTTP] Error handling GET /mcp:', error);
+            logger.error('request.error', {
+                method,
+                route,
+                status: 500,
+                elapsedMs: Date.now() - startedAt,
+                error: error instanceof Error ? error.message : String(error),
+            });
             return c.json({ error: 'Internal error' }, 500);
         }
     });
 
     app.delete('/mcp', async (c: Context) => {
+        const startedAt = Date.now();
+        const method = 'DELETE';
+        const route = '/mcp';
         try {
             const sessionId = c.req.header('Mcp-Session-Id');
             if (!sessionId) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: 400,
+                    elapsedMs: Date.now() - startedAt,
+                    reason: 'missing_session',
+                });
                 return c.json({ error: 'Missing Mcp-Session-Id header' }, 400);
             }
 
             const session = sessions.get(sessionId);
             if (!session) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: 404,
+                    elapsedMs: Date.now() - startedAt,
+                    reason: 'session_not_found',
+                    sessionId,
+                });
                 return c.json({ error: 'Session not found' }, 404);
             }
 
             const response = await session.transport.handleRequest(c);
             sessions.delete(sessionId);
+            requestLogger.info('complete', {
+                method,
+                route,
+                status: response?.status ?? 200,
+                elapsedMs: Date.now() - startedAt,
+                sessionId,
+            });
             return response ?? c.body(null, 200);
         } catch (error) {
             if (error instanceof HTTPException) {
+                requestLogger.warning('complete', {
+                    method,
+                    route,
+                    status: error.status,
+                    elapsedMs: Date.now() - startedAt,
+                    error: error.message,
+                });
                 return error.getResponse();
             }
-            console.error('[RiotPlan HTTP] Error handling DELETE /mcp:', error);
+            logger.error('request.error', {
+                method,
+                route,
+                status: 500,
+                elapsedMs: Date.now() - startedAt,
+                error: error instanceof Error ? error.message : String(error),
+            });
             return c.json({ error: 'Internal error' }, 500);
         }
     });
@@ -788,13 +1262,22 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const app = createApp(config);
     const contextDir = resolveContextDir(config);
     const debugEnabled = config.debug === true || envDebugEnabled();
+    installGcDiagnostics(debugEnabled);
 
-    console.error(`[RiotPlan HTTP] Starting server on port ${config.port}`);
-    console.error(`[RiotPlan HTTP] Plans directory: ${config.plansDir} (single source of truth)`);
-    console.error(`[RiotPlan HTTP] Context directory: ${contextDir}`);
-    console.error(`[RiotPlan HTTP] CORS: ${config.cors !== false ? 'enabled' : 'disabled'}`);
+    startupLogger.info('server.starting', {
+        port: config.port,
+        plansDir: config.plansDir,
+        contextDir,
+        cors: config.cors !== false,
+        cloudEnabled: config.cloud?.enabled === true,
+        debugMode: debugEnabled ? 'ON' : 'OFF',
+        transport: 'hono',
+        serverName: 'riotplan-http',
+        healthEndpoint: `http://127.0.0.1:${config.port}/health`,
+        mcpEndpoint: `http://127.0.0.1:${config.port}/mcp`,
+    });
     if (debugEnabled) {
-        console.error('[RiotPlan HTTP] Debug logging enabled (debug config or RIOTPLAN_DEBUG)');
+        startupLogger.info('debug.enabled', { source: 'debug config or RIOTPLAN_DEBUG' });
     }
 
     const { serve } = await import('@hono/node-server');
@@ -805,7 +1288,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
             port: config.port,
         },
         (info) => {
-            console.error(`[RiotPlan HTTP] Server listening on http://localhost:${info.port}`);
+            startupLogger.info('server.listening', { url: `http://localhost:${info.port}`, port: info.port });
         }
     );
 }

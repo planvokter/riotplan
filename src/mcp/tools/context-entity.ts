@@ -7,10 +7,16 @@
 
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { stat } from 'node:fs/promises';
 import { z } from 'zod';
 import { create as createContext } from '@redaksjon/context';
 import type { McpTool, ToolExecutionContext, ToolResult } from '../types.js';
 import { createSuccess, formatError } from './shared.js';
+import {
+    findContextEntityFromIndex,
+    listContextEntitiesFromIndex,
+    markContextEntityIndexDirty,
+} from './context-entity-index.js';
 
 const EntityTypeSchema = z.enum(['project']);
 type EntityType = z.infer<typeof EntityTypeSchema>;
@@ -94,6 +100,29 @@ async function loadContext(args: z.infer<typeof BaseSchema>, context: ToolExecut
     });
 }
 
+function resolveContextRoots(args: z.infer<typeof BaseSchema>, context: ToolExecutionContext): string[] {
+    if (args.contextDirectories && args.contextDirectories.length > 0) {
+        return args.contextDirectories.map((dir) => resolveContextPath(dir, context));
+    }
+    if (context.contextDir) {
+        return [context.contextDir];
+    }
+    if (args.contextDirectory) {
+        return [resolveContextPath(args.contextDirectory, context)];
+    }
+    return [context.workingDirectory || process.cwd()];
+}
+
+async function canUseContextIndex(contextRoot: string): Promise<boolean> {
+    try {
+        const projectsDir = resolve(contextRoot, 'projects');
+        const s = await stat(projectsDir);
+        return s.isDirectory();
+    } catch {
+        return false;
+    }
+}
+
 function getEntityByType(ctx: ContextInstance, entityType: EntityType, id: string): any | undefined {
     switch (entityType) {
         case 'project':
@@ -113,19 +142,46 @@ function listEntitiesByType(ctx: ContextInstance, entityType: EntityType, includ
 async function executeContextEntity(args: Record<string, any>, context: ToolExecutionContext): Promise<ToolResult> {
     try {
         const validated = ActionSchema.parse(args);
-        const ctx = await loadContext(validated, context);
+        const contextRoots = resolveContextRoots(validated, context);
+        const indexRoot = contextRoots.length === 1 ? contextRoots[0] : null;
 
         if (validated.action === 'list') {
+            if (validated.entityType === 'project' && indexRoot && await canUseContextIndex(indexRoot)) {
+                const indexed = await listContextEntitiesFromIndex(indexRoot, 'project');
+                const entities = validated.includeInactive ? indexed : indexed.filter((e) => e.active !== false);
+                return createSuccess({
+                    action: validated.action,
+                    entityType: validated.entityType,
+                    count: entities.length,
+                    entities,
+                    source: 'index',
+                });
+            }
+            const ctx = await loadContext(validated, context);
             const entities = listEntitiesByType(ctx, validated.entityType, validated.includeInactive);
             return createSuccess({
                 action: validated.action,
                 entityType: validated.entityType,
                 count: entities.length,
                 entities,
+                source: 'context',
             });
         }
 
         if (validated.action === 'get') {
+            if (validated.entityType === 'project' && indexRoot && await canUseContextIndex(indexRoot)) {
+                const entity = await findContextEntityFromIndex(indexRoot, 'project', validated.id);
+                if (!entity) {
+                    throw new Error(`${validated.entityType} with id "${validated.id}" not found`);
+                }
+                return createSuccess({
+                    action: validated.action,
+                    entityType: validated.entityType,
+                    entity,
+                    source: 'index',
+                });
+            }
+            const ctx = await loadContext(validated, context);
             const entity = getEntityByType(ctx, validated.entityType, validated.id);
             if (!entity) {
                 throw new Error(`${validated.entityType} with id "${validated.id}" not found`);
@@ -134,9 +190,11 @@ async function executeContextEntity(args: Record<string, any>, context: ToolExec
                 action: validated.action,
                 entityType: validated.entityType,
                 entity,
+                source: 'context',
             });
         }
 
+        const ctx = await loadContext(validated, context);
         if (validated.action === 'create') {
             const rawId = typeof validated.entity.id === 'string' ? validated.entity.id.trim() : '';
             const resolvedId = isUuid(rawId) ? rawId : randomUUID();
@@ -150,6 +208,9 @@ async function executeContextEntity(args: Record<string, any>, context: ToolExec
                 type: validated.entityType,
             };
             await ctx.saveEntity(nextEntity as any);
+            if (validated.entityType === 'project' && indexRoot) {
+                markContextEntityIndexDirty(indexRoot, 'project');
+            }
             return createSuccess({
                 action: validated.action,
                 entityType: validated.entityType,
@@ -169,6 +230,9 @@ async function executeContextEntity(args: Record<string, any>, context: ToolExec
                 type: validated.entityType,
             };
             await ctx.saveEntity(nextEntity as any, true);
+            if (validated.entityType === 'project' && indexRoot) {
+                markContextEntityIndexDirty(indexRoot, 'project');
+            }
             return createSuccess({
                 action: validated.action,
                 entityType: validated.entityType,
@@ -181,6 +245,9 @@ async function executeContextEntity(args: Record<string, any>, context: ToolExec
             throw new Error(`${validated.entityType} with id "${validated.id}" not found`);
         }
         const deleted = await ctx.deleteEntity(existing as any);
+        if (validated.entityType === 'project' && indexRoot) {
+            markContextEntityIndexDirty(indexRoot, 'project');
+        }
         return createSuccess({
             action: validated.action,
             entityType: validated.entityType,

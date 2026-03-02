@@ -19,7 +19,7 @@ export type { RiotPlanConfig } from './types.js';
 export { RiotPlanConfigSchema } from './schema.js';
 
 // Export loader functions
-export { loadConfig, clearConfigCache } from './loader.js';
+export { loadConfig, clearConfigCache, checkConfigWithCardiganTime } from './loader.js';
 
 // Export walk-up functions
 export { findPlansDirectory, clearWalkUpCache } from './walk-up.js';
