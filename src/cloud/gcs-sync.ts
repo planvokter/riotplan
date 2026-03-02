@@ -552,15 +552,31 @@ export class GcsMirror {
 
         const cleanupStartedAt = Date.now();
         let removedCount = 0;
+        this.onDebugEvent?.('sync_down.gc.start', {
+            localDirectory: this.localDirectory,
+            deletedLocalCandidates: diff.deletedLocal.length,
+        });
         for (const localRelative of diff.deletedLocal) {
             if (!remoteSet.has(localRelative)) {
                 await rm(join(this.localDirectory, localRelative), { force: true });
                 removedCount += 1;
+                this.onDebugEvent?.('sync_down.gc.remove_local', {
+                    path: localRelative,
+                });
             }
         }
         const cleanupMs = Date.now() - cleanupStartedAt;
+        this.onDebugEvent?.('sync_down.gc.complete', {
+            removedCount,
+            elapsedMs: cleanupMs,
+        });
         if (this.incrementalSyncEnabled) {
+            const manifestWriteStartedAt = Date.now();
             await writeSyncManifest(this.localDirectory, manifestObjects);
+            this.onDebugEvent?.('sync_down.manifest.write_complete', {
+                objectCount: Object.keys(manifestObjects).length,
+                elapsedMs: Date.now() - manifestWriteStartedAt,
+            });
         }
         const elapsedMs = Date.now() - startedAt;
         const stats: GcsSyncDownStats = {
@@ -665,6 +681,11 @@ export class GcsMirror {
 
         let removedRemoteCount = 0;
         const cleanupStartedAt = Date.now();
+        this.onDebugEvent?.('sync_up.gc.start', {
+            bucket: this.bucketName,
+            prefix: this.prefix,
+            remoteCandidates: remoteFiles.length,
+        });
         for (const remote of remoteFiles) {
             if (remote.name.endsWith('/')) {
                 continue;
@@ -676,9 +697,16 @@ export class GcsMirror {
             if (!localSet.has(relativePath)) {
                 await withRetry(() => remote.delete({ ignoreNotFound: true }));
                 removedRemoteCount += 1;
+                this.onDebugEvent?.('sync_up.gc.remove_remote', {
+                    path: relativePath,
+                });
             }
         }
         const cleanupMs = Date.now() - cleanupStartedAt;
+        this.onDebugEvent?.('sync_up.gc.complete', {
+            removedRemoteCount,
+            elapsedMs: cleanupMs,
+        });
         const elapsedMs = Date.now() - startedAt;
         const stats: GcsSyncUpStats = {
             bucket: this.bucketName,

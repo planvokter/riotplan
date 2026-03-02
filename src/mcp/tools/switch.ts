@@ -16,9 +16,9 @@ import { assertNoClientDirectoryOverride } from './shared.js';
 import {
     getProjectMatchKeys,
     getWorkspaceMatchKeys,
-    readProjectBinding,
     type ProjectBinding,
 } from './project-binding-shared.js';
+import { listPlansViaIndex } from './plan-index-service.js';
 
 type PlanCategory = 'active' | 'done' | 'hold';
 
@@ -203,7 +203,6 @@ async function executeListPlans(
         const validated = ListPlansSchema.parse(args);
         const searchDir = context.workingDirectory;
         
-        // SQLite plans only
         const plans: Array<{
             id: string;
             name: string;
@@ -219,42 +218,25 @@ async function executeListPlans(
             projectSource?: 'explicit' | 'inferred' | 'none';
         }> = [];
 
-        // Scan for .plan (SQLite) files
-        for (const planFile of findAllPlanFiles(searchDir)) {
-            try {
-                const provider = createSqliteProvider(planFile);
-                const exists = await provider.exists();
-                if (!exists) {
-                    await provider.close();
-                    continue;
-                }
-                const metaResult = await provider.getMetadata();
-                await provider.close();
-                if (metaResult.success && metaResult.data) {
-                    const m = metaResult.data;
-                    const binding = await readProjectBinding(planFile);
-                    const category = getPlanCategory(planFile);
-                    if (validated.filter && validated.filter !== 'all' && validated.filter !== category) {
-                        continue;
-                    }
-                    plans.push({
-                        id: m.id || basename(planFile, '.plan'),
-                        name: basename(planFile, '.plan'),
-                        path: planFile,
-                        type: 'sqlite',
-                        uuid: m.uuid,
-                        title: m.name,
-                        stage: m.stage,
-                        createdAt: toIsoTimestamp(m.createdAt),
-                        updatedAt: toIsoTimestamp(m.updatedAt),
-                        category,
-                        project: binding.project,
-                        projectSource: binding.source,
-                    });
-                }
-            } catch {
-                /* skip unreadable .plan files */
+        const indexedPlans = await listPlansViaIndex(searchDir);
+        for (const plan of indexedPlans) {
+            if (validated.filter && validated.filter !== 'all' && validated.filter !== plan.category) {
+                continue;
             }
+            plans.push({
+                id: plan.id || basename(plan.path, '.plan'),
+                name: plan.name || basename(plan.path, '.plan'),
+                path: plan.path,
+                type: 'sqlite',
+                uuid: plan.uuid,
+                title: plan.title,
+                stage: plan.stage,
+                createdAt: toIsoTimestamp(plan.createdAt),
+                updatedAt: toIsoTimestamp(plan.updatedAt),
+                category: plan.category,
+                project: plan.project || null,
+                projectSource: plan.projectSource || 'none',
+            });
         }
 
         // De-duplicate by plan id.

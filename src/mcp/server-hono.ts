@@ -26,6 +26,8 @@ import type { Context } from 'hono';
 import { createReadStream } from 'node:fs';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
+import { PerformanceObserver, constants as PerfConstants } from 'node:perf_hooks';
+import { getHeapStatistics } from 'node:v8';
 import { executeTool, tools } from './tools/index.js';
 import { getResources, readResource } from './resources/index.js';
 import { getPrompts, getPrompt } from './prompts/index.js';
@@ -100,7 +102,9 @@ const toolLogger = HttpLogger.get('tool');
 const resourceLogger = HttpLogger.get('resource');
 const sessionLogger = HttpLogger.get('session');
 const startupLogger = HttpLogger.get('startup');
+const gcLogger = HttpLogger.get('gc');
 const SLOW_PHASE_MS = 200;
+const MEMORY_SNAPSHOT_INTERVAL_MS = 30_000;
 
 function summarizeSyncOutcome(sync: {
     plan: { downloadedCount: number; changedCount?: number; remoteIncludedCount: number; skippedUnchangedCount?: number } | null;
@@ -147,6 +151,61 @@ function summarizeSyncOutcome(sync: {
 function shouldForceRefreshForResourceUri(uri: string): boolean {
     const lower = uri.toLowerCase();
     return lower.includes('forcerefresh=true') || lower.includes('refresh=force');
+}
+
+function gcKindToName(kind: number): string {
+    if (kind === PerfConstants.NODE_PERFORMANCE_GC_MAJOR) return 'major';
+    if (kind === PerfConstants.NODE_PERFORMANCE_GC_MINOR) return 'minor';
+    if (kind === PerfConstants.NODE_PERFORMANCE_GC_INCREMENTAL) return 'incremental';
+    if (kind === PerfConstants.NODE_PERFORMANCE_GC_WEAKCB) return 'weakcb';
+    return `unknown(${kind})`;
+}
+
+function installGcDiagnostics(debugEnabled: boolean): void {
+    if (!debugEnabled) {
+        return;
+    }
+
+    try {
+        const observer = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+                const gcEntry = entry as unknown as { kind?: number; flags?: number; detail?: unknown };
+                gcLogger.info('event', {
+                    eventType: entry.entryType,
+                    kind: typeof gcEntry.kind === 'number' ? gcKindToName(gcEntry.kind) : 'unknown',
+                    kindCode: gcEntry.kind ?? null,
+                    flags: gcEntry.flags ?? null,
+                    durationMs: Number(entry.duration.toFixed(3)),
+                    heapUsedBytes: process.memoryUsage().heapUsed,
+                    heapTotalBytes: process.memoryUsage().heapTotal,
+                    totalHeapSizeBytes: getHeapStatistics().total_heap_size,
+                    usedHeapSizeBytes: getHeapStatistics().used_heap_size,
+                });
+            }
+        });
+        observer.observe({ entryTypes: ['gc'] });
+        startupLogger.info('gc.observer.installed', { pid: process.pid });
+    } catch (error) {
+        startupLogger.warning('gc.observer.unavailable', {
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+
+    const snapshotTimer = setInterval(() => {
+        const memory = process.memoryUsage();
+        const heap = getHeapStatistics();
+        gcLogger.debug('memory.snapshot', {
+            rssBytes: memory.rss,
+            heapUsedBytes: memory.heapUsed,
+            heapTotalBytes: memory.heapTotal,
+            externalBytes: memory.external,
+            arrayBuffersBytes: memory.arrayBuffers,
+            totalHeapSizeBytes: heap.total_heap_size,
+            usedHeapSizeBytes: heap.used_heap_size,
+            heapSizeLimitBytes: heap.heap_size_limit,
+        });
+    }, MEMORY_SNAPSHOT_INTERVAL_MS);
+    snapshotTimer.unref?.();
 }
 
 function envDebugEnabled(): boolean {
@@ -874,10 +933,11 @@ export function createApp(config: ServerConfig): Hono {
         const route = '/mcp';
         const debugEnabled = config.debug === true || envDebugEnabled();
         let rpcMethod: string | undefined;
+        let rpcToolName: string | undefined;
         let rpcId: string | number | null | undefined;
         try {
-            const sessionId = c.req.header('Mcp-Session-Id') || generateSessionId();
-            const session = await getOrCreateSession(sessionId, config.plansDir, contextDir, config);
+            const requestedSessionId = c.req.header('Mcp-Session-Id');
+            const sessionId = requestedSessionId || generateSessionId();
 
             const bodyClone = c.req.raw.clone();
             try {
@@ -887,24 +947,37 @@ export function createApp(config: ServerConfig): Hono {
                     jsonrpc?: string;
                     method?: string;
                     id?: string | number | null;
-                    params?: { uri?: string };
+                    params?: { uri?: string; name?: string };
                 };
                 rpcMethod = message.method;
+                rpcToolName = message.method === 'tools/call' ? message.params?.name : undefined;
                 rpcId = message.id;
                 logPhaseTiming(requestLogger, debugEnabled, 'request.parse_jsonrpc', {
                     method,
                     route,
                     sessionId,
                     rpcMethod: message.method || '(unknown)',
+                    rpcToolName: rpcToolName || null,
                     rpcId: message.id ?? null,
                     elapsedMs: Date.now() - parseStartedAt,
                 });
+                if (!requestedSessionId || !sessions.has(sessionId)) {
+                    sessionLogger.warning('recovered.missing_session', {
+                        requestedSessionId: requestedSessionId || null,
+                        rpcMethod: message.method || '(unknown)',
+                        rpcToolName: rpcToolName || null,
+                        rpcId: message.id ?? null,
+                    });
+                }
+                const session = await getOrCreateSession(sessionId, config.plansDir, contextDir, config);
                 requestLogger.info('incoming', {
                     method,
                     route,
                     sessionId,
                     rpcMethod: message.method || '(unknown)',
+                    rpcToolName: rpcToolName || null,
                     rpcId: message.id ?? null,
+                    rpcType: message.id === undefined ? 'notification' : 'request',
                 });
                 if (message.method === 'resources/subscribe') {
                     const uri = message.params?.uri;
@@ -916,6 +989,7 @@ export function createApp(config: ServerConfig): Hono {
                         route,
                         sessionId,
                         rpcMethod: message.method,
+                        rpcToolName: rpcToolName || null,
                         rpcId: message.id ?? null,
                         status: 200,
                         elapsedMs: Date.now() - startedAt,
@@ -932,6 +1006,7 @@ export function createApp(config: ServerConfig): Hono {
                         route,
                         sessionId,
                         rpcMethod: message.method,
+                        rpcToolName: rpcToolName || null,
                         rpcId: message.id ?? null,
                         status: 200,
                         elapsedMs: Date.now() - startedAt,
@@ -944,6 +1019,7 @@ export function createApp(config: ServerConfig): Hono {
                         route,
                         sessionId,
                         rpcMethod: message.method,
+                        rpcToolName: rpcToolName || null,
                         rpcId: message.id ?? null,
                         status: 202,
                         elapsedMs: Date.now() - startedAt,
@@ -954,6 +1030,8 @@ export function createApp(config: ServerConfig): Hono {
                 // If parsing fails, let transport return the protocol-level error.
             }
 
+            const session = await getOrCreateSession(sessionId, config.plansDir, contextDir, config);
+
             const transportStartedAt = Date.now();
             const response = await session.transport.handleRequest(c);
             logPhaseTiming(requestLogger, debugEnabled, 'request.transport', {
@@ -961,6 +1039,7 @@ export function createApp(config: ServerConfig): Hono {
                 route,
                 sessionId,
                 rpcMethod: rpcMethod || '(unknown)',
+                rpcToolName: rpcToolName || null,
                 rpcId: rpcId ?? null,
                 elapsedMs: Date.now() - transportStartedAt,
             });
@@ -971,6 +1050,7 @@ export function createApp(config: ServerConfig): Hono {
                     route,
                     sessionId,
                     rpcMethod: rpcMethod || '(unknown)',
+                    rpcToolName: rpcToolName || null,
                     rpcId: rpcId ?? null,
                     status: 500,
                     elapsedMs: Date.now() - startedAt,
@@ -986,6 +1066,7 @@ export function createApp(config: ServerConfig): Hono {
                 route,
                 sessionId,
                 rpcMethod: rpcMethod || '(unknown)',
+                rpcToolName: rpcToolName || null,
                 rpcId: rpcId ?? null,
                 status: response.status,
                 elapsedMs: Date.now() - startedAt,
@@ -1003,6 +1084,7 @@ export function createApp(config: ServerConfig): Hono {
                     status: error.status,
                     elapsedMs: Date.now() - startedAt,
                     rpcMethod: rpcMethod || '(unknown)',
+                    rpcToolName: rpcToolName || null,
                     rpcId: rpcId ?? null,
                     error: error.message,
                 });
@@ -1014,6 +1096,7 @@ export function createApp(config: ServerConfig): Hono {
                 status: 500,
                 elapsedMs: Date.now() - startedAt,
                 rpcMethod: rpcMethod || '(unknown)',
+                rpcToolName: rpcToolName || null,
                 rpcId: rpcId ?? null,
                 error: error instanceof Error ? error.message : String(error),
             });
@@ -1179,12 +1262,19 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const app = createApp(config);
     const contextDir = resolveContextDir(config);
     const debugEnabled = config.debug === true || envDebugEnabled();
+    installGcDiagnostics(debugEnabled);
 
     startupLogger.info('server.starting', {
         port: config.port,
         plansDir: config.plansDir,
         contextDir,
         cors: config.cors !== false,
+        cloudEnabled: config.cloud?.enabled === true,
+        debugMode: debugEnabled ? 'ON' : 'OFF',
+        transport: 'hono',
+        serverName: 'riotplan-http',
+        healthEndpoint: `http://127.0.0.1:${config.port}/health`,
+        mcpEndpoint: `http://127.0.0.1:${config.port}/mcp`,
     });
     if (debugEnabled) {
         startupLogger.info('debug.enabled', { source: 'debug config or RIOTPLAN_DEBUG' });
