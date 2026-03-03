@@ -321,6 +321,29 @@ plansDir: /Users/me/projects/myapp/plans
 contextDir: /Users/me/projects/context
 port: 3002
 cors: true
+secured: false
+rbacUsersPath: /path/to/users.yaml
+rbacKeysPath: /path/to/keys.yaml
+rbacPolicyPath: /path/to/policy.yaml
+rbacReloadSeconds: 0
+```
+
+RBAC/auth options for HTTP mode:
+
+- `secured` (`boolean`, default `false`): enable API key auth + RBAC authorization.
+- `rbacUsersPath` (`string`): required when `secured=true`; path to users file (`yaml` or `json`).
+- `rbacKeysPath` (`string`): required when `secured=true`; path to keys file (`yaml` or `json`).
+- `rbacPolicyPath` (`string`, optional): optional policy rules file (`yaml` or `json`).
+- `rbacReloadSeconds` (`number`, default `0`): periodic reload interval. `0` disables reload.
+
+HTTP RBAC environment variables:
+
+```bash
+export RIOTPLAN_HTTP_SECURED=true
+export RBAC_USERS_PATH=/var/run/riotplan-rbac/users.yaml
+export RBAC_KEYS_PATH=/var/run/riotplan-rbac/keys.yaml
+export RBAC_POLICY_PATH=/var/run/riotplan-rbac/policy.yaml
+export RBAC_RELOAD_SECONDS=0
 ```
 
 ## Troubleshooting

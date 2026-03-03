@@ -35,6 +35,11 @@ const HttpServerConfigSchema = z.object({
     debug: z.boolean().default(false),
     cors: z.boolean().default(true),
     sessionTimeout: z.number().min(0).default(3600000),
+    secured: z.boolean().default(false),
+    rbacUsersPath: z.string().optional(),
+    rbacKeysPath: z.string().optional(),
+    rbacPolicyPath: z.string().optional(),
+    rbacReloadSeconds: z.number().int().min(0).optional(),
     cloud: z.object({
         enabled: z.boolean().optional(),
         incrementalSyncEnabled: z.boolean().optional(),
@@ -57,7 +62,15 @@ const cardigantime = Cardigantime.create({
         configFile: 'riotplan-http.config.yaml',
         isRequired: false,
         pathResolution: {
-            pathFields: ['plansDir', 'contextDir', 'cloud.keyFilename', 'cloud.cacheDirectory'],
+            pathFields: [
+                'plansDir',
+                'contextDir',
+                'rbacUsersPath',
+                'rbacKeysPath',
+                'rbacPolicyPath',
+                'cloud.keyFilename',
+                'cloud.cacheDirectory',
+            ],
         },
     },
     configShape: HttpServerConfigSchema.shape,
@@ -154,7 +167,12 @@ async function main() {
         .option('--cloud-project-id <id>', 'Google Cloud project ID')
         .option('--cloud-key-filename <path>', 'Path to Google service account JSON file')
         .option('--cloud-credentials-json <json>', 'Inline Google credentials JSON payload')
-        .option('--cloud-cache-directory <path>', 'Local cache directory for mirrored cloud data');
+        .option('--cloud-cache-directory <path>', 'Local cache directory for mirrored cloud data')
+        .option('--secured', 'Enable API key authentication + RBAC authorization')
+        .option('--rbac-users-path <path>', 'Path to RBAC users file (YAML or JSON)')
+        .option('--rbac-keys-path <path>', 'Path to RBAC keys file (YAML or JSON)')
+        .option('--rbac-policy-path <path>', 'Optional path to RBAC policy file (YAML or JSON)')
+        .option('--rbac-reload-seconds <seconds>', 'Optional RBAC periodic reload interval in seconds', parseInt);
 
     program.parse();
 
@@ -189,6 +207,11 @@ async function main() {
         console.log(`port: ${effectivePort}`);
         console.log(`plansDir: ${effectivePlansDir ?? '(not set)'}`);
         console.log(`contextDir: ${effectiveContextDir ?? '(not set)'}`);
+        console.log(`secured: ${(fileConfig.secured as boolean) === true}`);
+        console.log(`rbacUsersPath: ${(fileConfig.rbacUsersPath as string | undefined) ?? '(not set)'}`);
+        console.log(`rbacKeysPath: ${(fileConfig.rbacKeysPath as string | undefined) ?? '(not set)'}`);
+        console.log(`rbacPolicyPath: ${(fileConfig.rbacPolicyPath as string | undefined) ?? '(not set)'}`);
+        console.log(`rbacReloadSeconds: ${(fileConfig.rbacReloadSeconds as number | undefined) ?? '(off)'}`);
         return;
     }
 
@@ -238,6 +261,16 @@ async function main() {
         ...(opts.debug !== undefined && { debug: opts.debug }),
         ...(opts.cors !== undefined && { cors: opts.cors }),
         ...(opts.sessionTimeout !== undefined && { sessionTimeout: opts.sessionTimeout }),
+        ...(opts.secured !== undefined && { secured: opts.secured }),
+        ...(opts.rbacUsersPath !== undefined && { rbacUsersPath: opts.rbacUsersPath }),
+        ...(opts.rbacKeysPath !== undefined && { rbacKeysPath: opts.rbacKeysPath }),
+        ...(opts.rbacPolicyPath !== undefined && { rbacPolicyPath: opts.rbacPolicyPath }),
+        ...(opts.rbacReloadSeconds !== undefined && { rbacReloadSeconds: opts.rbacReloadSeconds }),
+        ...(process.env.RIOTPLAN_HTTP_SECURED !== undefined && { secured: /^(1|true|yes|on)$/i.test(process.env.RIOTPLAN_HTTP_SECURED) }),
+        ...(process.env.RBAC_USERS_PATH !== undefined && { rbacUsersPath: process.env.RBAC_USERS_PATH }),
+        ...(process.env.RBAC_KEYS_PATH !== undefined && { rbacKeysPath: process.env.RBAC_KEYS_PATH }),
+        ...(process.env.RBAC_POLICY_PATH !== undefined && { rbacPolicyPath: process.env.RBAC_POLICY_PATH }),
+        ...(process.env.RBAC_RELOAD_SECONDS !== undefined && { rbacReloadSeconds: parseInt(process.env.RBAC_RELOAD_SECONDS, 10) }),
         ...(Object.keys(mergedCloud).length > 0 && { cloud: mergedCloud }),
     };
 
@@ -262,6 +295,11 @@ async function main() {
     const debug = (config.debug as boolean) === true;
     const cors = (config.cors as boolean) !== false;
     const sessionTimeout = (config.sessionTimeout as number) ?? 3600000;
+    const secured = (config.secured as boolean) === true;
+    const rbacUsersPath = config.rbacUsersPath ? resolve(config.rbacUsersPath as string) : undefined;
+    const rbacKeysPath = config.rbacKeysPath ? resolve(config.rbacKeysPath as string) : undefined;
+    const rbacPolicyPath = config.rbacPolicyPath ? resolve(config.rbacPolicyPath as string) : undefined;
+    const rbacReloadSeconds = config.rbacReloadSeconds !== undefined ? Number(config.rbacReloadSeconds) : undefined;
 
     if (!plansDir) {
         console.error(
@@ -304,11 +342,53 @@ async function main() {
         process.exit(1);
     }
 
+    if (secured) {
+        if (!rbacUsersPath) {
+            console.error('Error: secured=true requires rbacUsersPath (or RBAC_USERS_PATH).');
+            process.exit(1);
+        }
+        if (!rbacKeysPath) {
+            console.error('Error: secured=true requires rbacKeysPath (or RBAC_KEYS_PATH).');
+            process.exit(1);
+        }
+        if (!existsSync(rbacUsersPath)) {
+            console.error(`Error: RBAC users file does not exist: ${rbacUsersPath}`);
+            process.exit(1);
+        }
+        if (!existsSync(rbacKeysPath)) {
+            console.error(`Error: RBAC keys file does not exist: ${rbacKeysPath}`);
+            process.exit(1);
+        }
+        if (rbacPolicyPath && !existsSync(rbacPolicyPath)) {
+            console.error(`Error: RBAC policy file does not exist: ${rbacPolicyPath}`);
+            process.exit(1);
+        }
+        if (rbacReloadSeconds !== undefined && (!Number.isFinite(rbacReloadSeconds) || rbacReloadSeconds < 0)) {
+            console.error(`Error: Invalid RBAC reload interval: ${rbacReloadSeconds}`);
+            process.exit(1);
+        }
+    }
+
     configureHttpLogLevel(debug);
 
     try {
         const { startServer } = await import('./server-hono.js');
-        await startServer({ port, plansDir, contextDir, debug, cors, sessionTimeout, cloud: config.cloud as any });
+        await startServer({
+            port,
+            plansDir,
+            contextDir,
+            debug,
+            cors,
+            sessionTimeout,
+            cloud: config.cloud as any,
+            security: {
+                secured,
+                rbacUsersPath,
+                rbacKeysPath,
+                rbacPolicyPath,
+                rbacReloadSeconds,
+            },
+        });
     } catch (error) {
         console.error('Error starting server:', error);
         process.exit(1);

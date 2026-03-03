@@ -60,6 +60,7 @@ This guide directory contains specialized documentation for different aspects of
 *   [Executing Plans](./execute.md): How to execute a plan using CLI or direct LLM execution.
 *   [Usage Patterns](./usage.md): Common patterns for creating and managing plans.
 *   [MCP Server](./mcp.md): Model Context Protocol integration for AI assistants.
+*   [Cloud Run Deployment](./cloud-run.md): Deploy `riotplan-mcp-http` to Google Cloud Run.
 *   [Architecture](./architecture.md): Internal design, module structure, and data flow.
 *   [Configuration](./configuration.md): Configuration options and file conventions.
 *   [Development](./development.md): Guide for contributing to `riotplan`.

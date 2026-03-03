@@ -1,0 +1,26 @@
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Native toolchain helps if optional native deps need rebuild.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 \
+        make \
+        g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG RIOTPLAN_VERSION=latest
+
+# Install RiotPlan from npm (same pattern as protokoll ops deploy).
+RUN if [ "$RIOTPLAN_VERSION" = "latest" ]; then \
+        npm install -g @kjerneverk/riotplan@latest; \
+    else \
+        npm install -g "@kjerneverk/riotplan@${RIOTPLAN_VERSION}"; \
+    fi
+
+EXPOSE 8080
+
+# Cloud Run provides PORT; riotplan-mcp-http reads PORT and MCP_PORT.
+CMD ["riotplan-mcp-http"]
