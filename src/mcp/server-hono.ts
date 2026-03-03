@@ -33,6 +33,7 @@ import { getResources, readResource } from './resources/index.js';
 import { getPrompts, getPrompt } from './prompts/index.js';
 import { resolveDirectory } from './tools/shared.js';
 import { createCloudRuntime } from '../cloud/runtime.js';
+import { extractApiKeyFromHeaders, type AuthContext, RbacEngine, type RouteRequirement } from './rbac.js';
 import Logging from '@fjell/logging';
 
 /**
@@ -65,6 +66,13 @@ export interface ServerConfig {
         keyFilename?: string;
         credentialsJson?: string;
         cacheDirectory?: string;
+    };
+    security?: {
+        secured?: boolean;
+        rbacUsersPath?: string;
+        rbacKeysPath?: string;
+        rbacPolicyPath?: string;
+        rbacReloadSeconds?: number;
     };
 }
 
@@ -103,8 +111,16 @@ const resourceLogger = HttpLogger.get('resource');
 const sessionLogger = HttpLogger.get('session');
 const startupLogger = HttpLogger.get('startup');
 const gcLogger = HttpLogger.get('gc');
+const authLogger = HttpLogger.get('auth');
 const SLOW_PHASE_MS = 200;
 const MEMORY_SNAPSHOT_INTERVAL_MS = 30_000;
+
+type AppVariables = {
+    requestId: string;
+    authContext?: AuthContext;
+};
+
+type AppContext = Context<{ Variables: AppVariables }>;
 
 function summarizeSyncOutcome(sync: {
     plan: { downloadedCount: number; changedCount?: number; remoteIncludedCount: number; skippedUnchangedCount?: number } | null;
@@ -743,9 +759,21 @@ function cleanupSessions(timeout: number): void {
 /**
  * Create and configure the Hono app
  */
-export function createApp(config: ServerConfig): Hono {
-    const app = new Hono();
+export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables }> {
+    const app = new Hono<{ Variables: AppVariables }>();
     const contextDir = resolveContextDir(config);
+    const secured = config.security?.secured === true;
+    const rbacEngine = createRbacEngine(config);
+
+    app.use('*', async (c, next) => {
+        const existingRequestId = c.req.header('x-request-id');
+        const requestId = (existingRequestId && existingRequestId.trim()) || randomUUID();
+        c.set('requestId', requestId);
+        await next();
+        if (!c.res.headers.has('x-request-id')) {
+            c.res.headers.set('x-request-id', requestId);
+        }
+    });
 
     if (config.cors !== false) {
         app.use('/mcp/*', cors());
@@ -761,6 +789,7 @@ export function createApp(config: ServerConfig): Hono {
             plansDir: config.plansDir,
             contextDir,
             cloudEnabled: config.cloud?.enabled === true,
+            secured,
             tools: tools.length,
             resources: getResources().length,
             prompts: getPrompts().length,
@@ -773,7 +802,30 @@ export function createApp(config: ServerConfig): Hono {
         });
     });
 
-    app.get('/plan/:planId', async (c) => {
+    app.get('/auth/whoami', guardRoute('GET', '/auth/whoami'), async (c) => {
+        const authContext = c.get('authContext');
+        if (!authContext) {
+            return jsonError(c, 500, 'SERVER_MISCONFIG', 'Authentication context missing');
+        }
+        return c.json({
+            user_id: authContext.user_id,
+            roles: authContext.roles,
+            key_id: authContext.key_id,
+            request_id: c.get('requestId'),
+        });
+    });
+
+    app.get('/admin/ping', guardRoute('GET', '/admin/ping'), async (c) => {
+        const authContext = c.get('authContext');
+        return c.json({
+            ok: true,
+            role: 'admin',
+            user_id: authContext?.user_id || null,
+            request_id: c.get('requestId'),
+        });
+    });
+
+    app.get('/plan/:planId', guardRoute('GET', '/plan/:planId'), async (c) => {
         const startedAt = Date.now();
         const method = 'GET';
         const route = '/plan/:planId';
@@ -787,7 +839,7 @@ export function createApp(config: ServerConfig): Hono {
                     elapsedMs: Date.now() - startedAt,
                     reason: 'missing_plan_id',
                 });
-                return c.json({ error: 'Missing planId' }, 400);
+                return jsonError(c, 400, 'INVALID_PLAN_ID', 'Missing planId');
             }
 
             const decodedPlanId = decodeURIComponent(planId);
@@ -802,7 +854,7 @@ export function createApp(config: ServerConfig): Hono {
                     reason: 'invalid_plan_extension',
                     planId: decodedPlanId,
                 });
-                return c.json({ error: 'Resolved plan is not a .plan file' }, 400);
+                return jsonError(c, 400, 'INVALID_PLAN_FILE', 'Resolved plan is not a .plan file');
             }
 
             const planStats = await stat(planPath);
@@ -829,7 +881,7 @@ export function createApp(config: ServerConfig): Hono {
                     elapsedMs: Date.now() - startedAt,
                     error: message,
                 });
-                return c.json({ error: message }, 404);
+                return jsonError(c, 404, 'PLAN_NOT_FOUND', message);
             }
             requestLogger.error('complete', {
                 method,
@@ -838,11 +890,11 @@ export function createApp(config: ServerConfig): Hono {
                 elapsedMs: Date.now() - startedAt,
                 error: message,
             });
-            return c.json({ error: 'Failed to download plan', details: message }, 500);
+            return jsonError(c, 500, 'DOWNLOAD_FAILED', 'Failed to download plan');
         }
     });
 
-    app.post('/plan/upload', async (c) => {
+    app.post('/plan/upload', guardRoute('POST', '/plan/upload'), async (c) => {
         const startedAt = Date.now();
         const method = 'POST';
         const route = '/plan/upload';
@@ -863,7 +915,7 @@ export function createApp(config: ServerConfig): Hono {
                     elapsedMs: Date.now() - startedAt,
                     reason: 'missing_upload',
                 });
-                return c.json({ error: 'No .plan file provided in multipart field "plan"' }, 400);
+                return jsonError(c, 400, 'MISSING_PLAN_UPLOAD', 'No .plan file provided in multipart field "plan"');
             }
             if (extname(upload.name).toLowerCase() !== '.plan') {
                 requestLogger.warning('complete', {
@@ -874,7 +926,7 @@ export function createApp(config: ServerConfig): Hono {
                     reason: 'invalid_extension',
                     filename: upload.name,
                 });
-                return c.json({ error: 'Uploaded file must have .plan extension' }, 400);
+                return jsonError(c, 400, 'INVALID_PLAN_FILE', 'Uploaded file must have .plan extension');
             }
 
             const targetDir = config.plansDir;
@@ -923,15 +975,20 @@ export function createApp(config: ServerConfig): Hono {
                 elapsedMs: Date.now() - startedAt,
                 error: message,
             });
-            return c.json({ error: 'Failed to upload plan', details: message }, 500);
+            return jsonError(c, 500, 'UPLOAD_FAILED', 'Failed to upload plan');
         }
     });
 
-    app.post('/mcp', async (c: Context) => {
+    app.post('/mcp', guardRoute('POST', '/mcp'), async (c: AppContext) => {
         const startedAt = Date.now();
         const method = 'POST';
         const route = '/mcp';
         const debugEnabled = config.debug === true || envDebugEnabled();
+        const authContext = c.get('authContext');
+        const authFields = {
+            userId: authContext?.user_id || null,
+            keyId: authContext?.key_id || null,
+        };
         let rpcMethod: string | undefined;
         let rpcToolName: string | undefined;
         let rpcId: string | number | null | undefined;
@@ -974,6 +1031,7 @@ export function createApp(config: ServerConfig): Hono {
                     method,
                     route,
                     sessionId,
+                    ...authFields,
                     rpcMethod: message.method || '(unknown)',
                     rpcToolName: rpcToolName || null,
                     rpcId: message.id ?? null,
@@ -988,6 +1046,7 @@ export function createApp(config: ServerConfig): Hono {
                         method,
                         route,
                         sessionId,
+                        ...authFields,
                         rpcMethod: message.method,
                         rpcToolName: rpcToolName || null,
                         rpcId: message.id ?? null,
@@ -1005,6 +1064,7 @@ export function createApp(config: ServerConfig): Hono {
                         method,
                         route,
                         sessionId,
+                        ...authFields,
                         rpcMethod: message.method,
                         rpcToolName: rpcToolName || null,
                         rpcId: message.id ?? null,
@@ -1018,6 +1078,7 @@ export function createApp(config: ServerConfig): Hono {
                         method,
                         route,
                         sessionId,
+                        ...authFields,
                         rpcMethod: message.method,
                         rpcToolName: rpcToolName || null,
                         rpcId: message.id ?? null,
@@ -1049,6 +1110,7 @@ export function createApp(config: ServerConfig): Hono {
                     method,
                     route,
                     sessionId,
+                    ...authFields,
                     rpcMethod: rpcMethod || '(unknown)',
                     rpcToolName: rpcToolName || null,
                     rpcId: rpcId ?? null,
@@ -1056,7 +1118,7 @@ export function createApp(config: ServerConfig): Hono {
                     elapsedMs: Date.now() - startedAt,
                     error: 'No response from transport',
                 });
-                return c.json({ error: { code: -32603, message: 'No response from transport' } }, 500);
+                return jsonError(c, 500, 'MCP_TRANSPORT_ERROR', 'No response from transport');
             }
 
             const headers = new Headers(response.headers);
@@ -1065,6 +1127,7 @@ export function createApp(config: ServerConfig): Hono {
                 method,
                 route,
                 sessionId,
+                ...authFields,
                 rpcMethod: rpcMethod || '(unknown)',
                 rpcToolName: rpcToolName || null,
                 rpcId: rpcId ?? null,
@@ -1081,6 +1144,7 @@ export function createApp(config: ServerConfig): Hono {
                 requestLogger.warning('complete', {
                     method,
                     route,
+                    ...authFields,
                     status: error.status,
                     elapsedMs: Date.now() - startedAt,
                     rpcMethod: rpcMethod || '(unknown)',
@@ -1093,6 +1157,7 @@ export function createApp(config: ServerConfig): Hono {
             logger.error('request.error', {
                 method,
                 route,
+                ...authFields,
                 status: 500,
                 elapsedMs: Date.now() - startedAt,
                 rpcMethod: rpcMethod || '(unknown)',
@@ -1113,21 +1178,27 @@ export function createApp(config: ServerConfig): Hono {
         }
     });
 
-    app.get('/mcp', async (c: Context) => {
+    app.get('/mcp', guardRoute('GET', '/mcp'), async (c: AppContext) => {
         const startedAt = Date.now();
         const method = 'GET';
         const route = '/mcp';
+        const authContext = c.get('authContext');
+        const authFields = {
+            userId: authContext?.user_id || null,
+            keyId: authContext?.key_id || null,
+        };
         try {
             const sessionId = c.req.header('Mcp-Session-Id');
             if (!sessionId) {
                 requestLogger.warning('complete', {
                     method,
                     route,
+                    ...authFields,
                     status: 400,
                     elapsedMs: Date.now() - startedAt,
                     reason: 'missing_session',
                 });
-                return c.json({ error: 'Missing Mcp-Session-Id header' }, 400);
+                return jsonError(c, 400, 'MISSING_SESSION_ID', 'Missing Mcp-Session-Id header');
             }
 
             const session = sessions.get(sessionId);
@@ -1135,12 +1206,13 @@ export function createApp(config: ServerConfig): Hono {
                 requestLogger.warning('complete', {
                     method,
                     route,
+                    ...authFields,
                     status: 404,
                     elapsedMs: Date.now() - startedAt,
                     reason: 'session_not_found',
                     sessionId,
                 });
-                return c.json({ error: 'Session not found' }, 404);
+                return jsonError(c, 404, 'SESSION_NOT_FOUND', 'Session not found');
             }
 
             const response = await session.transport.handleRequest(c);
@@ -1148,16 +1220,18 @@ export function createApp(config: ServerConfig): Hono {
                 requestLogger.error('complete', {
                     method,
                     route,
+                    ...authFields,
                     status: 500,
                     elapsedMs: Date.now() - startedAt,
                     sessionId,
                     error: 'No SSE stream available',
                 });
-                return c.json({ error: 'No SSE stream available' }, 500);
+                return jsonError(c, 500, 'SSE_STREAM_MISSING', 'No SSE stream available');
             }
             requestLogger.info('complete', {
                 method,
                 route,
+                ...authFields,
                 status: response.status,
                 elapsedMs: Date.now() - startedAt,
                 sessionId,
@@ -1168,6 +1242,7 @@ export function createApp(config: ServerConfig): Hono {
                 requestLogger.warning('complete', {
                     method,
                     route,
+                    ...authFields,
                     status: error.status,
                     elapsedMs: Date.now() - startedAt,
                     error: error.message,
@@ -1177,29 +1252,36 @@ export function createApp(config: ServerConfig): Hono {
             logger.error('request.error', {
                 method,
                 route,
+                ...authFields,
                 status: 500,
                 elapsedMs: Date.now() - startedAt,
                 error: error instanceof Error ? error.message : String(error),
             });
-            return c.json({ error: 'Internal error' }, 500);
+            return jsonError(c, 500, 'INTERNAL_ERROR', 'Internal error');
         }
     });
 
-    app.delete('/mcp', async (c: Context) => {
+    app.delete('/mcp', guardRoute('DELETE', '/mcp'), async (c: AppContext) => {
         const startedAt = Date.now();
         const method = 'DELETE';
         const route = '/mcp';
+        const authContext = c.get('authContext');
+        const authFields = {
+            userId: authContext?.user_id || null,
+            keyId: authContext?.key_id || null,
+        };
         try {
             const sessionId = c.req.header('Mcp-Session-Id');
             if (!sessionId) {
                 requestLogger.warning('complete', {
                     method,
                     route,
+                    ...authFields,
                     status: 400,
                     elapsedMs: Date.now() - startedAt,
                     reason: 'missing_session',
                 });
-                return c.json({ error: 'Missing Mcp-Session-Id header' }, 400);
+                return jsonError(c, 400, 'MISSING_SESSION_ID', 'Missing Mcp-Session-Id header');
             }
 
             const session = sessions.get(sessionId);
@@ -1207,12 +1289,13 @@ export function createApp(config: ServerConfig): Hono {
                 requestLogger.warning('complete', {
                     method,
                     route,
+                    ...authFields,
                     status: 404,
                     elapsedMs: Date.now() - startedAt,
                     reason: 'session_not_found',
                     sessionId,
                 });
-                return c.json({ error: 'Session not found' }, 404);
+                return jsonError(c, 404, 'SESSION_NOT_FOUND', 'Session not found');
             }
 
             const response = await session.transport.handleRequest(c);
@@ -1220,6 +1303,7 @@ export function createApp(config: ServerConfig): Hono {
             requestLogger.info('complete', {
                 method,
                 route,
+                ...authFields,
                 status: response?.status ?? 200,
                 elapsedMs: Date.now() - startedAt,
                 sessionId,
@@ -1230,6 +1314,7 @@ export function createApp(config: ServerConfig): Hono {
                 requestLogger.warning('complete', {
                     method,
                     route,
+                    ...authFields,
                     status: error.status,
                     elapsedMs: Date.now() - startedAt,
                     error: error.message,
@@ -1239,11 +1324,12 @@ export function createApp(config: ServerConfig): Hono {
             logger.error('request.error', {
                 method,
                 route,
+                ...authFields,
                 status: 500,
                 elapsedMs: Date.now() - startedAt,
                 error: error instanceof Error ? error.message : String(error),
             });
-            return c.json({ error: 'Internal error' }, 500);
+            return jsonError(c, 500, 'INTERNAL_ERROR', 'Internal error');
         }
     });
 
@@ -1251,6 +1337,169 @@ export function createApp(config: ServerConfig): Hono {
     setInterval(() => {
         cleanupSessions(sessionTimeout);
     }, sessionTimeout / 2);
+
+    function createRbacEngine(localConfig: ServerConfig): RbacEngine | null {
+        if (localConfig.security?.secured !== true) {
+            return null;
+        }
+        if (!localConfig.security.rbacUsersPath || !localConfig.security.rbacKeysPath) {
+            throw new Error(
+                'RBAC is enabled (secured=true), but rbacUsersPath or rbacKeysPath is not configured. Set RBAC_USERS_PATH and RBAC_KEYS_PATH.'
+            );
+        }
+        return new RbacEngine(
+            {
+                usersPath: localConfig.security.rbacUsersPath,
+                keysPath: localConfig.security.rbacKeysPath,
+                policyPath: localConfig.security.rbacPolicyPath,
+                reloadSeconds: localConfig.security.rbacReloadSeconds,
+            },
+            startupLogger
+        );
+    }
+
+    function jsonError(c: AppContext, status: number, errorCode: string, message: string): Response {
+        return c.json(
+            {
+                error_code: errorCode,
+                message,
+                request_id: c.get('requestId'),
+            },
+            status as 400 | 401 | 403 | 404 | 500
+        );
+    }
+
+    function guardRoute(method: string, routePattern: string) {
+        return async (c: AppContext, next: () => Promise<void>) => {
+            const requirement = getRouteRequirement(method, routePattern);
+            const requestId = c.get('requestId');
+            const start = Date.now();
+            if (!secured) {
+                authLogger.info('audit', {
+                    timestamp: new Date().toISOString(),
+                    route: routePattern,
+                    method,
+                    request_id: requestId,
+                    user_id: null,
+                    key_id: null,
+                    decision: 'allow',
+                    reason: 'SECURED_DISABLED',
+                    elapsedMs: Date.now() - start,
+                });
+                await next();
+                return;
+            }
+
+            if (!rbacEngine) {
+                authLogger.error('audit', {
+                    timestamp: new Date().toISOString(),
+                    route: routePattern,
+                    method,
+                    request_id: requestId,
+                    user_id: null,
+                    key_id: null,
+                    decision: 'deny',
+                    reason: 'SERVER_MISCONFIG',
+                    elapsedMs: Date.now() - start,
+                });
+                return jsonError(c, 500, 'SERVER_MISCONFIG', 'RBAC is enabled but not initialized');
+            }
+
+            if (!requirement) {
+                authLogger.warning('audit', {
+                    timestamp: new Date().toISOString(),
+                    route: routePattern,
+                    method,
+                    request_id: requestId,
+                    user_id: null,
+                    key_id: null,
+                    decision: 'deny',
+                    reason: 'POLICY_DENY',
+                    elapsedMs: Date.now() - start,
+                });
+                return jsonError(c, 403, 'FORBIDDEN', 'No matching RBAC policy rule for endpoint');
+            }
+
+            if (requirement.public) {
+                authLogger.info('audit', {
+                    timestamp: new Date().toISOString(),
+                    route: routePattern,
+                    method,
+                    request_id: requestId,
+                    user_id: null,
+                    key_id: null,
+                    decision: 'allow',
+                    reason: 'PUBLIC',
+                    policy_source: requirement.source,
+                    elapsedMs: Date.now() - start,
+                });
+                await next();
+                return;
+            }
+
+            const apiKey = extractApiKeyFromHeaders(c.req.raw.headers);
+            const auth = await rbacEngine.authenticate(apiKey);
+            if (!auth.allowed || !auth.authContext) {
+                authLogger.warning('audit', {
+                    timestamp: new Date().toISOString(),
+                    route: routePattern,
+                    method,
+                    request_id: requestId,
+                    user_id: null,
+                    key_id: null,
+                    decision: 'deny',
+                    reason: auth.reason,
+                    policy_source: requirement.source,
+                    elapsedMs: Date.now() - start,
+                });
+                if (auth.status === 500) {
+                    return jsonError(c, 500, 'SERVER_MISCONFIG', 'RBAC authentication failed due to server misconfiguration');
+                }
+                return jsonError(c, 401, 'UNAUTHORIZED', 'Missing or invalid API key');
+            }
+
+            const authorization = rbacEngine.authorize(auth.authContext, requirement.anyRoles);
+            if (!authorization.allowed) {
+                authLogger.warning('audit', {
+                    timestamp: new Date().toISOString(),
+                    route: routePattern,
+                    method,
+                    request_id: requestId,
+                    user_id: auth.authContext.user_id,
+                    key_id: auth.authContext.key_id,
+                    decision: 'deny',
+                    reason: authorization.reason,
+                    policy_source: requirement.source,
+                    required_roles: requirement.anyRoles,
+                    elapsedMs: Date.now() - start,
+                });
+                return jsonError(c, 403, 'FORBIDDEN', 'Authenticated, but missing required role');
+            }
+
+            c.set('authContext', auth.authContext);
+            authLogger.info('audit', {
+                timestamp: new Date().toISOString(),
+                route: routePattern,
+                method,
+                request_id: requestId,
+                user_id: auth.authContext.user_id,
+                key_id: auth.authContext.key_id,
+                decision: 'allow',
+                reason: 'ALLOW',
+                policy_source: requirement.source,
+                required_roles: requirement.anyRoles,
+                elapsedMs: Date.now() - start,
+            });
+            await next();
+        };
+    }
+
+    function getRouteRequirement(method: string, routePattern: string): RouteRequirement | null {
+        if (!rbacEngine) {
+            return null;
+        }
+        return rbacEngine.getRouteRequirement(method, routePattern);
+    }
 
     return app;
 }
@@ -1270,6 +1519,11 @@ export async function startServer(config: ServerConfig): Promise<void> {
         contextDir,
         cors: config.cors !== false,
         cloudEnabled: config.cloud?.enabled === true,
+        secured: config.security?.secured === true,
+        rbacUsersPath: config.security?.rbacUsersPath || null,
+        rbacKeysPath: config.security?.rbacKeysPath || null,
+        rbacPolicyPath: config.security?.rbacPolicyPath || null,
+        rbacReloadSeconds: config.security?.rbacReloadSeconds ?? 0,
         debugMode: debugEnabled ? 'ON' : 'OFF',
         transport: 'hono',
         serverName: 'riotplan-http',

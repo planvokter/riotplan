@@ -122,6 +122,47 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
   - `coalescedWaiterCount` utilization
   - `syncFreshHit` rate
 
+## HTTP RBAC Security (Optional)
+
+`riotplan-mcp-http` supports optional API-key authentication with file-backed RBAC.
+
+- Keep it disabled by default (`secured: false`) for local/dev scenarios.
+- Enable it for shared/server deployments (`secured: true`).
+- When enabled, the server fails fast at startup unless RBAC files are valid.
+
+### Required config when secured
+
+```yaml
+secured: true
+rbacUsersPath: /var/run/riotplan-rbac/users.yaml
+rbacKeysPath: /var/run/riotplan-rbac/keys.yaml
+rbacPolicyPath: /var/run/riotplan-rbac/policy.yaml # optional
+rbacReloadSeconds: 0 # optional, 0 = reload on restart only
+```
+
+Equivalent env vars:
+
+```bash
+export RIOTPLAN_HTTP_SECURED=true
+export RBAC_USERS_PATH=/var/run/riotplan-rbac/users.yaml
+export RBAC_KEYS_PATH=/var/run/riotplan-rbac/keys.yaml
+export RBAC_POLICY_PATH=/var/run/riotplan-rbac/policy.yaml
+export RBAC_RELOAD_SECONDS=0
+```
+
+### Auth headers
+
+Provide API key secret using either:
+
+- `Authorization: Bearer <raw_key_secret>`
+- `X-API-Key: <raw_key_secret>`
+
+### Built-in route examples
+
+- Public: `GET /health`
+- Authenticated (any role): `GET /auth/whoami`
+- Admin-only: `GET /admin/ping`
+
 ## Tools
 
 ### Plan Management
