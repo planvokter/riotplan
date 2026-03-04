@@ -49,7 +49,13 @@ type InFlightOperation<T> = {
     waiterCount: number;
 };
 
+type DebouncedOperationState<T> = {
+    promise: Promise<T>;
+    waiterCount: number;
+};
+
 const inFlightOperations = new Map<string, InFlightOperation<unknown>>();
+const debouncedOperations = new Map<string, DebouncedOperationState<unknown>>();
 const lastSuccessfulSyncAtByScope = new Map<string, number>();
 
 function toInt(value: string | undefined): number | undefined {
@@ -72,6 +78,15 @@ function resolveSyncTimeoutMs(config: RiotPlanConfig | null | undefined): number
         return fromConfig;
     }
     return toInt(process.env.RIOTPLAN_CLOUD_SYNC_TIMEOUT_MS) || 120_000;
+}
+
+function resolveSyncUpDebounceMs(config: RiotPlanConfig | null | undefined): number {
+    const fromEnv = toInt(process.env.RIOTPLAN_CLOUD_SYNC_UP_DEBOUNCE_MS);
+    if (typeof fromEnv === 'number') {
+        return fromEnv;
+    }
+    // Internal server-side default; not exposed through MCP schemas.
+    return 400;
 }
 
 export async function runCoalescedOperation<T>(
@@ -120,6 +135,78 @@ export async function runCoalescedOperation<T>(
     };
 }
 
+export async function runDebouncedCoalescedOperation<T>(
+    key: string,
+    operation: () => Promise<T>,
+    options?: { debounceMs?: number; timeoutMs?: number }
+): Promise<{ result: T; coalesced: boolean; waiterCount: number }> {
+    const existing = debouncedOperations.get(key) as DebouncedOperationState<T> | undefined;
+    if (existing) {
+        existing.waiterCount += 1;
+        const result = await existing.promise;
+        return {
+            result,
+            coalesced: true,
+            waiterCount: existing.waiterCount,
+        };
+    }
+
+    const debounceMs = options?.debounceMs && options.debounceMs > 0 ? options.debounceMs : 0;
+    const timeoutMs = options?.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const promise = new Promise<T>((resolve, reject) => {
+        const execute = async () => {
+            const run = async () => operation();
+            const task = timeoutMs
+                ? Promise.race([
+                    run(),
+                    new Promise<T>((_, timeoutReject) => {
+                        setTimeout(() => {
+                            timeoutReject(new Error(`Debounced operation timed out after ${timeoutMs}ms`));
+                        }, timeoutMs);
+                    }),
+                ])
+                : run();
+            try {
+                resolve(await task);
+            } catch (error) {
+                reject(error);
+            } finally {
+                debouncedOperations.delete(key);
+            }
+        };
+
+        if (debounceMs > 0) {
+            timer = setTimeout(() => {
+                void execute();
+            }, debounceMs);
+            return;
+        }
+
+        void execute();
+    });
+
+    const state: DebouncedOperationState<T> = {
+        promise,
+        waiterCount: 0,
+    };
+    debouncedOperations.set(key, state);
+
+    try {
+        const result = await promise;
+        return {
+            result,
+            coalesced: false,
+            waiterCount: state.waiterCount,
+        };
+    } catch (error) {
+        if (timer) {
+            clearTimeout(timer);
+        }
+        throw error;
+    }
+}
+
 export async function createCloudRuntime(
     config: RiotPlanConfig | null | undefined,
     localPlanDirectory: string,
@@ -129,6 +216,7 @@ export async function createCloudRuntime(
     const incrementalSyncEnabled = (cloudConfig as Record<string, unknown> | undefined)?.incrementalSyncEnabled !== false;
     const freshnessTtlMs = incrementalSyncEnabled ? resolveFreshnessTtlMs(config) : 0;
     const syncTimeoutMs = resolveSyncTimeoutMs(config);
+    const syncUpDebounceMs = resolveSyncUpDebounceMs(config);
     const enabled =
         isTruthy(cloudConfig?.enabled) ||
         isTruthy(process.env.RIOTPLAN_CLOUD_ENABLED) ||
@@ -271,20 +359,54 @@ export async function createCloudRuntime(
         syncUpPlans: async () => {
             const startedAt = Date.now();
             diagnostics?.debug?.('sync_up_plans.start', { planBucket, planMirrorDir });
-            const stats = await planMirror.syncUp();
+            const syncUpScope = `sync_up:${planMirrorDir}:plan`;
+            const syncResult = await runDebouncedCoalescedOperation(
+                syncUpScope,
+                () => planMirror.syncUp(),
+                { debounceMs: syncUpDebounceMs, timeoutMs: syncTimeoutMs }
+            );
+            const stats = syncResult.result;
+            if (syncResult.coalesced || syncResult.waiterCount > 0) {
+                diagnostics?.debug?.('sync_up_plans.coalesced', {
+                    scope: syncUpScope,
+                    coalesced: syncResult.coalesced,
+                    coalescedWaiterCount: syncResult.waiterCount,
+                    debounceMs: syncUpDebounceMs,
+                });
+            }
             diagnostics?.debug?.('sync_up_plans.complete', {
                 elapsedMs: Date.now() - startedAt,
                 plan: stats,
+                coalesced: syncResult.coalesced,
+                coalescedWaiterCount: syncResult.waiterCount,
+                debounceMs: syncUpDebounceMs,
             });
             return stats;
         },
         syncUpContext: async () => {
             const startedAt = Date.now();
             diagnostics?.debug?.('sync_up_context.start', { contextBucket, contextMirrorDir });
-            const stats = await contextMirror.syncUp();
+            const syncUpScope = `sync_up:${contextMirrorDir}:context`;
+            const syncResult = await runDebouncedCoalescedOperation(
+                syncUpScope,
+                () => contextMirror.syncUp(),
+                { debounceMs: syncUpDebounceMs, timeoutMs: syncTimeoutMs }
+            );
+            const stats = syncResult.result;
+            if (syncResult.coalesced || syncResult.waiterCount > 0) {
+                diagnostics?.debug?.('sync_up_context.coalesced', {
+                    scope: syncUpScope,
+                    coalesced: syncResult.coalesced,
+                    coalescedWaiterCount: syncResult.waiterCount,
+                    debounceMs: syncUpDebounceMs,
+                });
+            }
             diagnostics?.debug?.('sync_up_context.complete', {
                 elapsedMs: Date.now() - startedAt,
                 context: stats,
+                coalesced: syncResult.coalesced,
+                coalescedWaiterCount: syncResult.waiterCount,
+                debounceMs: syncUpDebounceMs,
             });
             return stats;
         },
