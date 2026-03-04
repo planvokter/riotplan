@@ -291,6 +291,26 @@ When using RiotPlan as an MCP server in Cursor or other IDEs, you can configure 
 
 Alternatively, create a `riotplan.config.yaml` file in your workspace root, and RiotPlan will automatically discover it.
 
+If you need Cursor to connect to a remote HTTP MCP server (`riotplan-mcp-http`), use a URL + headers entry:
+
+```json
+{
+  "mcpServers": {
+    "riotplan-http": {
+      "url": "https://your-host.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <raw_key_secret>"
+      }
+    }
+  }
+}
+```
+
+`riotplan-mcp-http` also accepts:
+
+- `Authorization: Bearer <raw_key_secret>`
+- `X-API-Key: <raw_key_secret>`
+
 ### HTTP MCP server (`riotplan-mcp-http`)
 
 The HTTP server supports separate roots for plan storage and context discovery:
