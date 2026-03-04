@@ -180,4 +180,123 @@ describe('riotplan_list_plans workspace filtering', () => {
         expect(unfiltered.success).toBe(true);
         expect(unfiltered.data?.plans.length).toBeGreaterThanOrEqual(3);
     });
+
+    it('renames a plan via riotplan_plan(action=rename)', async () => {
+        await createSqlitePlan('rename-target');
+
+        const renamed = await planTool.execute(
+            {
+                action: 'rename',
+                planId: 'rename-target',
+                name: 'Renamed Plan Title',
+            },
+            context
+        );
+
+        expect(renamed.success).toBe(true);
+        expect(renamed.data?.renamed).toBe(true);
+        expect(renamed.data?.planId).toBe('rename-target');
+        expect(renamed.data?.name).toBe('Renamed Plan Title');
+
+        const listed = await listPlansTool.execute({}, context);
+        expect(listed.success).toBe(true);
+        const plan = (listed.data?.plans || []).find((entry: { id: string }) => entry.id === 'rename-target');
+        expect(plan?.title).toBe('Renamed Plan Title');
+    });
+
+    it('renames a plan by UUID and absolute path identifiers', async () => {
+        const planPath = await createSqlitePlan('rename-identifiers');
+        const provider = createSqliteProvider(planPath);
+        const metadata = await provider.getMetadata();
+        await provider.close();
+        expect(metadata.success).toBe(true);
+        expect(metadata.data?.uuid).toBeTruthy();
+
+        const renameByUuid = await planTool.execute(
+            {
+                action: 'rename',
+                planId: metadata.data?.uuid,
+                name: 'Renamed From UUID',
+            },
+            context
+        );
+        expect(renameByUuid.success).toBe(true);
+        expect(renameByUuid.data?.renamed).toBe(true);
+
+        const renameByPath = await planTool.execute(
+            {
+                action: 'rename',
+                planId: planPath,
+                name: 'Renamed From Path',
+            },
+            context
+        );
+        expect(renameByPath.success).toBe(true);
+        expect(renameByPath.data?.renamed).toBe(true);
+
+        const listed = await listPlansTool.execute({}, context);
+        expect(listed.success).toBe(true);
+        const plan = (listed.data?.plans || []).find((entry: { id: string }) => entry.id === 'rename-identifiers');
+        expect(plan?.title).toBe('Renamed From Path');
+    });
+
+    it('returns renamed=false when target name is unchanged', async () => {
+        await createSqlitePlan('rename-noop');
+        const noOp = await planTool.execute(
+            {
+                action: 'rename',
+                planId: 'rename-noop',
+                name: 'rename-noop',
+            },
+            context
+        );
+        expect(noOp.success).toBe(true);
+        expect(noOp.data?.renamed).toBe(false);
+        expect(noOp.message).toContain('unchanged');
+    });
+
+    it('fails rename when plan cannot be found', async () => {
+        const missing = await planTool.execute(
+            {
+                action: 'rename',
+                planId: 'missing-plan-id',
+                name: 'Any Name',
+            },
+            context
+        );
+        expect(missing.success).toBe(false);
+        expect(missing.error).toContain('Could not find plan');
+    });
+
+    it('rejects whitespace-only rename values', async () => {
+        await createSqlitePlan('rename-blank');
+
+        const renamed = await planTool.execute(
+            {
+                action: 'rename',
+                planId: 'rename-blank',
+                name: '   ',
+            },
+            context
+        );
+
+        expect(renamed.success).toBe(false);
+        expect(renamed.error).toContain('Plan name cannot be empty');
+    });
+
+    it('rejects rename values over max length', async () => {
+        await createSqlitePlan('rename-too-long');
+        const tooLong = 'x'.repeat(121);
+        const renamed = await planTool.execute(
+            {
+                action: 'rename',
+                planId: 'rename-too-long',
+                name: tooLong,
+            },
+            context
+        );
+
+        expect(renamed.success).toBe(false);
+        expect(renamed.error).toContain('Too big');
+    });
 });

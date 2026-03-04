@@ -317,6 +317,11 @@ export const MovePlanSchema = z.object({
     target: z.enum(['active', 'done', 'hold']).describe('Target category'),
 }).strict();
 
+export const RenamePlanSchema = z.object({
+    planId: z.string().describe('Plan identifier to rename (id, uuid, filename, or absolute .plan path)'),
+    name: z.string().min(1).max(120).describe('New human-readable plan name'),
+}).strict();
+
 function resolveDestinationDir(sourcePath: string, target: PlanCategory): string {
     const sourceDir = dirname(sourcePath);
     const parts = sourceDir.split(sep);
@@ -435,6 +440,74 @@ async function executeMovePlan(args: any, context: ToolExecutionContext): Promis
     }
 }
 
+async function executeRenamePlan(args: any, context: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const validated = RenamePlanSchema.parse(args);
+        const sourcePath = await resolvePlanPath(validated.planId, context);
+        if (!sourcePath) {
+            return {
+                success: false,
+                error: `Could not find plan: ${validated.planId}. Use riotplan_list_plans to discover available plan identifiers.`,
+            };
+        }
+
+        const trimmedName = validated.name.trim();
+        if (!trimmedName) {
+            return {
+                success: false,
+                error: 'Plan name cannot be empty.',
+            };
+        }
+
+        const provider = createSqliteProvider(sourcePath);
+        try {
+            const metadataResult = await provider.getMetadata();
+            if (!metadataResult.success || !metadataResult.data) {
+                return {
+                    success: false,
+                    error: metadataResult.error || 'Failed to read plan metadata.',
+                };
+            }
+            const oldName = metadataResult.data.name || metadataResult.data.id;
+            if (oldName === trimmedName) {
+                return {
+                    success: true,
+                    data: {
+                        renamed: false,
+                        planId: metadataResult.data.id,
+                        name: oldName,
+                    },
+                    message: 'Plan name is unchanged.',
+                };
+            }
+
+            const updateResult = await provider.updateMetadata({ name: trimmedName });
+            if (!updateResult.success) {
+                return {
+                    success: false,
+                    error: updateResult.error || 'Failed to update plan name.',
+                };
+            }
+
+            return {
+                success: true,
+                data: {
+                    renamed: true,
+                    planId: metadataResult.data.id,
+                    oldName,
+                    name: trimmedName,
+                    path: sourcePath,
+                },
+                message: `Renamed plan to "${trimmedName}".`,
+            };
+        } finally {
+            await provider.close();
+        }
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
 // Tool definitions
 export const switchPlanTool: McpTool = {
     name: 'riotplan_switch_plan',
@@ -482,14 +555,19 @@ const PlanActionSchema = z.discriminatedUnion('action', [
         planId: z.string(),
         target: z.enum(['active', 'done', 'hold']),
     }).strict(),
+    z.object({
+        action: z.literal('rename'),
+        planId: z.string(),
+        name: z.string().min(1).max(120),
+    }).strict(),
 ]);
 
 const PlanToolSchema = {
-    action: z.enum(['create', 'switch', 'move']).describe('Plan management action to perform'),
-    planId: z.string().optional().describe('Plan identifier for action=switch|move'),
+    action: z.enum(['create', 'switch', 'move', 'rename']).describe('Plan management action to perform'),
+    planId: z.string().optional().describe('Plan identifier for action=switch|move|rename'),
     target: z.enum(['active', 'done', 'hold']).optional().describe('Target category for action=move'),
+    name: z.string().optional().describe('Plan display name when action=create|rename'),
     code: z.string().optional().describe('Plan code when action=create'),
-    name: z.string().optional().describe('Plan display name when action=create'),
     description: z.string().optional().describe('Plan description when action=create'),
     steps: z.number().optional().describe('Initial step count when action=create'),
     direct: z.boolean().optional().describe('Forwarded create option'),
@@ -519,6 +597,10 @@ async function executePlan(args: unknown, context: ToolExecutionContext): Promis
                 const { action: _, ...moveArgs } = validated;
                 return executeMovePlan(moveArgs, context);
             }
+            case 'rename': {
+                const { action: _, ...renameArgs } = validated;
+                return executeRenamePlan(renameArgs, context);
+            }
         }
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -527,7 +609,7 @@ async function executePlan(args: unknown, context: ToolExecutionContext): Promis
 
 export const planTool: McpTool = {
     name: 'riotplan_plan',
-    description: 'Manage plans with action=create|switch|move.',
+    description: 'Manage plans with action=create|switch|move|rename.',
     schema: PlanToolSchema,
     execute: executePlan,
 };
