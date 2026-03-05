@@ -25,8 +25,10 @@ describe('server-hono RBAC routes', () => {
         const keysPath = join(root, 'keys.yaml');
         const basicSecret = 'basic-secret';
         const adminSecret = 'admin-secret';
+        const scopedSecret = 'scoped-secret';
         const basicHash = await hashApiKeySecret(basicSecret);
         const adminHash = await hashApiKeySecret(adminSecret);
+        const scopedHash = await hashApiKeySecret(scopedSecret);
 
         await writeFile(
             usersPath,
@@ -38,6 +40,10 @@ describe('server-hono RBAC routes', () => {
   - id: user-admin
     display_name: Admin User
     roles: [admin]
+    enabled: true
+  - id: user-scoped
+    display_name: Scoped User
+    roles: [reader]
     enabled: true
 `
         );
@@ -55,6 +61,13 @@ describe('server-hono RBAC routes', () => {
     user_id: user-admin
     enabled: true
     created_at: "2026-03-03T00:00:00Z"
+  - key_id: key-scoped
+    secret_hash: "${scopedHash}"
+    user_id: user-scoped
+    enabled: true
+    created_at: "2026-03-03T00:00:00Z"
+    allowed_projects:
+      - walmart/ops
 `
         );
 
@@ -70,7 +83,7 @@ describe('server-hono RBAC routes', () => {
             },
         });
 
-        return { app, basicSecret, adminSecret };
+        return { app, basicSecret, adminSecret, scopedSecret };
     }
 
     it('keeps /health public while protecting secured routes', async () => {
@@ -101,6 +114,19 @@ describe('server-hono RBAC routes', () => {
             headers: { Authorization: `Bearer ${basicSecret}` },
         });
         expect(viaBearer.status).toBe(200);
+    });
+
+    it('returns key-level allowed_projects in whoami', async () => {
+        const { app, scopedSecret } = await buildSecuredApp();
+        const whoami = await app.request('/auth/whoami', {
+            headers: { 'X-API-Key': scopedSecret },
+        });
+        expect(whoami.status).toBe(200);
+        expect(await whoami.json()).toMatchObject({
+            user_id: 'user-scoped',
+            key_id: 'key-scoped',
+            allowed_projects: ['walmart/ops'],
+        });
     });
 
     it('enforces admin-only route', async () => {

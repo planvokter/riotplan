@@ -72,6 +72,7 @@ describe('RBAC engine', () => {
             user_id: 'u-admin',
             roles: ['admin', 'writer'],
             key_id: 'k-admin',
+            allowed_projects: undefined,
         });
     });
 
@@ -91,6 +92,42 @@ describe('RBAC engine', () => {
         expect(health?.public).toBe(true);
         const custom = engine.getRouteRequirement('GET', '/custom/admin');
         expect(custom?.anyRoles).toEqual(['admin']);
+    });
+
+    it('propagates allowed_projects from key to auth context', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'riotplan-rbac-allowed-projects-'));
+        tempDirs.push(dir);
+        const usersPath = join(dir, 'users.yaml');
+        const keysPath = join(dir, 'keys.yaml');
+        const secret = 'scoped-secret-value';
+        const secretHash = await hashApiKeySecret(secret);
+
+        await writeFile(
+            usersPath,
+            `users:
+  - id: user-scoped
+    display_name: Scoped User
+    roles: [reader]
+    enabled: true
+`
+        );
+        await writeFile(
+            keysPath,
+            `keys:
+  - key_id: key-scoped
+    secret_hash: "${secretHash}"
+    user_id: user-scoped
+    enabled: true
+    created_at: "2026-03-03T00:00:00Z"
+    allowed_projects:
+      - walmart/ops
+`
+        );
+
+        const engine = new RbacEngine({ usersPath, keysPath }, logger);
+        const decision = await engine.authenticate(secret);
+        expect(decision.allowed).toBe(true);
+        expect(decision.authContext?.allowed_projects).toEqual(['walmart/ops']);
     });
 });
 

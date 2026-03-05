@@ -22,6 +22,7 @@ import {
     GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Context } from 'hono';
 import { createReadStream } from 'node:fs';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
@@ -30,8 +31,10 @@ import { PerformanceObserver, constants as PerfConstants } from 'node:perf_hooks
 import { getHeapStatistics } from 'node:v8';
 import { executeTool, tools } from './tools/index.js';
 import { getResources, readResource } from './resources/index.js';
+import { parseUri } from './uri.js';
 import { getPrompts, getPrompt } from './prompts/index.js';
 import { resolveDirectory } from './tools/shared.js';
+import { bindProjectToPlan, getProjectMatchKeys, readProjectBinding } from './tools/project-binding-shared.js';
 import { createCloudRuntime } from '../cloud/runtime.js';
 import { extractApiKeyFromHeaders, type AuthContext, RbacEngine, type RouteRequirement } from './rbac.js';
 import Logging from '@fjell/logging';
@@ -287,6 +290,210 @@ function isMutatingTool(toolName: string, args?: Record<string, unknown>): boole
     return true;
 }
 
+const authContextStore = new AsyncLocalStorage<AuthContext | null>();
+
+function getActiveAuthContext(): AuthContext | null {
+    return authContextStore.getStore() ?? null;
+}
+
+function normalizeAllowedProjects(auth: AuthContext | null): string[] {
+    if (!auth?.allowed_projects || auth.allowed_projects.length === 0) {
+        return [];
+    }
+    return auth.allowed_projects
+        .map((value) => value.trim())
+        .filter(Boolean);
+}
+
+function hasProjectScope(auth: AuthContext | null): boolean {
+    return normalizeAllowedProjects(auth).length > 0;
+}
+
+function isProjectAllowed(projectId: string | null | undefined, allowedProjects: string[]): boolean {
+    if (!projectId) return false;
+    const normalized = projectId.trim().toLowerCase();
+    return allowedProjects.some((allowed) => allowed.toLowerCase() === normalized);
+}
+
+function projectBindingAllowed(project: unknown, allowedProjects: string[]): boolean {
+    const matchKeys = getProjectMatchKeys(project as any);
+    return matchKeys.some((key) => isProjectAllowed(key, allowedProjects));
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object'
+        ? value as Record<string, unknown>
+        : {};
+}
+
+async function assertPlanRefAllowed(
+    planRef: string,
+    workingDirectory: string,
+    allowedProjects: string[]
+): Promise<void> {
+    const planPath = resolveDirectory({ planId: planRef }, { workingDirectory } as any);
+    const binding = await readProjectBinding(planPath);
+    if (!binding.project) {
+        throw new Error(`Project-scoped key cannot access plan "${planRef}" because it is not bound to a project.`);
+    }
+    if (!projectBindingAllowed(binding.project, allowedProjects)) {
+        throw new Error(`Project-scoped key cannot access plan "${planRef}".`);
+    }
+}
+
+async function enforceProjectScopeForTool(
+    toolName: string,
+    args: unknown,
+    workingDirectory: string,
+    authContext: AuthContext | null
+): Promise<Record<string, unknown>> {
+    const scopedArgs = asRecord(args);
+    const allowedProjects = normalizeAllowedProjects(authContext);
+    if (allowedProjects.length === 0) {
+        return scopedArgs;
+    }
+
+    if (toolName === 'riotplan_list_plans') {
+        const providedProject = typeof scopedArgs.projectId === 'string' ? scopedArgs.projectId.trim() : '';
+        if (providedProject.length > 0 && !isProjectAllowed(providedProject, allowedProjects)) {
+            throw new Error(`Project-scoped key cannot list plans for project "${providedProject}".`);
+        }
+        if (!providedProject && allowedProjects.length === 1) {
+            return {
+                ...scopedArgs,
+                projectId: allowedProjects[0],
+            };
+        }
+        return scopedArgs;
+    }
+
+    if (toolName === 'riotplan_context') {
+        const action = typeof scopedArgs.action === 'string' ? scopedArgs.action.trim() : '';
+        const id = typeof scopedArgs.id === 'string' ? scopedArgs.id.trim() : '';
+        const entityRecord = asRecord(scopedArgs.entity);
+        const entityId = typeof entityRecord.id === 'string' ? entityRecord.id.trim() : '';
+
+        if (action === 'get' || action === 'update' || action === 'delete') {
+            if (!id || !isProjectAllowed(id, allowedProjects)) {
+                throw new Error(`Project-scoped key cannot ${action} project "${id || '(missing)'}".`);
+            }
+        }
+        if (action === 'create') {
+            if (!entityId || !isProjectAllowed(entityId, allowedProjects)) {
+                throw new Error(`Project-scoped key cannot create project "${entityId || '(missing)'}".`);
+            }
+        }
+    }
+
+    if (toolName === 'riotplan_bind_project') {
+        const project = asRecord(scopedArgs.project);
+        const projectId = typeof project.id === 'string' ? project.id.trim() : '';
+        if (!projectId || !isProjectAllowed(projectId, allowedProjects)) {
+            throw new Error(`Project-scoped key cannot bind plan to project "${projectId || '(missing)'}".`);
+        }
+    }
+
+    if (toolName === 'riotplan_create') {
+        if (allowedProjects.length > 1) {
+            throw new Error('Project-scoped key is mapped to multiple projects. Create is only allowed when exactly one project is in scope.');
+        }
+    }
+
+    if (toolName === 'riotplan_plan') {
+        const action = typeof scopedArgs.action === 'string' ? scopedArgs.action.trim() : '';
+        if (action === 'create' && allowedProjects.length > 1) {
+            throw new Error('Project-scoped key is mapped to multiple projects. Plan create is only allowed when exactly one project is in scope.');
+        }
+    }
+
+    const planRef = typeof scopedArgs.planId === 'string'
+        ? scopedArgs.planId.trim()
+        : typeof scopedArgs.path === 'string'
+            ? scopedArgs.path.trim()
+            : '';
+    if (planRef) {
+        await assertPlanRefAllowed(planRef, workingDirectory, allowedProjects);
+    }
+
+    return scopedArgs;
+}
+
+function filterProjectScopedToolResult(
+    toolName: string,
+    args: Record<string, unknown>,
+    data: unknown,
+    authContext: AuthContext | null
+): unknown {
+    const allowedProjects = normalizeAllowedProjects(authContext);
+    if (allowedProjects.length === 0) {
+        return data;
+    }
+
+    const payload = asRecord(data);
+    if (toolName === 'riotplan_context' && args.action === 'list' && Array.isArray(payload.entities)) {
+        return {
+            ...payload,
+            entities: payload.entities.filter((entity) => {
+                const project = asRecord(entity);
+                const id = typeof project.id === 'string' ? project.id.trim() : '';
+                return isProjectAllowed(id, allowedProjects);
+            }),
+        };
+    }
+
+    if (Array.isArray(payload.plans)) {
+        return {
+            ...payload,
+            plans: payload.plans.filter((plan) => {
+                const planRecord = asRecord(plan);
+                return projectBindingAllowed(planRecord.project, allowedProjects);
+            }),
+        };
+    }
+
+    return data;
+}
+
+async function postProcessProjectScopedCreate(
+    toolName: string,
+    args: Record<string, unknown>,
+    result: { success: boolean; data?: unknown },
+    workingDirectory: string,
+    authContext: AuthContext | null
+): Promise<void> {
+    const allowedProjects = normalizeAllowedProjects(authContext);
+    if (allowedProjects.length !== 1 || !result.success) {
+        return;
+    }
+    const action = typeof args.action === 'string' ? args.action.trim() : '';
+    const isCreate = toolName === 'riotplan_create' || (toolName === 'riotplan_plan' && action === 'create');
+    if (!isCreate) {
+        return;
+    }
+
+    const data = asRecord(result.data);
+    const planRef = typeof data.planId === 'string'
+        ? data.planId.trim()
+        : typeof data.code === 'string'
+            ? data.code.trim()
+            : '';
+    if (!planRef) {
+        return;
+    }
+
+    const planPath = resolveDirectory({ planId: planRef }, { workingDirectory } as any);
+    const binding = await readProjectBinding(planPath);
+    if (binding.project && projectBindingAllowed(binding.project, allowedProjects)) {
+        return;
+    }
+
+    await bindProjectToPlan(planPath, {
+        id: allowedProjects[0],
+        name: allowedProjects[0],
+        relationship: 'primary',
+    });
+}
+
 async function notifyPlanResourceChanged(planRef: string): Promise<void> {
     const uri = `riotplan://plan/${planRef}`;
     for (const session of sessions.values()) {
@@ -361,6 +568,7 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const toolName = request.params.name;
         const tool = tools.find((t) => t.name === toolName);
+        const authContext = getActiveAuthContext();
         const startedAt = Date.now();
         const syncRunId = randomUUID();
         toolLogger.info('call.start', {
@@ -434,7 +642,14 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
             });
 
             const executionStartedAt = Date.now();
-            const result = await executeTool(toolName, request.params.arguments || {}, context);
+            const scopedArgs = await enforceProjectScopeForTool(
+                toolName,
+                request.params.arguments || {},
+                context.workingDirectory,
+                authContext
+            );
+            const result = await executeTool(toolName, scopedArgs, context);
+            await postProcessProjectScopedCreate(toolName, scopedArgs, result, context.workingDirectory, authContext);
             logPhaseTiming(toolLogger, debugEnabled, 'call.execute', {
                 sessionId,
                 tool: toolName,
@@ -516,9 +731,10 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
                     text: '=== Command Output ===\n' + result.logs.join('\n') + '\n\n=== Result ===',
                 });
             }
+            const filteredData = filterProjectScopedToolResult(toolName, scopedArgs, result.data, authContext);
             const textContent =
-                result.data !== undefined
-                    ? JSON.stringify(result.data, null, 2)
+                filteredData !== undefined
+                    ? JSON.stringify(filteredData, null, 2)
                     : result.message || 'Success';
             content.push({ type: 'text', text: textContent });
             toolLogger.info('call.complete', {
@@ -575,10 +791,19 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
 
     server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
         const uri = request.params.uri;
+        const authContext = getActiveAuthContext();
         const startedAt = Date.now();
         const syncRunId = randomUUID();
         resourceLogger.info('read.start', { sessionId, uri, syncRunId });
         try {
+            const allowedProjects = normalizeAllowedProjects(authContext);
+            if (allowedProjects.length > 0) {
+                const parsed = parseUri(uri);
+                if (parsed.path) {
+                    await assertPlanRefAllowed(parsed.path, plansDir, allowedProjects);
+                }
+            }
+
             const cloudRuntimeStartedAt = Date.now();
             const cloudRuntime = await createCloudRuntime(
                 { cloud: config.cloud } as any,
@@ -811,6 +1036,7 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
             user_id: authContext.user_id,
             roles: authContext.roles,
             key_id: authContext.key_id,
+            allowed_projects: authContext.allowed_projects ?? [],
             request_id: c.get('requestId'),
         });
     });
@@ -855,6 +1081,12 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
                     planId: decodedPlanId,
                 });
                 return jsonError(c, 400, 'INVALID_PLAN_FILE', 'Resolved plan is not a .plan file');
+            }
+
+            const authContext = c.get('authContext');
+            const allowedProjects = normalizeAllowedProjects(authContext || null);
+            if (allowedProjects.length > 0) {
+                await assertPlanRefAllowed(decodedPlanId, config.plansDir, allowedProjects);
             }
 
             const planStats = await stat(planPath);
@@ -950,6 +1182,19 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
             const bytes = await upload.arrayBuffer();
             const targetPath = join(targetDir, targetName);
             await writeFile(targetPath, Buffer.from(bytes));
+
+            const authContext = c.get('authContext');
+            const allowedProjects = normalizeAllowedProjects(authContext || null);
+            if (allowedProjects.length > 0) {
+                if (allowedProjects.length !== 1) {
+                    return jsonError(c, 403, 'FORBIDDEN', 'Project-scoped keys with multiple projects cannot upload plans without an explicit project binding.');
+                }
+                await bindProjectToPlan(targetPath, {
+                    id: allowedProjects[0],
+                    name: allowedProjects[0],
+                    relationship: 'primary',
+                });
+            }
 
             requestLogger.info('complete', {
                 method,
@@ -1094,7 +1339,11 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
             const session = await getOrCreateSession(sessionId, config.plansDir, contextDir, config);
 
             const transportStartedAt = Date.now();
-            const response = await session.transport.handleRequest(c);
+            const requestAuthContext = (c.get('authContext') as AuthContext | undefined) ?? null;
+            const response = await authContextStore.run(
+                requestAuthContext,
+                () => session.transport.handleRequest(c)
+            );
             logPhaseTiming(requestLogger, debugEnabled, 'request.transport', {
                 method,
                 route,
