@@ -771,14 +771,59 @@ async function resolveDirectoryEvidenceRecord(
     return candidates[0];
 }
 
-function normalizeSqliteEvidenceRecord(
+async function readLegacySqliteEvidenceFileContent(
+    planPath: string,
+    filePathValue: unknown
+): Promise<string | undefined> {
+    const rawPath = typeof filePathValue === "string" ? filePathValue.trim() : "";
+    if (!rawPath) {
+        return undefined;
+    }
+
+    const candidatePaths = [rawPath];
+    if (!isAbsolute(rawPath)) {
+        const planParent = dirname(planPath);
+        candidatePaths.push(resolve(planParent, rawPath));
+        candidatePaths.push(resolve(process.cwd(), rawPath));
+    }
+
+    for (const candidate of candidatePaths) {
+        try {
+            const content = await readFile(candidate, "utf-8");
+            if (content.trim()) {
+                return content;
+            }
+        } catch {
+            // Best effort: continue through candidate paths.
+        }
+    }
+
+    return undefined;
+}
+
+async function normalizeSqliteEvidenceRecord(
     row: Record<string, unknown>,
-    planId: string
-): NormalizedEvidenceRecord | null {
+    planId: string,
+    planPath: string
+): Promise<NormalizedEvidenceRecord | null> {
     const filePath = String(row.file_path || row.filePath || row.id || "");
     const rawContent = typeof row.content === "string" ? row.content : "";
     const embedded = parseEmbeddedRecord(rawContent) || {};
     const markdownSections = parseMarkdownSections(rawContent);
+    const recoveredFileContent = rawContent.trim()
+        ? undefined
+        : await readLegacySqliteEvidenceFileContent(planPath, row.file_path || row.filePath);
+    const normalizedSummary = String(
+        embedded.summary || row.summary || markdownSections.summary || row.description || ""
+    );
+    const normalizedContent = String(
+        embedded.content ||
+            markdownSections.evidence ||
+            rawContent ||
+            recoveredFileContent ||
+            row.summary ||
+            ""
+    );
     return normalizeRecord(
         {
             ...row,
@@ -786,8 +831,8 @@ function normalizeSqliteEvidenceRecord(
             evidenceId: String(embedded.evidenceId || row.id || ""),
             file: String(embedded.file || filePath || ""),
             title: String(embedded.title || row.description || markdownSections.title || ""),
-            summary: String(embedded.summary || row.summary || markdownSections.summary || ""),
-            content: String(embedded.content || markdownSections.evidence || row.summary || ""),
+            summary: normalizedSummary,
+            content: normalizedContent,
             sources:
                 embedded.sources ||
                 (typeof row.source === "string"
@@ -1196,7 +1241,7 @@ async function editEvidenceSqlitePlan(
             throw new EvidenceToolError("not_found", `Evidence not found: ${target}`);
         }
 
-        const normalized = normalizeSqliteEvidenceRecord(row, validated.planId);
+        const normalized = await normalizeSqliteEvidenceRecord(row, validated.planId, planPath);
         if (!normalized) {
             const id = String(row.id || "unknown");
             throw new EvidenceToolError(

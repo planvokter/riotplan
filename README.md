@@ -561,6 +561,23 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
 }
 ```
 
+If Cursor should connect to a remote HTTP deployment (`riotplan-mcp-http`) instead of launching a local process:
+
+```json
+{
+  "mcpServers": {
+    "riotplan-http": {
+      "url": "https://your-host.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <raw_key_secret>"
+      }
+    }
+  }
+}
+```
+
+`riotplan-mcp-http` also accepts `X-API-Key: <raw_key_secret>`.
+
 **Zero-Config Experience:** If you don't set `RIOTPLAN_PLAN_DIRECTORY`, RiotPlan will automatically find your `plans/` directory by walking up from your workspace root. No configuration needed!
 
 The MCP server includes enhanced error handling and logging for better reliability and debugging.

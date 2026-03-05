@@ -396,6 +396,37 @@ describe("evidence MCP tools", () => {
         expect(read.record.referenceSources[2].type).toBe("other");
     });
 
+    it("edits legacy sqlite evidence when content lives in file_path target", async () => {
+        const provider = createSqliteProvider(planPath);
+        const createdAt = new Date().toISOString();
+        const transcriptPath = join(testRoot, "transcripts", "session-001.md");
+        await mkdir(join(testRoot, "transcripts"), { recursive: true });
+        await writeFile(transcriptPath, "Recovered transcript content from external file.", "utf-8");
+        await provider.addEvidence({
+            id: "ev_legacy_file_only",
+            filePath: transcriptPath,
+            description: "Legacy evidence from transcript file",
+            createdAt,
+        });
+        await provider.close();
+
+        const edited = await evidenceTool.execute(
+            {
+                action: "edit",
+                planId: planPath,
+                evidenceRef: { evidenceId: "ev_legacy_file_only" },
+                patch: { summary: "Hydrated and edited summary" },
+            },
+            context
+        );
+        expect(edited.success).toBe(true);
+
+        const read = await readEvidenceResource(planPath, "ev_legacy_file_only");
+        const parsed = read.record as Record<string, unknown>;
+        expect(parsed.summary).toBe("Hydrated and edited summary");
+        expect(parsed.content).toContain("Recovered transcript content from external file.");
+    });
+
     it("filepath git detection helper handles inside/outside/missing", async () => {
         const repoRoot = join(testRoot, "mini-repo");
         await mkdir(join(repoRoot, ".git"), { recursive: true });

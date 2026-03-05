@@ -21,6 +21,7 @@ const KeySchema = z.object({
     expires_at: z.string().datetime().nullable().optional(),
     last_used_at: z.string().datetime().optional(),
     scopes: z.array(z.string().min(1)).optional(),
+    allowed_projects: z.array(z.string().min(1)).optional(),
 });
 
 const UsersFileSchema = z.object({
@@ -55,6 +56,7 @@ export interface AuthContext {
     user_id: string;
     roles: string[];
     key_id: string;
+    allowed_projects?: string[];
 }
 
 type DecisionReason =
@@ -320,6 +322,9 @@ export class RbacEngine {
                     user_id: user.id,
                     roles: [...user.roles],
                     key_id: key.key_id,
+                    allowed_projects: Array.isArray(key.allowed_projects) && key.allowed_projects.length > 0
+                        ? [...key.allowed_projects]
+                        : undefined,
                 },
             };
         }

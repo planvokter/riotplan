@@ -17,28 +17,40 @@ Clients do not choose storage locations through tool arguments.
 
 ### riotplan_plan
 
-Create a new plan with AI-generated steps.
+Manage plans with a single action-based tool.
 
 Plan storage location is server-managed and not client-configurable.
 
 **Parameters:**
-- `code` (required) - Plan identifier (e.g., "auth-system")
-- `description` (required) - What you want to accomplish
-- `name` (optional) - Human-readable name
-- `steps` (optional) - Number of steps to generate
-- `direct` (optional) - Skip analysis phase
-- `provider` (optional) - AI provider (anthropic, openai, gemini)
-- `model` (optional) - Specific model
-- `noAi` (optional) - Use templates only
+- `action` (required) - One of `create | switch | move | rename`
+- `planId` (required for `switch | move | rename`) - Plan identifier (id/uuid/filename/path)
+- `target` (required for `move`) - One of `active | done | hold`
+- `name` (required for `rename`, optional for `create`) - Human-readable plan name
+- `code` (required for `create`) - Plan identifier (e.g., "auth-system")
+- `description` (required for `create`) - What you want to accomplish
+- `steps` (optional for `create`) - Number of steps to generate
+- `direct` (optional for `create`) - Skip analysis phase
+- `provider` (optional for `create`) - AI provider (anthropic, openai, gemini)
+- `model` (optional for `create`) - Specific model
+- `noAi` (optional for `create`) - Use templates only
 
 **Example:**
 
 ```typescript
 riotplan_plan({
+  action: "create",
   code: "user-auth",
   description: "Implement user authentication with JWT tokens",
   steps: 6,
   provider: "anthropic"
+})
+```
+
+```typescript
+riotplan_plan({
+  action: "rename",
+  planId: "user-auth",
+  name: "User Authentication Refresh"
 })
 ```
 

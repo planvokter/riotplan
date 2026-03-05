@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createCloudRuntime, runCoalescedOperation } from '../../src/cloud/runtime.js';
+import {
+    createCloudRuntime,
+    runCoalescedOperation,
+    runDebouncedCoalescedOperation,
+} from '../../src/cloud/runtime.js';
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -103,5 +107,44 @@ describe('createCloudRuntime', () => {
         const results = await Promise.all(burst);
         expect(executions).toBe(1);
         expect(results.every((r) => r.result === 'burst-ok')).toBe(true);
+    });
+
+    it('debounces and coalesces burst operations', async () => {
+        let executions = 0;
+        const operation = async () => {
+            executions += 1;
+            return 'debounced-ok';
+        };
+
+        const [a, b, c] = await Promise.all([
+            runDebouncedCoalescedOperation('debounce:test', operation, { debounceMs: 20, timeoutMs: 100 }),
+            runDebouncedCoalescedOperation('debounce:test', operation, { debounceMs: 20, timeoutMs: 100 }),
+            runDebouncedCoalescedOperation('debounce:test', operation, { debounceMs: 20, timeoutMs: 100 }),
+        ]);
+
+        expect(executions).toBe(1);
+        expect(a.result).toBe('debounced-ok');
+        expect(b.result).toBe('debounced-ok');
+        expect(c.result).toBe('debounced-ok');
+        expect([a.coalesced, b.coalesced, c.coalesced].filter(Boolean).length).toBe(2);
+        expect(Math.max(a.waiterCount, b.waiterCount, c.waiterCount)).toBe(2);
+    });
+
+    it('runs immediately when debounce is disabled', async () => {
+        let executions = 0;
+        const operation = async () => {
+            executions += 1;
+            return 'no-debounce';
+        };
+
+        const result = await runDebouncedCoalescedOperation(
+            'debounce:none',
+            operation,
+            { debounceMs: 0, timeoutMs: 100 }
+        );
+
+        expect(executions).toBe(1);
+        expect(result.result).toBe('no-debounce');
+        expect(result.coalesced).toBe(false);
     });
 });

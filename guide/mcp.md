@@ -50,6 +50,40 @@ Or if installed globally:
 }
 ```
 
+### Cursor Remote HTTP Client Configuration
+
+If you are running `riotplan-mcp-http` separately (for example on another machine, a container, or Cloud Run), configure Cursor as an HTTP MCP client:
+
+```json
+{
+  "mcpServers": {
+    "riotplan-http": {
+      "url": "https://your-host.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <raw_key_secret>"
+      }
+    }
+  }
+}
+```
+
+You can also send the key as `X-API-Key`:
+
+```json
+{
+  "mcpServers": {
+    "riotplan-http": {
+      "url": "https://your-host.example.com/mcp",
+      "headers": {
+        "X-API-Key": "<raw_key_secret>"
+      }
+    }
+  }
+}
+```
+
+Use `Authorization` **or** `X-API-Key` (not both unless your gateway requires it). These match the auth headers accepted by `riotplan-mcp-http`.
+
 **Zero-Config Option:** If you don't set `RIOTPLAN_PLAN_DIRECTORY`, RiotPlan will automatically:
 1. Look for a `riotplan.config.yaml` (or `.json`, `.js`, `.ts`) file in your workspace
 2. Walk up the directory tree to find an existing `plans/` directory
