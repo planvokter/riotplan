@@ -1,4 +1,5 @@
 import { basename, join } from 'node:path';
+import type { Dirent } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import Logging from '@fjell/logging';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
@@ -61,9 +62,9 @@ function entryVersionKey(entry: PlanIndexEntry): string {
 async function collectPlanFiles(rootDir: string): Promise<PlanFileMetadata[]> {
     const results: PlanFileMetadata[] = [];
     async function scan(dir: string): Promise<void> {
-        let entries: Awaited<ReturnType<typeof readdir>>;
+        let entries: Dirent<string>[];
         try {
-            entries = await readdir(dir, { withFileTypes: true });
+            entries = await readdir(dir, { withFileTypes: true, encoding: 'utf8' });
         } catch {
             return;
         }
