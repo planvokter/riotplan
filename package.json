@@ -1,6 +1,6 @@
 {
   "name": "@kjerneverk/riotplan",
-  "version": "1.0.24-dev.0",
+  "version": "1.0.24",
   "description": "Framework for long-lived, stateful AI workflows (plans)",
   "type": "module",
   "main": "./dist/index.js",
