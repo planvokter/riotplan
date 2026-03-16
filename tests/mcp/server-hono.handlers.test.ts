@@ -65,6 +65,8 @@ const mocks = vi.hoisted(() => {
             { name: 'riotplan_status', description: 'status', schema: {} },
             { name: 'riotplan_plan', description: 'plan', schema: {} },
             { name: 'riotplan_context', description: 'ctx', schema: {} },
+            { name: 'riotplan_catalyst', description: 'catalyst', schema: {} },
+            { name: 'riotplan_checkpoint', description: 'checkpoint', schema: {} },
         ],
         getResources: vi.fn(() => [
             { uri: 'riotplan://plan/{planId}', name: 'Plan', mimeType: 'application/json' },
@@ -206,8 +208,30 @@ describe('server-hono MCP handlers', () => {
 
         for (const transport of mocks.MockTransport.instances) transport.send.mockClear();
         mocks.executeTool.mockResolvedValueOnce({ success: true, data: { planId: 'demo' } });
+        mocks.cloudSyncDown.mockClear();
         await callTool!({ params: { name: 'riotplan_status', arguments: { planId: 'demo' } } });
+        expect(mocks.cloudSyncDown).toHaveBeenCalledWith({ forceRefresh: false });
         expect(mocks.MockTransport.instances.every((t) => t.send.mock.calls.length === 0)).toBe(true);
+
+        mocks.executeTool.mockResolvedValueOnce({ success: true, data: { ok: true } });
+        mocks.cloudSyncDown.mockClear();
+        await callTool!({ params: { name: 'riotplan_catalyst', arguments: { action: 'list' } } });
+        expect(mocks.cloudSyncDown).toHaveBeenCalledWith({ forceRefresh: false });
+
+        mocks.executeTool.mockResolvedValueOnce({ success: true, data: { ok: true } });
+        mocks.cloudSyncDown.mockClear();
+        await callTool!({ params: { name: 'riotplan_catalyst', arguments: { action: 'associate' } } });
+        expect(mocks.cloudSyncDown).toHaveBeenCalledWith({ forceRefresh: true });
+
+        mocks.executeTool.mockResolvedValueOnce({ success: true, data: { ok: true } });
+        mocks.cloudSyncDown.mockClear();
+        await callTool!({ params: { name: 'riotplan_checkpoint', arguments: { action: 'list' } } });
+        expect(mocks.cloudSyncDown).toHaveBeenCalledWith({ forceRefresh: false });
+
+        mocks.executeTool.mockResolvedValueOnce({ success: true, data: { ok: true } });
+        mocks.cloudSyncDown.mockClear();
+        await callTool!({ params: { name: 'riotplan_checkpoint', arguments: { action: 'create', name: 'c1', message: 'm' } } });
+        expect(mocks.cloudSyncDown).toHaveBeenCalledWith({ forceRefresh: true });
 
         mocks.executeTool.mockResolvedValueOnce({ success: true, message: 'Done' });
         const withMessage = await callTool!({ params: { name: 'dummy', arguments: {} } });

@@ -15,7 +15,7 @@ import { readPlanManifest, addCatalystToManifest, removeCatalystFromManifest } f
 
 async function executeCatalystList(
     _args: any,
-    _context: ToolExecutionContext
+    context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
         // Load configuration to get catalyst settings
@@ -29,7 +29,8 @@ async function executeCatalystList(
         }
         
         // Load all configured catalysts
-        const mergedCatalyst = await loadConfiguredCatalysts(config, process.cwd());
+        const configBaseDir = context.workingDirectory || process.cwd();
+        const mergedCatalyst = await loadConfiguredCatalysts(config, configBaseDir);
         
         if (!mergedCatalyst) {
             return createSuccess(

@@ -424,6 +424,8 @@ export interface CheckpointMetadata {
         idea?: FileSnapshot;
         shaping?: FileSnapshot;
         lifecycle?: FileSnapshot;
+        buildOutputs?: Record<string, FileSnapshot>;
+        steps?: Record<string, FileSnapshot>;
     };
 
     /** Context information */

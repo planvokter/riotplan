@@ -273,6 +273,14 @@ function isMutatingTool(toolName: string, args?: Record<string, unknown>): boole
         const action = typeof args?.action === 'string' ? args.action : '';
         return action !== 'list' && action !== 'get';
     }
+    if (toolName === 'riotplan_catalyst') {
+        const action = typeof args?.action === 'string' ? args.action : '';
+        return action === 'associate';
+    }
+    if (toolName === 'riotplan_checkpoint') {
+        const action = typeof args?.action === 'string' ? args.action : '';
+        return action === 'create' || action === 'restore';
+    }
     const nonMutating = new Set([
         'riotplan_status',
         'riotplan_read_context',
@@ -281,8 +289,6 @@ function isMutatingTool(toolName: string, args?: Record<string, unknown>): boole
         'riotplan_validate',
         'riotplan_resolve_project_context',
         'riotplan_get_project_binding',
-        'riotplan_catalyst',
-        'riotplan_checkpoint',
     ]);
     if (nonMutating.has(toolName)) {
         return false;

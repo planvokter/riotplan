@@ -2,7 +2,7 @@
  * Shared utilities for MCP tools
  */
 
-import { resolve, join, basename } from 'node:path';
+import { resolve, join, basename, relative, isAbsolute } from 'node:path';
 import { access, readFile } from 'node:fs/promises';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import type { ToolResult, ToolExecutionContext } from '../types.js';
@@ -119,6 +119,11 @@ export function resolveDirectory(args: any, context: ToolExecutionContext): stri
     if (args.planId) {
         const resolvedById = findPlanById(base, String(args.planId));
         if (!resolvedById) {
+            throw new Error(`Plan not found for planId: ${args.planId}`);
+        }
+        const rel = relative(base, resolvedById);
+        const withinBase = rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+        if (!withinBase) {
             throw new Error(`Plan not found for planId: ${args.planId}`);
         }
         return resolvedById;

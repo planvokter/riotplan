@@ -113,6 +113,23 @@ export async function readTimeline(planPath: string): Promise<TimelineEvent[]> {
 
 type FileSnapshot = { exists: boolean; content?: string };
 
+async function restoreSnapshotFiles(baseDir: string, snapshots?: Record<string, FileSnapshot>): Promise<string[]> {
+    if (!snapshots) {
+        return [];
+    }
+
+    const restored: string[] = [];
+    for (const [name, snapshot] of Object.entries(snapshots)) {
+        if (!snapshot?.exists || typeof snapshot.content !== 'string') {
+            continue;
+        }
+        const targetPath = join(baseDir, name);
+        await writeFile(targetPath, snapshot.content);
+        restored.push(targetPath);
+    }
+    return restored;
+}
+
 /**
  * Try to read a file and return a snapshot
  */
@@ -448,6 +465,8 @@ export async function checkpointCreate(args: z.infer<typeof CheckpointCreateSche
             idea: snapshot.idea,
             shaping: snapshot.shaping,
             lifecycle: snapshot.lifecycle,
+            buildOutputs: snapshot.buildOutputs,
+            steps: snapshot.steps,
         },
         context: {
             filesChanged: await getChangedFiles(planPath),
@@ -615,7 +634,7 @@ export async function checkpointRestore(args: z.infer<typeof CheckpointRestoreSc
     const content = await readFile(checkpointPath, 'utf-8');
     const checkpoint: CheckpointMetadata = JSON.parse(content);
   
-    // Restore files from snapshot
+    // Restore core lifecycle files from snapshot
     if (checkpoint.snapshot.idea?.exists && checkpoint.snapshot.idea.content) {
         await writeFile(join(planPath, 'IDEA.md'), checkpoint.snapshot.idea.content);
     }
@@ -627,6 +646,12 @@ export async function checkpointRestore(args: z.infer<typeof CheckpointRestoreSc
     if (checkpoint.snapshot.lifecycle?.exists && checkpoint.snapshot.lifecycle.content) {
         await writeFile(join(planPath, 'LIFECYCLE.md'), checkpoint.snapshot.lifecycle.content);
     }
+
+    // Restore build artifacts and step files when present
+    const restoredBuildOutputs = await restoreSnapshotFiles(planPath, checkpoint.snapshot.buildOutputs);
+    const planDir = join(planPath, 'plan');
+    await mkdir(planDir, { recursive: true });
+    const restoredSteps = await restoreSnapshotFiles(planDir, checkpoint.snapshot.steps);
   
     // Log restoration event
     const restoreEvent: TimelineEvent = {
@@ -639,7 +664,7 @@ export async function checkpointRestore(args: z.infer<typeof CheckpointRestoreSc
     };
     await logEvent(planPath, restoreEvent);
   
-    return `✅ Restored to checkpoint: ${args.checkpoint}\n\nRestored from: ${checkpoint.timestamp}\nStage: ${checkpoint.stage}\n\nFiles restored:\n${checkpoint.context.filesChanged.map((f: string) => `  - ${f}`).join('\n')}`;
+    return `✅ Restored to checkpoint: ${args.checkpoint}\n\nRestored from: ${checkpoint.timestamp}\nStage: ${checkpoint.stage}\n\nFiles restored:\n${checkpoint.context.filesChanged.map((f: string) => `  - ${f}`).join('\n')}\n\nBuild artifacts restored: ${restoredBuildOutputs.length}\nStep files restored: ${restoredSteps.length}`;
 }
 
 export async function historyShow(args: z.infer<typeof HistoryShowSchema>): Promise<string> {
