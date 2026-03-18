@@ -194,7 +194,7 @@ export function createSuccess(data: any, message?: string): ToolResult {
 }
 
 /**
- * Check if a directory is an idea or shaping directory
+ * Check if a path is an idea or shaping plan (supports both directory and .plan SQLite formats)
  * 
  * @param path - Path to check
  * @returns Object with detection result and details
@@ -204,49 +204,69 @@ export async function isIdeaOrShapingDirectory(path: string): Promise<{
     detected: string[];
     stage?: string;
 }> {
+    if (path.endsWith('.plan')) {
+        return isIdeaOrShapingSqlite(path);
+    }
+
     const detected: string[] = [];
     let stage: string | undefined;
 
-    // Check for IDEA.md
     try {
         await access(join(path, 'IDEA.md'));
         detected.push('IDEA.md');
-    } catch {
-        // File doesn't exist
-    }
+    } catch { /* file doesn't exist */ }
 
-    // Check for SHAPING.md
     try {
         await access(join(path, 'SHAPING.md'));
         detected.push('SHAPING.md');
-    } catch {
-        // File doesn't exist
-    }
+    } catch { /* file doesn't exist */ }
 
-    // Check for LIFECYCLE.md and extract stage
     try {
         await access(join(path, 'LIFECYCLE.md'));
         detected.push('LIFECYCLE.md');
         
-        // Try to read and extract stage
         try {
             const content = await readFile(join(path, 'LIFECYCLE.md'), 'utf-8');
             const stageMatch = content.match(/\*\*Stage\*\*: `(\w+)`/);
             if (stageMatch) {
                 stage = stageMatch[1];
             }
-        } catch {
-            // Couldn't read file
-        }
-    } catch {
-        // File doesn't exist
-    }
+        } catch { /* couldn't read file */ }
+    } catch { /* file doesn't exist */ }
 
     return {
         isIdeaOrShaping: detected.length > 0 && (stage === 'idea' || stage === 'shaping' || !stage),
         detected,
         stage,
     };
+}
+
+async function isIdeaOrShapingSqlite(planPath: string): Promise<{
+    isIdeaOrShaping: boolean;
+    detected: string[];
+    stage?: string;
+}> {
+    try {
+        const { createSqliteProvider } = await import('@kjerneverk/riotplan-format');
+        const provider = createSqliteProvider(planPath);
+        const metadataResult = await provider.getMetadata();
+        const stage = metadataResult.data?.stage;
+        const filesResult = await provider.getFiles();
+        await provider.close();
+
+        const detected: string[] = [];
+        const files = filesResult.success ? filesResult.data || [] : [];
+        if (files.some((f) => f.type === 'idea')) { detected.push('IDEA.md'); }
+        if (files.some((f) => f.type === 'shaping')) { detected.push('SHAPING.md'); }
+
+        return {
+            isIdeaOrShaping: (stage === 'idea' || stage === 'shaping') || (detected.length > 0 && !stage),
+            detected,
+            stage,
+        };
+    } catch {
+        return { isIdeaOrShaping: false, detected: [] };
+    }
 }
 
 /**

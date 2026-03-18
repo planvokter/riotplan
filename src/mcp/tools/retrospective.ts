@@ -3,9 +3,11 @@
  */
 
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess } from './shared.js';
+import { resolveDirectory, formatError, createSuccess, formatTimestamp } from './shared.js';
 import { generateRetrospective } from '../../retrospective/generator.js';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -20,7 +22,10 @@ async function executeGenerateRetrospective(
     try {
         const planPath = resolveDirectory(args, context);
 
-        // Generate the retrospective context and prompt
+        if (planPath.endsWith('.plan')) {
+            return await generateRetrospectiveSqlite(planPath, args);
+        }
+
         const { context: retroContext, prompt } = await generateRetrospective(
             planPath,
             {
@@ -28,11 +33,115 @@ async function executeGenerateRetrospective(
             }
         );
 
-        // Note: In a real implementation, this would call an LLM with the prompt
-        // For now, we'll write a placeholder retrospective that includes the prompt
-        // The actual LLM integration would happen here
+        const retrospectiveContent = formatRetrospectiveContent(retroContext, prompt);
 
-        const retrospectiveContent = `# Retrospective: ${retroContext.plan.metadata.name}
+        const retrospectivePath = join(planPath, 'retrospective.md');
+        await writeFile(retrospectivePath, retrospectiveContent, 'utf-8');
+
+        return createSuccess(
+            {
+                planId: retroContext.plan.metadata.code,
+                retrospectivePath,
+                reflectionsCount: retroContext.reflections.length,
+                stepsAnalyzed: retroContext.plan.steps.length,
+            },
+            `Retrospective generated at ${retrospectivePath}. ` +
+                `Analyzed ${retroContext.plan.steps.length} steps with ${retroContext.reflections.length} reflections. ` +
+                `\n\n**Note**: For best results, this retrospective should be reviewed and refined with a highest-tier model.`
+        );
+    } catch (error) {
+        return formatError(error);
+    }
+}
+
+async function generateRetrospectiveSqlite(planPath: string, args: any): Promise<ToolResult> {
+    const provider = createSqliteProvider(planPath);
+    const metadataResult = await provider.getMetadata();
+    const metadata = metadataResult.data;
+    const planName = metadata?.name || metadata?.id || 'Unknown Plan';
+
+    if (!args.force && metadata?.stage !== 'completed' && (metadata?.stage as string) !== 'done') {
+        await provider.close();
+        return formatError(new Error(
+            `Plan "${planName}" is in stage "${metadata?.stage || 'unknown'}". ` +
+            `Use force: true to generate retrospective for incomplete plans.`
+        ));
+    }
+
+    const filesResult = await provider.getFiles();
+    const files = filesResult.success ? filesResult.data || [] : [];
+
+    const stepsResult = await provider.getSteps();
+    const steps = stepsResult.success ? stepsResult.data || [] : [];
+
+    const timelineResult = await provider.getTimelineEvents();
+    const timeline = timelineResult.success ? timelineResult.data || [] : [];
+
+    const reflections = timeline
+        .filter((event: any) => event.type === 'reflection_added')
+        .map((event: any) => ({
+            step: Number(event.data?.step ?? 0),
+            content: String(event.data?.content ?? ''),
+        }))
+        .filter((r: any) => r.content.length > 0);
+
+    const now = formatTimestamp();
+    const retrospectiveContent = `# Retrospective: ${planName}
+
+*This retrospective was generated from execution data including ${reflections.length} step reflections and ${steps.length} steps.*
+
+---
+
+## Plan vs Reality
+
+[Retrospective content would be generated here by applying the prompt to a high-tier model]
+
+## What Went Right
+
+[Analysis of successful patterns and approaches]
+
+## What Went Wrong
+
+[Analysis of failed assumptions and friction points]
+
+## What Would You Do Differently
+
+[Concrete recommendations for future plans]
+
+---
+
+*Generated: ${now}*
+`;
+
+    await provider.saveFile({
+        type: 'retrospective' as any,
+        filename: 'retrospective.md',
+        content: retrospectiveContent,
+        createdAt: now,
+        updatedAt: now,
+    });
+    await provider.addTimelineEvent({
+        id: randomUUID(),
+        timestamp: now,
+        type: 'note_added' as any,
+        data: { action: 'retrospective_generated', reflectionsCount: reflections.length, stepsCount: steps.length },
+    });
+    await provider.close();
+
+    return createSuccess(
+        {
+            planId: metadata?.id || planPath,
+            reflectionsCount: reflections.length,
+            stepsAnalyzed: steps.length,
+        },
+        `Retrospective generated for "${planName}". ` +
+            `Analyzed ${steps.length} steps with ${reflections.length} reflections. ` +
+            `\n\n**Note**: For best results, this retrospective should be reviewed and refined with a highest-tier model.`
+    );
+}
+
+function formatRetrospectiveContent(retroContext: any, prompt: string): string {
+    return `# Retrospective: ${retroContext.plan.metadata.name}
 
 *This retrospective was generated from execution data including ${retroContext.reflections.length} step reflections.*
 
@@ -64,25 +173,6 @@ PROMPT USED FOR GENERATION:
 ${prompt}
 -->
 `;
-
-        // Write retrospective.md
-        const retrospectivePath = join(planPath, 'retrospective.md');
-        await writeFile(retrospectivePath, retrospectiveContent, 'utf-8');
-
-        return createSuccess(
-            {
-                planId: retroContext.plan.metadata.code,
-                retrospectivePath,
-                reflectionsCount: retroContext.reflections.length,
-                stepsAnalyzed: retroContext.plan.steps.length,
-            },
-            `Retrospective generated at ${retrospectivePath}. ` +
-                `Analyzed ${retroContext.plan.steps.length} steps with ${retroContext.reflections.length} reflections. ` +
-                `\n\n**Note**: For best results, this retrospective should be reviewed and refined with a highest-tier model.`
-        );
-    } catch (error) {
-        return formatError(error);
-    }
 }
 
 export const generateRetrospectiveTool: McpTool = {

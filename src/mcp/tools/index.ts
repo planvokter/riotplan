@@ -36,7 +36,7 @@ import {
 import { stepReflectTool } from './reflect.js';
 import { generateRetrospectiveTool } from './retrospective.js';
 import { backfillManifestsTool } from './backfill-manifests.js';
-import { planTool, listPlansTool } from './switch.js';
+import { planTool, listPlansTool, deletePlanTool } from './switch.js';
 import { bindProjectTool, getProjectBindingTool, resolveProjectContextTool } from './project.js';
 
 /**
@@ -80,6 +80,7 @@ export const tools: McpTool[] = [
     // Plan switching tools
     planTool,
     listPlansTool,
+    deletePlanTool,
     // Project binding tools
     bindProjectTool,
     getProjectBindingTool,

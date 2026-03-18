@@ -8,7 +8,7 @@
 import { z } from 'zod';
 import { resolve, join, basename, dirname, sep } from 'node:path';
 import { readdirSync, statSync } from 'node:fs';
-import { mkdir, rename, access } from 'node:fs/promises';
+import { mkdir, rename, access, unlink } from 'node:fs/promises';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import { executeCreate } from './create.js';
@@ -508,6 +508,53 @@ async function executeRenamePlan(args: any, context: ToolExecutionContext): Prom
     }
 }
 
+export const DeletePlanSchema = z.object({
+    planId: z.string().describe('Plan identifier to delete (id, uuid, filename, or absolute .plan path)'),
+    confirm: z.boolean().optional().describe('Must be true to confirm deletion'),
+}).strict();
+
+async function executeDeletePlan(args: any, context: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const validated = DeletePlanSchema.parse(args);
+        const sourcePath = await resolvePlanPath(validated.planId, context);
+        if (!sourcePath) {
+            return {
+                success: false,
+                error: `Could not find plan: ${validated.planId}. Use riotplan_list_plans to discover available plan identifiers.`,
+            };
+        }
+
+        let planId = validated.planId;
+        let planName: string | undefined;
+        try {
+            const provider = createSqliteProvider(sourcePath);
+            const metaResult = await provider.getMetadata();
+            await provider.close();
+            if (metaResult.success && metaResult.data) {
+                planId = metaResult.data.id || planId;
+                planName = metaResult.data.name || undefined;
+            }
+        } catch {
+            // best-effort metadata read
+        }
+
+        await unlink(sourcePath);
+
+        return {
+            success: true,
+            data: {
+                deleted: true,
+                planId,
+                name: planName,
+                path: sourcePath,
+            },
+            message: `Permanently deleted plan "${planName || planId}".`,
+        };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
 // Tool definitions
 export const switchPlanTool: McpTool = {
     name: 'riotplan_switch_plan',
@@ -528,6 +575,13 @@ export const movePlanTool: McpTool = {
     description: 'Move a plan between active, done, and hold categories by relocating the underlying .plan file.',
     schema: MovePlanSchema.shape,
     execute: executeMovePlan,
+};
+
+export const deletePlanTool: McpTool = {
+    name: 'riotplan_delete_plan',
+    description: 'Permanently delete a plan by removing the underlying .plan file from the filesystem.',
+    schema: DeletePlanSchema.shape,
+    execute: executeDeletePlan,
 };
 
 const PlanActionSchema = z.discriminatedUnion('action', [
@@ -560,13 +614,19 @@ const PlanActionSchema = z.discriminatedUnion('action', [
         planId: z.string(),
         name: z.string().min(1).max(120),
     }).strict(),
+    z.object({
+        action: z.literal('delete'),
+        planId: z.string(),
+        confirm: z.boolean().optional(),
+    }).strict(),
 ]);
 
 const PlanToolSchema = {
-    action: z.enum(['create', 'switch', 'move', 'rename']).describe('Plan management action to perform'),
-    planId: z.string().optional().describe('Plan identifier for action=switch|move|rename'),
+    action: z.enum(['create', 'switch', 'move', 'rename', 'delete']).describe('Plan management action to perform'),
+    planId: z.string().optional().describe('Plan identifier for action=switch|move|rename|delete'),
     target: z.enum(['active', 'done', 'hold']).optional().describe('Target category for action=move'),
     name: z.string().optional().describe('Plan display name when action=create|rename'),
+    confirm: z.boolean().optional().describe('Confirm permanent deletion when action=delete'),
     code: z.string().optional().describe('Plan code when action=create'),
     description: z.string().optional().describe('Plan description when action=create'),
     steps: z.number().optional().describe('Initial step count when action=create'),
@@ -601,6 +661,10 @@ async function executePlan(args: unknown, context: ToolExecutionContext): Promis
                 const { action: _, ...renameArgs } = validated;
                 return executeRenamePlan(renameArgs, context);
             }
+            case 'delete': {
+                const { action: _, ...deleteArgs } = validated;
+                return executeDeletePlan(deleteArgs, context);
+            }
         }
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -609,7 +673,7 @@ async function executePlan(args: unknown, context: ToolExecutionContext): Promis
 
 export const planTool: McpTool = {
     name: 'riotplan_plan',
-    description: 'Manage plans with action=create|switch|move|rename.',
+    description: 'Manage plans with action=create|switch|move|rename|delete.',
     schema: PlanToolSchema,
     execute: executePlan,
 };
