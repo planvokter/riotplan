@@ -15,13 +15,13 @@ const __dirname = dirname(__filename);
 
 /**
  * Helper to resolve the prompts directory path
- * When bundled, the MCP server is at dist/mcp-server.js and prompts are at dist/mcp/prompts/
+ * When bundled, the MCP server is at dist/mcp-server-http.js and prompts are at dist/mcp/prompts/
  * When running from source, prompts are at src/mcp/prompts/
  */
 function getPromptsDir(): string {
-    // Check if we're running from a bundled file (dist/mcp-server.js)
+    // Check if we're running from a bundled file (dist/mcp-server-http.js)
     const isBundled = __dirname.includes('/dist') || __dirname.endsWith('dist') ||
-                      __filename.includes('dist/mcp-server.js') || __filename.includes('dist\\mcp-server.js');
+                      __filename.includes('dist/mcp-server-http.js') || __filename.includes('dist\\mcp-server-http.js');
 
     if (isBundled) {
         // When bundled, prompts are at dist/mcp/prompts/

@@ -2,6 +2,6 @@
  * MCP Module Entry Point
  */
 
-export * from './server.js';
+export * from './server-hono.js';
 export * from './types.js';
 export * from './uri.js';

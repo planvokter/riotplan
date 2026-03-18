@@ -7,7 +7,6 @@
   "types": "./dist/index.d.ts",
   "bin": {
     "riotplan": "./dist/bin.js",
-    "riotplan-mcp": "./dist/mcp-server.js",
     "riotplan-mcp-http": "./dist/mcp-server-http.js"
   },
   "exports": {
@@ -21,7 +20,7 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "vite build && node scripts/build-mcp.js && chmod 755 ./dist/mcp-server.js 2>/dev/null",
+    "build": "vite build && node scripts/build-mcp.js",
     "test": "vitest run --coverage",
     "test:coverage": "vitest run --coverage",
     "test:sampling": "bash scripts/run-sampling-tests.sh",
@@ -29,7 +28,7 @@
     "lint": "eslint src",
     "precommit": "npm run build && npm run lint && npm run test && npm run test:sampling",
     "prepublishOnly": "npm run clean && npm run build",
-    "mcp:build": "vite build && chmod 755 ./dist/mcp-server.js 2>/dev/null",
+    "mcp:build": "vite build && node scripts/build-mcp.js",
     "mcp:inspect": "mcp-inspector npx -y @kjerneverk/riotplan",
     "docs:dev": "cd docs && cp ../README.md public/ && npm install && npm run dev",
     "docs:build": "cd docs && cp ../README.md public/ && npm install && npm run build",

@@ -2,7 +2,7 @@
  * RiotPlan HTTP MCP Server
  *
  * Standalone HTTP MCP server using Hono framework.
- * Provides full parity with the stdio MCP server - all tools, resources, and prompts.
+ * Provides the authoritative MCP server runtime with all tools, resources, and prompts.
  *
  * CRITICAL: In HTTP/remote mode, everything flows from plansDir configuration.
  * No config discovery or directory derivation - tools only process plan information.
@@ -568,7 +568,7 @@ function createMcpServer(plansDir: string, contextDir: string, sessionId: string
     );
 
     // ========================================================================
-    // Tools - full parity with stdio, context.workingDirectory = plansDir
+    // Tools - context.workingDirectory = plansDir
     // ========================================================================
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {

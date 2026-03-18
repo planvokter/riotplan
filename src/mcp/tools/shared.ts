@@ -26,8 +26,7 @@ export function formatDate(): string {
  * 2. Context working directory (context.workingDirectory)
  * 3. process.cwd() - final fallback
  *
- * Path is always resolved relative to workingDirectory when both are present,
- * ensuring consistent behavior for both stdio (config-derived) and HTTP (plansDir-configured) modes.
+ * Path is always resolved relative to workingDirectory when both are present.
  *
  * @param args - Tool arguments, may contain explicit `path` parameter
  * @param context - Tool execution context with workingDirectory

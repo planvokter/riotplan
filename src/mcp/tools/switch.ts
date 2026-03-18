@@ -13,14 +13,13 @@ import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import { executeCreate } from './create.js';
 import { assertNoClientDirectoryOverride } from './shared.js';
+import { getPlanCategory, type PlanCategory } from '../../plan/category.js';
 import {
     getProjectMatchKeys,
     getWorkspaceMatchKeys,
     type ProjectBinding,
 } from './project-binding-shared.js';
 import { listPlansViaIndex } from './plan-index-service.js';
-
-type PlanCategory = 'active' | 'done' | 'hold';
 
 // Schema for switch plan
 export const SwitchPlanSchema = z.object({
@@ -168,17 +167,6 @@ export const ListPlansSchema = z.object({
         .optional()
         .describe('Optional workspace filter (matches project.workspace.id)'),
 }).strict();
-
-function getPlanCategory(planFile: string): PlanCategory {
-    const segments = planFile.split(/[\\/]+/).map((segment) => segment.toLowerCase());
-    if (segments.includes('done')) {
-        return 'done';
-    }
-    if (segments.includes('hold')) {
-        return 'hold';
-    }
-    return 'active';
-}
 
 function toIsoTimestamp(value: unknown): string | undefined {
     if (!value) {
@@ -644,25 +632,30 @@ async function executePlan(args: unknown, context: ToolExecutionContext): Promis
     try {
         assertNoClientDirectoryOverride(args, context, 'riotplan_plan');
         const validated = PlanActionSchema.parse(args);
+        const stripAction = <T extends { action: string }>(value: T): Omit<T, 'action'> => {
+            const copy = { ...value };
+            delete (copy as { action?: string }).action;
+            return copy;
+        };
         switch (validated.action) {
             case 'create': {
-                const { action: _, ...createArgs } = validated;
+                const createArgs = stripAction(validated);
                 return executeCreate(createArgs, context, 'riotplan_plan');
             }
             case 'switch': {
-                const { action: _, ...switchArgs } = validated;
+                const switchArgs = stripAction(validated);
                 return executeSwitchPlan(switchArgs, context);
             }
             case 'move': {
-                const { action: _, ...moveArgs } = validated;
+                const moveArgs = stripAction(validated);
                 return executeMovePlan(moveArgs, context);
             }
             case 'rename': {
-                const { action: _, ...renameArgs } = validated;
+                const renameArgs = stripAction(validated);
                 return executeRenamePlan(renameArgs, context);
             }
             case 'delete': {
-                const { action: _, ...deleteArgs } = validated;
+                const deleteArgs = stripAction(validated);
                 return executeDeletePlan(deleteArgs, context);
             }
         }

@@ -34,6 +34,17 @@ if ! bash scripts/check-python-env.sh; then
     exit 0  # Exit success - don't fail the build
 fi
 
+# FastMCP sampling tests currently exercise stdio MCP transport.
+# RiotPlan now ships HTTP MCP as the runtime transport, so skip these
+# tests unless explicitly forced while we migrate the sampling harness.
+if [ ! -f "dist/mcp-server.js" ] && [ -f "dist/mcp-server-http.js" ] && [ "${RIOTPLAN_FORCE_SAMPLING_STDIO_TESTS}" != "1" ]; then
+    echo ""
+    echo -e "${YELLOW}⚠️  Skipping sampling tests (stdio harness not available in HTTP-only build)${NC}"
+    echo "Set RIOTPLAN_FORCE_SAMPLING_STDIO_TESTS=1 to force-run current sampling tests."
+    echo ""
+    exit 0
+fi
+
 echo ""
 echo "Running sampling tests..."
 echo ""

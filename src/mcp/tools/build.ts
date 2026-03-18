@@ -10,10 +10,9 @@
 
 import { z } from "zod";
 import { createHash } from "node:crypto";
-import { join, dirname, resolve, relative, normalize, isAbsolute } from "node:path";
-import { readFile } from "node:fs/promises";
+import { dirname, resolve, relative, normalize, isAbsolute } from "node:path";
 import { readdirSync } from "node:fs";
-import { resolveDirectory, formatError, createSuccess } from "./shared.js";
+import { resolveSqlitePlanPath, formatError, createSuccess } from "./shared.js";
 import { loadArtifacts } from "../../ai/artifacts.js";
 import {
     buildPlanPrompt,
@@ -227,36 +226,16 @@ export async function buildPlan(
     args: z.infer<typeof BuildSchema>,
     context: ToolExecutionContext,
 ): Promise<BuildInstructionPayload> {
-    const planPath = resolveDirectory(args, context);
-    const isSqlitePlan = planPath.endsWith(".plan");
-    let currentStage = "unknown";
-    let planName: string | undefined;
+    const planPath = resolveSqlitePlanPath(args, context);
 
-    if (isSqlitePlan) {
-        const provider = createSqliteProvider(planPath);
-        const metadataResult = await provider.getMetadata();
-        await provider.close();
-        if (!metadataResult.success || !metadataResult.data) {
-            throw new Error(metadataResult.error || "Failed to read SQLite plan metadata");
-        }
-        currentStage = metadataResult.data.stage;
-        planName = metadataResult.data.name;
-    } else {
-        const lifecycleFile = join(planPath, "LIFECYCLE.md");
-        let lifecycle: string;
-        try {
-            lifecycle = await readFile(lifecycleFile, "utf-8");
-        } catch {
-            throw new Error(
-                `Could not read LIFECYCLE.md at ${lifecycleFile}. ` +
-                `This doesn't appear to be a valid idea/shaping directory. ` +
-                `Use 'riotplan_plan' with action='create' to create a new plan instead.`
-            );
-        }
-        const stageMatch = lifecycle.match(/\*\*Stage\*\*: `(\w+)`/);
-        currentStage = stageMatch ? stageMatch[1] : "unknown";
-        planName = planPath.split("/").pop() || "Plan";
+    const provider = createSqliteProvider(planPath);
+    const metadataResult = await provider.getMetadata();
+    await provider.close();
+    if (!metadataResult.success || !metadataResult.data) {
+        throw new Error(metadataResult.error || "Failed to read SQLite plan metadata");
     }
+    const currentStage = metadataResult.data.stage;
+    const planName = metadataResult.data.name;
     
     // Verify we're in idea or shaping stage
     if (currentStage !== "idea" && currentStage !== "shaping") {
@@ -292,7 +271,7 @@ export async function buildPlan(
         } else {
             throw new Error(
                 "Idea artifact not found and no description provided. " +
-                "Add idea content (IDEA.md for directory plans or idea file in SQLite) " +
+                "Add idea content (IDEA.md as a typed file in SQLite) " +
                 "or pass description explicitly. " +
                 `Diagnostics: ${formatIdeaDiagnostic(planPath, artifacts)}`
             );
@@ -481,7 +460,7 @@ export async function buildPlan(
             promptSha256: sha256(`${systemPrompt}\n\n${userPrompt}`),
             artifactSha256,
         },
-        writeProtocol: createWriteProtocol(isSqlitePlan),
+        writeProtocol: createWriteProtocol(true),
         validationProtocol: createValidationProtocol(projectRoot),
     };
 }

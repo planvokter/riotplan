@@ -109,11 +109,11 @@ def riotplan_server_path():
     """
     Path to the RiotPlan MCP server executable.
     
-    Returns the path to dist/mcp-server.js in the riotplan package.
+    Returns the path to dist/mcp-server-http.js in the riotplan package.
     """
     # Get path to riotplan root (two levels up from tests/sampling/)
     riotplan_root = Path(__file__).parent.parent.parent
-    server_path = riotplan_root / "dist" / "mcp-server.js"
+    server_path = riotplan_root / "dist" / "mcp-server-http.js"
     
     if not server_path.exists():
         pytest.skip(

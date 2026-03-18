@@ -26,10 +26,7 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
   "mcpServers": {
     "riotplan": {
       "command": "npx",
-      "args": ["-y", "@kjerneverk/riotplan"],
-      "env": {
-        "RIOTPLAN_PLAN_DIRECTORY": "/path/to/plans"
-      }
+      "args": ["-y", "@kjerneverk/riotplan", "riotplan-mcp-http", "--plans-dir", "/path/to/plans"]
     }
   }
 }
@@ -41,10 +38,8 @@ Or if installed globally:
 {
   "mcpServers": {
     "riotplan": {
-      "command": "riotplan-mcp",
-      "env": {
-        "RIOTPLAN_PLAN_DIRECTORY": "/path/to/plans"
-      }
+      "command": "riotplan-mcp-http",
+      "args": ["--plans-dir", "/path/to/plans"]
     }
   }
 }
@@ -536,9 +531,9 @@ riotplan_validate({ path: "./my-plan" })
 
 Check installation:
 ```bash
-which riotplan-mcp
+which riotplan-mcp-http
 # or
-npx @kjerneverk/riotplan riotplan-mcp --help
+npx @kjerneverk/riotplan riotplan-mcp-http --help
 ```
 
 ### Tools Not Available

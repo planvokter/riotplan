@@ -29,7 +29,7 @@ cd /path/to/riotplan
 npm run build
 ```
 
-This creates `dist/mcp-server.js` which the tests will use.
+This creates `dist/mcp-server-http.js` which the tests will use.
 
 ### 2. Set up Python Environment
 

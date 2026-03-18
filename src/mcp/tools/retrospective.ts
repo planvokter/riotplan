@@ -5,11 +5,8 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess, formatTimestamp } from './shared.js';
-import { generateRetrospective } from '../../retrospective/generator.js';
+import { resolveSqlitePlanPath, formatError, createSuccess, formatTimestamp } from './shared.js';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 
 // ============================================================================
 // Generate Retrospective Tool
@@ -20,35 +17,8 @@ async function executeGenerateRetrospective(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = resolveDirectory(args, context);
-
-        if (planPath.endsWith('.plan')) {
-            return await generateRetrospectiveSqlite(planPath, args);
-        }
-
-        const { context: retroContext, prompt } = await generateRetrospective(
-            planPath,
-            {
-                force: args.force || false,
-            }
-        );
-
-        const retrospectiveContent = formatRetrospectiveContent(retroContext, prompt);
-
-        const retrospectivePath = join(planPath, 'retrospective.md');
-        await writeFile(retrospectivePath, retrospectiveContent, 'utf-8');
-
-        return createSuccess(
-            {
-                planId: retroContext.plan.metadata.code,
-                retrospectivePath,
-                reflectionsCount: retroContext.reflections.length,
-                stepsAnalyzed: retroContext.plan.steps.length,
-            },
-            `Retrospective generated at ${retrospectivePath}. ` +
-                `Analyzed ${retroContext.plan.steps.length} steps with ${retroContext.reflections.length} reflections. ` +
-                `\n\n**Note**: For best results, this retrospective should be reviewed and refined with a highest-tier model.`
-        );
+        const planPath = resolveSqlitePlanPath(args, context);
+        return await generateRetrospectiveSqlite(planPath, args);
     } catch (error) {
         return formatError(error);
     }
@@ -67,9 +37,6 @@ async function generateRetrospectiveSqlite(planPath: string, args: any): Promise
             `Use force: true to generate retrospective for incomplete plans.`
         ));
     }
-
-    const filesResult = await provider.getFiles();
-    const files = filesResult.success ? filesResult.data || [] : [];
 
     const stepsResult = await provider.getSteps();
     const steps = stepsResult.success ? stepsResult.data || [] : [];
@@ -138,41 +105,6 @@ async function generateRetrospectiveSqlite(planPath: string, args: any): Promise
             `Analyzed ${steps.length} steps with ${reflections.length} reflections. ` +
             `\n\n**Note**: For best results, this retrospective should be reviewed and refined with a highest-tier model.`
     );
-}
-
-function formatRetrospectiveContent(retroContext: any, prompt: string): string {
-    return `# Retrospective: ${retroContext.plan.metadata.name}
-
-*This retrospective was generated from execution data including ${retroContext.reflections.length} step reflections.*
-
----
-
-## Plan vs Reality
-
-[Retrospective content would be generated here by applying the prompt to a high-tier model]
-
-## What Went Right
-
-[Analysis of successful patterns and approaches]
-
-## What Went Wrong
-
-[Analysis of failed assumptions and friction points]
-
-## What Would You Do Differently
-
-[Concrete recommendations for future plans]
-
----
-
-*Generated: ${new Date().toISOString()}*
-
-<!-- 
-PROMPT USED FOR GENERATION:
-
-${prompt}
--->
-`;
 }
 
 export const generateRetrospectiveTool: McpTool = {

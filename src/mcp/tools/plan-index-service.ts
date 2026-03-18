@@ -4,12 +4,11 @@ import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import Logging from '@fjell/logging';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 import { readProjectBinding, type ProjectBinding } from './project-binding-shared.js';
+import { getPlanCategory, type PlanCategory } from '../../plan/category.js';
 
 const logger = Logging.getLogger('@kjerneverk/riotplan-http').get('plan-index');
 const INDEX_SCHEMA_VERSION = 1;
 const DEFAULT_INDEX_PATH = '.riotplan/plans-index-v1.json';
-
-type PlanCategory = 'active' | 'done' | 'hold';
 
 export interface PlanIndexEntry {
     id: string;
@@ -42,13 +41,6 @@ interface PlanFileMetadata {
 
 function normalizePath(pathValue: string): string {
     return pathValue.replace(/\\/g, '/');
-}
-
-function getPlanCategory(planFile: string): PlanCategory {
-    const segments = normalizePath(planFile).split('/').map((segment) => segment.toLowerCase());
-    if (segments.includes('done')) return 'done';
-    if (segments.includes('hold')) return 'hold';
-    return 'active';
 }
 
 function metadataVersionKey(metadata: PlanFileMetadata): string {

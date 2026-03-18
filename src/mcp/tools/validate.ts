@@ -4,8 +4,7 @@
 
 import { z } from 'zod';
 import type { McpTool, ToolResult, ToolExecutionContext } from '../types.js';
-import { resolveDirectory, formatError, createSuccess } from './shared.js';
-import { validatePlan } from '../../plan/validator.js';
+import { resolveSqlitePlanPath, formatError, createSuccess } from './shared.js';
 import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 
 async function executeValidate(
@@ -13,26 +12,8 @@ async function executeValidate(
     context: ToolExecutionContext
 ): Promise<ToolResult> {
     try {
-        const planPath = resolveDirectory(args, context);
-
-        if (planPath.endsWith('.plan')) {
-            return await validateSqlitePlan(planPath, args);
-        }
-        
-        const result = await validatePlan(planPath);
-
-        return createSuccess(
-            {
-                planId: args.planId || 'current',
-                valid: result.valid,
-                errors: result.errors || [],
-                warnings: result.warnings || [],
-                fixable: result.fixable || [],
-            },
-            result.valid
-                ? 'Plan validation passed'
-                : `Plan validation failed with ${result.errors.length} error(s)`
-        );
+        const planPath = resolveSqlitePlanPath(args, context);
+        return await validateSqlitePlan(planPath, args);
     } catch (error) {
         return formatError(error);
     }

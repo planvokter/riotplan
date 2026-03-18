@@ -194,7 +194,7 @@ export {
     type ExecutionOrder,
 } from "./dependencies/index.js";
 
-// Relationship Operations (Cross-Plan Dependencies)
+// Relationship Operations (library-focused; not part of MCP runtime flows)
 export {
     // Parsing
     parseRelationshipsFromContent,

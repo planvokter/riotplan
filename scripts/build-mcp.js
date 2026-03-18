@@ -15,44 +15,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, '..');
 
-async function buildMcpServer() {
-    console.log('Building MCP stdio server...');
-    
-    await build({
-        configFile: false,
-        build: {
-            lib: {
-                entry: resolve(rootDir, 'src/mcp/server.ts'),
-                formats: ['es'],
-                fileName: () => 'mcp-server.js',
-            },
-            outDir: resolve(rootDir, 'dist'),
-            emptyOutDir: false,
-            rollupOptions: {
-                external: [
-                    '@modelcontextprotocol/sdk',
-                    '@modelcontextprotocol/sdk/server/mcp.js',
-                    '@modelcontextprotocol/sdk/server/stdio.js',
-                    '@redaksjon/context',
-                    'zod',
-                    '@utilarium/cardigantime',
-                    '@kjerneverk/execution',
-                    '@kjerneverk/execution-anthropic',
-                    '@kjerneverk/execution-openai',
-                    '@kjerneverk/execution-gemini',
-                    '@kjerneverk/riotprompt',
-                    '@kjerneverk/riotplan-format',
-                    '@kjerneverk/agentic',
-                    'better-sqlite3',
-                    /^node:/,
-                ],
-            },
-        },
-    });
-
-    console.log('MCP stdio server built successfully');
-}
-
 async function buildMcpHttpServer() {
     console.log('Building MCP HTTP server...');
     
@@ -127,7 +89,6 @@ function copyPrompts() {
 
 async function main() {
     try {
-        await buildMcpServer();
         await buildMcpHttpServer();
         copyPrompts();
         console.log('MCP build complete!');
