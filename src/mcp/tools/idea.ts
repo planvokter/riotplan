@@ -704,11 +704,49 @@ ${args.content}
 
 export async function ideaKill(args: z.infer<typeof IdeaKillSchema>): Promise<string> {
     const ideaPath = args.planId || process.cwd();
+
+    if (ideaPath.endsWith(".plan")) {
+        const now = formatTimestamp();
+        const provider = createSqliteProvider(ideaPath);
+        const currentIdea = await readTypedFileFromSqlite(ideaPath, "idea");
+        if (currentIdea) {
+            const killedNote = `\n**Killed**: ${now}\n**Reason**: ${args.reason}\n`;
+            const statusSection = "## Status";
+            let updated = currentIdea.content;
+            const statusIndex = updated.indexOf(statusSection);
+            if (statusIndex !== -1) {
+                const nextSectionIndex = updated.indexOf("\n## ", statusIndex + statusSection.length);
+                const insertPoint = nextSectionIndex === -1 ? updated.length : nextSectionIndex;
+                updated = updated.slice(0, insertPoint) + killedNote + updated.slice(insertPoint);
+            } else {
+                updated = updated.trimEnd() + `\n\n${statusSection}\n${killedNote}`;
+            }
+            await provider.saveFile({
+                type: "idea",
+                filename: currentIdea.filename || "IDEA.md",
+                content: updated,
+                createdAt: currentIdea.createdAt || now,
+                updatedAt: now,
+            });
+        }
+        const metadataResult = await provider.getMetadata();
+        if (metadataResult.success && metadataResult.data) {
+            await provider.updateMetadata({ ...metadataResult.data, stage: "cancelled", updatedAt: now });
+        }
+        await provider.addTimelineEvent({
+            id: randomUUID(),
+            timestamp: now,
+            type: "idea_killed" as any,
+            data: { reason: args.reason },
+        });
+        await provider.close();
+        return `✅ Idea killed: ${args.reason}`;
+    }
+
     const ideaFile = join(ideaPath, "IDEA.md");
   
     let content = await readFile(ideaFile, "utf-8");
   
-    // Add killed status
     const statusSection = "## Status";
     const statusIndex = content.indexOf(statusSection);
   
@@ -722,7 +760,6 @@ export async function ideaKill(args: z.infer<typeof IdeaKillSchema>): Promise<st
         await writeFile(ideaFile, content, "utf-8");
     }
   
-    // Log event
     await logEvent(ideaPath, {
         timestamp: formatTimestamp(),
         type: 'idea_killed',
