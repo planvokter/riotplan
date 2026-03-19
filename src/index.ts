@@ -1,12 +1,7 @@
 /**
  * RiotPlan - Framework for long-lived, stateful AI workflows
  *
- * A plan is a structured way to manage multi-step AI-assisted tasks that:
- * - Span multiple sessions/days
- * - Have persistent state (STATUS.md)
- * - Are organized into numbered steps
- * - Can be interrupted and resumed
- * - Track progress with checkboxes and statuses
+ * Plans are SQLite .plan files managed through riotplan-format.
  */
 
 // ===== EXPORTS =====
@@ -15,25 +10,19 @@
 export type {
     TaskStatus,
     Priority,
-    // Feedback types
     FeedbackPlatform,
     FeedbackParticipant,
     FeedbackContext,
     FeedbackRecord,
-    // Evidence types
     EvidenceType,
     EvidenceRecord,
-    // Revision/History types
     PlanRevision,
     PlanMilestone,
     PlanHistory,
-    // Context types
     ContextId,
     PlanContextDefinition,
-    // Cross-plan relationship types
     RelationshipType,
     PlanRelationship,
-    // Plan structure types
     PlanStep,
     PlanPhase,
     Blocker,
@@ -54,31 +43,6 @@ export { PLAN_CONVENTIONS } from "./types.js";
 
 // Plan Operations
 export { loadPlan, type LoadPlanOptions } from "./plan/loader.js";
-export {
-    createPlan,
-    type CreatePlanConfig,
-    type CreatePlanResult,
-} from "./plan/creator.js";
-
-export {
-    validatePlan,
-    type ValidationResult,
-    type ValidationError,
-    type ValidationWarning,
-    type ValidationInfo,
-    type FixableIssue,
-    type ValidateOptions,
-} from "./plan/validator.js";
-
-// Prompt Storage
-export {
-    saveInitialPrompt,
-    saveElaborationPrompt,
-    saveAmendmentPrompt,
-    loadElaborationPrompts,
-    loadAmendmentPrompts,
-    type SavedPrompt,
-} from "./plan/prompts.js";
 
 // Analysis Operations
 export {
@@ -90,15 +54,6 @@ export {
     type AnalysisMetadata,
     type CreateAnalysisOptions,
 } from "./analysis/index.js";
-
-// Feedback Operations
-export {
-    createFeedback,
-    listFeedback,
-    getFeedback,
-    type CreateFeedbackOptions,
-    type CreateFeedbackResult,
-} from "./feedback/index.js";
 
 // Status Operations
 export {
@@ -296,6 +251,7 @@ export {
     listTemplates,
     getTemplate,
     registerTemplate,
+    applyTemplate,
     listTemplatesByCategory,
     searchTemplatesByTag,
     BasicTemplate,
@@ -306,20 +262,8 @@ export {
     type PlanTemplate,
     type TemplateStep,
     type ApplyTemplateResult,
+    type ApplyTemplateOptions,
 } from "@kjerneverk/riotplan-templates";
-export type { ApplyTemplateOptions } from "@kjerneverk/riotplan-templates";
-
-import { applyTemplate as _applyTemplate, type ApplyTemplateOptions as _ApplyOpts } from "@kjerneverk/riotplan-templates";
-import { createPlan } from "./plan/creator.js";
-
-/**
- * Backward-compatible applyTemplate that auto-injects createPlan.
- * The upstream @kjerneverk/riotplan-templates version requires createPlan
- * to be passed explicitly to avoid a circular dependency.
- */
-export async function applyTemplate(options: Omit<_ApplyOpts, 'createPlan'> & { createPlan?: _ApplyOpts['createPlan'] }) {
-    return _applyTemplate({ ...options, createPlan: options.createPlan ?? createPlan });
-}
 
 // Verification (re-exported from @kjerneverk/riotplan-verify)
 export type {

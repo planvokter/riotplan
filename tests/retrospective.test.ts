@@ -3,17 +3,17 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { Plan } from "../src/types.js";
 import {
     generateRetrospective,
     generateRetrospectiveMarkdown,
     createRetrospective,
 } from "../src/retrospective/index.js";
+import { readPlanDoc } from "../src/artifacts/operations.js";
+import { createTestPlan } from "./helpers/create-test-plan.js";
 
-// Mock plan for testing
 const createMockPlan = (overrides?: Partial<Plan>): Plan => ({
     metadata: {
         code: "test-plan",
@@ -81,7 +81,6 @@ describe("retrospective", () => {
             const plan = createMockPlan();
             const retro = generateRetrospective(plan);
 
-            // 8 hours in milliseconds
             expect(retro.duration).toBe(8 * 60 * 60 * 1000);
         });
 
@@ -97,7 +96,6 @@ describe("retrospective", () => {
             const plan = createMockPlan();
             const retro = generateRetrospective(plan);
 
-            // Should note skipped steps
             expect(retro.whatCouldImprove.length).toBeGreaterThan(0);
             expect(retro.whatCouldImprove[0]).toContain("skipped");
         });
@@ -285,32 +283,38 @@ describe("retrospective", () => {
     });
 
     describe("createRetrospective", () => {
-        let testDir: string;
+        let planPath: string;
 
         beforeEach(async () => {
-            testDir = await mkdtemp(join(tmpdir(), "riotplan-retro-test-"));
+            planPath = await createTestPlan({
+                id: "retro-test",
+                name: "Test Plan",
+                steps: [],
+            });
         });
 
         afterEach(async () => {
-            await rm(testDir, { recursive: true, force: true });
+            try {
+                await rm(dirname(planPath), { recursive: true, force: true });
+            } catch {}
         });
 
-        it("should create RETROSPECTIVE.md file", async () => {
+        it("should create RETROSPECTIVE.md in SQLite", async () => {
             const plan = createMockPlan({
                 metadata: {
                     code: "test-plan",
                     name: "Test Plan",
-                    path: testDir,
+                    path: planPath,
                 },
             });
 
-            const path = await createRetrospective(plan);
+            const result = await createRetrospective(plan);
 
-            expect(path).toBe(join(testDir, "RETROSPECTIVE.md"));
+            expect(result).toBe("RETROSPECTIVE.md");
 
-            const content = await readFile(path, "utf-8");
-            expect(content).toContain("# Retrospective: Test Plan");
+            const doc = await readPlanDoc(planPath, "other", "RETROSPECTIVE.md");
+            expect(doc).not.toBeNull();
+            expect(doc!.content).toContain("# Retrospective: Test Plan");
         });
     });
 });
-

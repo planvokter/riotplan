@@ -1,4 +1,0 @@
-# Setup
-
-Initial setup step.
-

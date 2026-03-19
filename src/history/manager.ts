@@ -1,37 +1,21 @@
 /**
  * History Manager
  *
- * Manage plan history storage. Supports both directory-based plans
- * (.history/HISTORY.json) and SQLite .plan files.
+ * Manage plan history storage via SQLite .plan files.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
 import type { PlanHistory } from "../types.js";
 import { createSqliteProvider } from "@kjerneverk/riotplan-format";
 
-/**
- * History manager interface
- */
+const HISTORY_FILE = ".history/HISTORY.json";
+
 export interface HistoryManager {
-  /** History data */
   history: PlanHistory;
-
-  /** Path to history file or .plan file */
   path: string;
-
-  /** Save history to disk */
   save(): Promise<void>;
-
-  /** Reload history from disk */
   reload(): Promise<void>;
 }
 
-const HISTORY_FILE = ".history/HISTORY.json";
-
-/**
- * Initialize a new history for a plan
- */
 export function initHistory(initialVersion = "0.1"): PlanHistory {
     return {
         revisions: [
@@ -46,34 +30,7 @@ export function initHistory(initialVersion = "0.1"): PlanHistory {
     };
 }
 
-/**
- * Load history from a plan directory or .plan SQLite file
- */
 export async function loadHistory(planPath: string): Promise<HistoryManager> {
-    if (planPath.endsWith(".plan")) {
-        return loadHistoryFromSqlite(planPath);
-    }
-
-    return loadHistoryFromDirectory(planPath);
-}
-
-/**
- * Save history for a plan directory or .plan SQLite file
- */
-export async function saveHistory(
-    history: PlanHistory,
-    planPath: string,
-): Promise<void> {
-    if (planPath.endsWith(".plan")) {
-        return saveHistoryToSqlite(history, planPath);
-    }
-
-    return saveHistoryToDirectory(history, planPath);
-}
-
-// ===== SQLITE =====
-
-async function loadHistoryFromSqlite(planPath: string): Promise<HistoryManager> {
     let history: PlanHistory;
 
     const provider = createSqliteProvider(planPath);
@@ -91,10 +48,13 @@ async function loadHistoryFromSqlite(planPath: string): Promise<HistoryManager> 
         await provider.close();
     }
 
-    return createHistoryManager(history, planPath, planPath);
+    return createHistoryManager(history, planPath);
 }
 
-async function saveHistoryToSqlite(history: PlanHistory, planPath: string): Promise<void> {
+export async function saveHistory(
+    history: PlanHistory,
+    planPath: string,
+): Promise<void> {
     const data = serializeHistory(history);
     const now = new Date().toISOString();
     const provider = createSqliteProvider(planPath);
@@ -110,32 +70,6 @@ async function saveHistoryToSqlite(history: PlanHistory, planPath: string): Prom
         await provider.close();
     }
 }
-
-// ===== DIRECTORY =====
-
-async function loadHistoryFromDirectory(planPath: string): Promise<HistoryManager> {
-    const historyPath = join(planPath, HISTORY_FILE);
-    let history: PlanHistory;
-
-    try {
-        const content = await readFile(historyPath, "utf-8");
-        const data = JSON.parse(content);
-        history = parseHistoryDates(data);
-    } catch {
-        history = initHistory();
-    }
-
-    return createHistoryManager(history, historyPath, planPath);
-}
-
-async function saveHistoryToDirectory(history: PlanHistory, planPath: string): Promise<void> {
-    const historyPath = join(planPath, HISTORY_FILE);
-    await mkdir(dirname(historyPath), { recursive: true });
-    const data = serializeHistory(history);
-    await writeFile(historyPath, JSON.stringify(data, null, 2), "utf-8");
-}
-
-// ===== SHARED =====
 
 function parseHistoryDates(data: Record<string, unknown>): PlanHistory {
     const revisions = data.revisions as Array<Record<string, unknown>> | undefined;
@@ -170,19 +104,16 @@ function serializeHistory(history: PlanHistory): Record<string, unknown> {
 
 function createHistoryManager(
     history: PlanHistory,
-    path: string,
-    planPath?: string,
+    planPath: string,
 ): HistoryManager {
-    const resolvedPlanPath = planPath || dirname(dirname(path));
-
     return {
         history,
-        path,
+        path: planPath,
         async save() {
-            await saveHistory(history, resolvedPlanPath);
+            await saveHistory(history, planPath);
         },
         async reload() {
-            const reloaded = await loadHistory(resolvedPlanPath);
+            const reloaded = await loadHistory(planPath);
             Object.assign(history, reloaded.history);
         },
     };

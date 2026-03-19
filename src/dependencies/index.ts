@@ -240,12 +240,15 @@ export async function parseAllDependencies(
     const dependencies = new Map<number, number[]>();
 
     for (const step of plan.steps) {
-        try {
-            const deps = await parseDependenciesFromFile(step.filePath);
-            dependencies.set(step.number, deps);
-        } catch {
-            // If file can't be read, assume no dependencies
-            dependencies.set(step.number, []);
+        if (step.dependencies && step.dependencies.length > 0) {
+            dependencies.set(step.number, step.dependencies);
+        } else {
+            try {
+                const deps = await parseDependenciesFromFile(step.filePath);
+                dependencies.set(step.number, deps);
+            } catch {
+                dependencies.set(step.number, []);
+            }
         }
     }
 

@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { join } from "node:path";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import {
     parseRelationshipsFromContent,
@@ -24,9 +24,9 @@ import {
     updatePlanRelationships,
 } from "../src/relationships/index.js";
 import { loadPlan } from "../src/plan/loader.js";
+import { readPlanDoc } from "../src/artifacts/operations.js";
 import type { Plan, PlanRelationship } from "../src/types.js";
-
-const FIXTURES_DIR = join(__dirname, "fixtures");
+import { createTestPlan } from "./helpers/create-test-plan.js";
 
 describe("Relationships Module", () => {
     describe("parseRelationshipsFromContent", () => {
@@ -181,44 +181,42 @@ Just a plan with no relationships.
     });
 
     describe("relationship management", () => {
-        let testDir: string;
+        let sourcePlanPath: string;
+        let targetPlanPath: string;
         let sourcePlan: Plan;
         let targetPlan: Plan;
 
         beforeEach(async () => {
-            testDir = join(tmpdir(), `riotplan-rel-test-${Date.now()}`);
-            await mkdir(testDir, { recursive: true });
+            sourcePlanPath = await createTestPlan({
+                id: "source-plan",
+                name: "Source Plan",
+                steps: [
+                    { number: 1, code: "step-1", title: "First", status: "pending" },
+                ],
+                files: [
+                    { type: "summary", filename: "SUMMARY.md", content: "# Source Plan\n\nThe source." },
+                ],
+            });
 
-            // Create source plan
-            const sourcePath = join(testDir, "source-plan");
-            await mkdir(join(sourcePath, "plan"), { recursive: true });
-            await writeFile(
-                join(sourcePath, "SUMMARY.md"),
-                "# Source Plan\n\nThe source."
-            );
-            await writeFile(
-                join(sourcePath, "plan", "01-step.md"),
-                "# Step 01: First\n\n## Objective\n\nDo something."
-            );
-            sourcePlan = await loadPlan(sourcePath);
+            targetPlanPath = await createTestPlan({
+                id: "target-plan",
+                name: "Target Plan",
+                steps: [
+                    { number: 1, code: "step-1", title: "First", status: "pending" },
+                ],
+                files: [
+                    { type: "summary", filename: "SUMMARY.md", content: "# Target Plan\n\nThe target." },
+                ],
+            });
 
-            // Create target plan
-            const targetPath = join(testDir, "target-plan");
-            await mkdir(join(targetPath, "plan"), { recursive: true });
-            await writeFile(
-                join(targetPath, "SUMMARY.md"),
-                "# Target Plan\n\nThe target."
-            );
-            await writeFile(
-                join(targetPath, "plan", "01-step.md"),
-                "# Step 01: First\n\n## Objective\n\nDo something."
-            );
-            targetPlan = await loadPlan(targetPath);
+            sourcePlan = await loadPlan(sourcePlanPath);
+            targetPlan = await loadPlan(targetPlanPath);
         });
 
         afterEach(async () => {
             try {
-                await rm(testDir, { recursive: true });
+                await rm(dirname(sourcePlanPath), { recursive: true });
+                await rm(dirname(targetPlanPath), { recursive: true });
             } catch {
                 // Ignore cleanup errors
             }
@@ -227,12 +225,12 @@ Just a plan with no relationships.
         it("should add a relationship", async () => {
             const result = await addRelationship(sourcePlan, {
                 type: "blocks",
-                targetPath: "../target-plan",
+                targetPath: targetPlanPath,
                 reason: "Source blocks target",
             });
 
             expect(result.relationship.type).toBe("blocks");
-            expect(result.relationship.planPath).toBe("../target-plan");
+            expect(result.relationship.planPath).toBe(targetPlanPath);
             expect(result.relationship.reason).toBe("Source blocks target");
             expect(result.targetValid).toBe(true);
             expect(result.targetPlan?.code).toBe("target-plan");
@@ -241,7 +239,7 @@ Just a plan with no relationships.
         it("should handle invalid target path", async () => {
             const result = await addRelationship(sourcePlan, {
                 type: "blocks",
-                targetPath: "../non-existent-plan",
+                targetPath: "/non-existent-plan.plan",
             });
 
             expect(result.targetValid).toBe(false);
@@ -251,10 +249,10 @@ Just a plan with no relationships.
         it("should remove a relationship", async () => {
             await addRelationship(sourcePlan, {
                 type: "blocks",
-                targetPath: "../target-plan",
+                targetPath: targetPlanPath,
             });
 
-            const removed = removeRelationship(sourcePlan, "../target-plan");
+            const removed = removeRelationship(sourcePlan, targetPlanPath);
             expect(removed).toHaveLength(1);
             expect(sourcePlan.relationships).toHaveLength(0);
         });
@@ -262,16 +260,16 @@ Just a plan with no relationships.
         it("should remove relationship by type", async () => {
             await addRelationship(sourcePlan, {
                 type: "blocks",
-                targetPath: "../target-plan",
+                targetPath: targetPlanPath,
             });
             await addRelationship(sourcePlan, {
                 type: "related",
-                targetPath: "../target-plan",
+                targetPath: targetPlanPath,
             });
 
             const removed = removeRelationship(
                 sourcePlan,
-                "../target-plan",
+                targetPlanPath,
                 "blocks"
             );
             expect(removed).toHaveLength(1);
@@ -296,49 +294,47 @@ Just a plan with no relationships.
     });
 
     describe("validation", () => {
-        let testDir: string;
+        let sourcePlanPath: string;
+        let targetPlanPath: string;
 
         beforeEach(async () => {
-            testDir = join(tmpdir(), `riotplan-rel-val-${Date.now()}`);
-            await mkdir(testDir, { recursive: true });
+            sourcePlanPath = await createTestPlan({
+                id: "source",
+                name: "Source",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step", status: "pending" },
+                ],
+                files: [
+                    { type: "summary", filename: "SUMMARY.md", content: "# Source\n\nSource plan." },
+                ],
+            });
+
+            targetPlanPath = await createTestPlan({
+                id: "target",
+                name: "Target",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step", status: "pending" },
+                ],
+                files: [
+                    { type: "summary", filename: "SUMMARY.md", content: "# Target\n\nTarget plan." },
+                ],
+            });
         });
 
         afterEach(async () => {
             try {
-                await rm(testDir, { recursive: true });
+                await rm(dirname(sourcePlanPath), { recursive: true });
+                await rm(dirname(targetPlanPath), { recursive: true });
             } catch {
                 // Ignore cleanup errors
             }
         });
 
         it("should validate relationships with valid targets", async () => {
-            // Create source and target plans
-            const sourcePath = join(testDir, "source");
-            const targetPath = join(testDir, "target");
-
-            await mkdir(join(sourcePath, "plan"), { recursive: true });
-            await mkdir(join(targetPath, "plan"), { recursive: true });
-            await writeFile(
-                join(sourcePath, "SUMMARY.md"),
-                "# Source\n\nSource plan."
-            );
-            await writeFile(
-                join(sourcePath, "plan", "01-step.md"),
-                "# Step 01: Step\n\n## Objective\n\nTest."
-            );
-            await writeFile(
-                join(targetPath, "SUMMARY.md"),
-                "# Target\n\nTarget plan."
-            );
-            await writeFile(
-                join(targetPath, "plan", "01-step.md"),
-                "# Step 01: Step\n\n## Objective\n\nTest."
-            );
-
-            const plan = await loadPlan(sourcePath);
+            const plan = await loadPlan(sourcePlanPath);
             await addRelationship(plan, {
                 type: "related",
-                targetPath: "../target",
+                targetPath: targetPlanPath,
             });
 
             const result = await validateRelationships(plan);
@@ -347,21 +343,10 @@ Just a plan with no relationships.
         });
 
         it("should detect invalid relationship targets", async () => {
-            const sourcePath = join(testDir, "source");
-            await mkdir(join(sourcePath, "plan"), { recursive: true });
-            await writeFile(
-                join(sourcePath, "SUMMARY.md"),
-                "# Source\n\nSource plan."
-            );
-            await writeFile(
-                join(sourcePath, "plan", "01-step.md"),
-                "# Step 01: Step\n\n## Objective\n\nTest."
-            );
-
-            const plan = await loadPlan(sourcePath);
+            const plan = await loadPlan(sourcePlanPath);
             await addRelationship(plan, {
                 type: "blocks",
-                targetPath: "../non-existent",
+                targetPath: "/non-existent.plan",
             });
 
             const result = await validateRelationships(plan);
@@ -374,7 +359,7 @@ Just a plan with no relationships.
     describe("query functions", () => {
         it("should get relationships by type", () => {
             const plan: Plan = {
-                metadata: { code: "test", name: "Test", path: "/test" },
+                metadata: { code: "test", name: "Test", path: "/test.plan" },
                 files: { steps: [], subdirectories: [] },
                 steps: [],
                 state: {
@@ -385,21 +370,9 @@ Just a plan with no relationships.
                     progress: 0,
                 },
                 relationships: [
-                    {
-                        type: "blocks",
-                        planPath: "../a",
-                        createdAt: new Date(),
-                    },
-                    {
-                        type: "blocks",
-                        planPath: "../b",
-                        createdAt: new Date(),
-                    },
-                    {
-                        type: "related",
-                        planPath: "../c",
-                        createdAt: new Date(),
-                    },
+                    { type: "blocks", planPath: "../a", createdAt: new Date() },
+                    { type: "blocks", planPath: "../b", createdAt: new Date() },
+                    { type: "related", planPath: "../c", createdAt: new Date() },
                 ],
             };
 
@@ -412,7 +385,7 @@ Just a plan with no relationships.
 
         it("should get blocking/blocked plans", () => {
             const plan: Plan = {
-                metadata: { code: "test", name: "Test", path: "/test" },
+                metadata: { code: "test", name: "Test", path: "/test.plan" },
                 files: { steps: [], subdirectories: [] },
                 steps: [],
                 state: {
@@ -423,16 +396,8 @@ Just a plan with no relationships.
                     progress: 0,
                 },
                 relationships: [
-                    {
-                        type: "blocked-by",
-                        planPath: "../blocker",
-                        createdAt: new Date(),
-                    },
-                    {
-                        type: "blocks",
-                        planPath: "../blocked",
-                        createdAt: new Date(),
-                    },
+                    { type: "blocked-by", planPath: "../blocker", createdAt: new Date() },
+                    { type: "blocks", planPath: "../blocked", createdAt: new Date() },
                 ],
             };
 
@@ -442,7 +407,7 @@ Just a plan with no relationships.
 
         it("should get parent/child plans", () => {
             const plan: Plan = {
-                metadata: { code: "test", name: "Test", path: "/test" },
+                metadata: { code: "test", name: "Test", path: "/test.plan" },
                 files: { steps: [], subdirectories: [] },
                 steps: [],
                 state: {
@@ -453,21 +418,9 @@ Just a plan with no relationships.
                     progress: 0,
                 },
                 relationships: [
-                    {
-                        type: "spawned-from",
-                        planPath: "../parent",
-                        createdAt: new Date(),
-                    },
-                    {
-                        type: "spawned",
-                        planPath: "../child1",
-                        createdAt: new Date(),
-                    },
-                    {
-                        type: "spawned",
-                        planPath: "../child2",
-                        createdAt: new Date(),
-                    },
+                    { type: "spawned-from", planPath: "../parent", createdAt: new Date() },
+                    { type: "spawned", planPath: "../child1", createdAt: new Date() },
+                    { type: "spawned", planPath: "../child2", createdAt: new Date() },
                 ],
             };
 
@@ -477,7 +430,7 @@ Just a plan with no relationships.
 
         it("should return null for no parent", () => {
             const plan: Plan = {
-                metadata: { code: "test", name: "Test", path: "/test" },
+                metadata: { code: "test", name: "Test", path: "/test.plan" },
                 files: { steps: [], subdirectories: [] },
                 steps: [],
                 state: {
@@ -494,7 +447,7 @@ Just a plan with no relationships.
 
         it("should return related plans", () => {
             const plan: Plan = {
-                metadata: { code: "test", name: "Test", path: "/test" },
+                metadata: { code: "test", name: "Test", path: "/test.plan" },
                 files: { steps: [], subdirectories: [] },
                 steps: [],
                 state: {
@@ -505,21 +458,9 @@ Just a plan with no relationships.
                     progress: 0,
                 },
                 relationships: [
-                    {
-                        type: "related",
-                        planPath: "../alpha",
-                        createdAt: new Date(),
-                    },
-                    {
-                        type: "blocks",
-                        planPath: "../beta",
-                        createdAt: new Date(),
-                    },
-                    {
-                        type: "related",
-                        planPath: "../gamma",
-                        createdAt: new Date(),
-                    },
+                    { type: "related", planPath: "../alpha", createdAt: new Date() },
+                    { type: "blocks", planPath: "../beta", createdAt: new Date() },
+                    { type: "related", planPath: "../gamma", createdAt: new Date() },
                 ],
             };
 
@@ -530,7 +471,7 @@ Just a plan with no relationships.
     describe("generateRelationshipsMarkdown", () => {
         it("should generate markdown for relationships", () => {
             const plan: Plan = {
-                metadata: { code: "test", name: "Test", path: "/test" },
+                metadata: { code: "test", name: "Test", path: "/test.plan" },
                 files: { steps: [], subdirectories: [] },
                 steps: [],
                 state: {
@@ -568,7 +509,7 @@ Just a plan with no relationships.
 
         it("should return empty string for no relationships", () => {
             const plan: Plan = {
-                metadata: { code: "test", name: "Test", path: "/test" },
+                metadata: { code: "test", name: "Test", path: "/test.plan" },
                 files: { steps: [], subdirectories: [] },
                 steps: [],
                 state: {
@@ -585,34 +526,43 @@ Just a plan with no relationships.
     });
 
     describe("parseRelationshipsFromPlan", () => {
-        it("should parse relationships from plan fixture", async () => {
-            // Use valid-plan fixture and check it returns empty (no relationships defined)
-            const rels = await parseRelationshipsFromPlan(
-                join(FIXTURES_DIR, "valid-plan")
-            );
+        it("should parse relationships from plan", async () => {
+            const planPath = await createTestPlan({
+                id: "valid-plan",
+                name: "Valid Plan",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", status: "pending" },
+                ],
+                files: [
+                    { type: "summary", filename: "SUMMARY.md", content: "# Valid Plan\n\nA valid plan." },
+                ],
+            });
+
+            const rels = await parseRelationshipsFromPlan(planPath);
             expect(Array.isArray(rels)).toBe(true);
+
+            await rm(dirname(planPath), { recursive: true }).catch(() => {});
         });
     });
 
     describe("updatePlanRelationships", () => {
-        let testDir: string;
-
-        beforeEach(async () => {
-            testDir = join(tmpdir(), `riotplan-rel-update-${Date.now()}`);
-            await mkdir(testDir, { recursive: true });
-        });
+        let planPath: string;
 
         afterEach(async () => {
             try {
-                await rm(testDir, { recursive: true });
+                await rm(dirname(planPath), { recursive: true });
             } catch {
                 // Ignore cleanup errors
             }
         });
 
         it("creates SUMMARY.md when missing and appends relationships", async () => {
-            const planPath = join(testDir, "no-summary-plan");
-            await mkdir(planPath, { recursive: true });
+            planPath = await createTestPlan({
+                id: "no-summary-plan",
+                name: "No Summary Plan",
+                description: "Generated description",
+                steps: [],
+            });
 
             const plan: Plan = {
                 metadata: {
@@ -641,18 +591,23 @@ Just a plan with no relationships.
             };
 
             await updatePlanRelationships(plan);
-            const content = await readFile(join(planPath, "SUMMARY.md"), "utf-8");
-            expect(content).toContain("# No Summary Plan");
-            expect(content).toContain("## Related Plans");
-            expect(content).toContain("../other-plan");
+            const doc = await readPlanDoc(planPath, "summary", "SUMMARY.md");
+            expect(doc).not.toBeNull();
+            expect(doc!.content).toContain("# No Summary Plan");
+            expect(doc!.content).toContain("## Related Plans");
+            expect(doc!.content).toContain("../other-plan");
         });
 
         it("replaces existing Related Plans section without touching other sections", async () => {
-            const planPath = join(testDir, "with-summary-plan");
-            await mkdir(planPath, { recursive: true });
-            await writeFile(
-                join(planPath, "SUMMARY.md"),
-                `# Existing Plan
+            planPath = await createTestPlan({
+                id: "with-summary-plan",
+                name: "Existing Plan",
+                steps: [],
+                files: [
+                    {
+                        type: "summary",
+                        filename: "SUMMARY.md",
+                        content: `# Existing Plan
 
 Intro text.
 
@@ -664,7 +619,9 @@ Intro text.
 
 Keep this section.
 `,
-            );
+                    },
+                ],
+            });
 
             const plan: Plan = {
                 metadata: {
@@ -692,11 +649,11 @@ Keep this section.
             };
 
             await updatePlanRelationships(plan);
-            const content = await readFile(join(planPath, "SUMMARY.md"), "utf-8");
-            expect(content).not.toContain("../old-one");
-            expect(content).toContain("../new-target");
-            expect(content).toContain("## Implementation Notes");
+            const doc = await readPlanDoc(planPath, "summary", "SUMMARY.md");
+            expect(doc).not.toBeNull();
+            expect(doc!.content).not.toContain("../old-one");
+            expect(doc!.content).toContain("../new-target");
+            expect(doc!.content).toContain("## Implementation Notes");
         });
     });
 });
-

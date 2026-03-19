@@ -63,9 +63,8 @@
   },
   "dependencies": {
     "@fjell/logging": "^4.4.69",
-    "@kjerneverk/riotplan-ai": "^1.0.0",
     "@kjerneverk/riotplan-catalyst": "^1.0.6",
-    "@kjerneverk/riotplan-cloud": "^1.0.0",
+    "@kjerneverk/riotplan-core": "^1.0.26-dev.0",
     "@kjerneverk/riotplan-format": "^1.0.1",
     "@kjerneverk/riotplan-render": "^1.0.0",
     "@kjerneverk/riotplan-templates": "^1.0.0",

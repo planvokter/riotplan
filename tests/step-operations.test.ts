@@ -4,7 +4,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
-    createPlan,
     loadPlan,
     insertStep,
     removeStep,
@@ -17,34 +16,58 @@ import {
     failStep,
 } from "../src/index.js";
 import type { Plan } from "../src/index.js";
-import { rm, readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
+import { createTestPlan } from "./helpers/create-test-plan.js";
+import { createSqliteProvider } from "@kjerneverk/riotplan-format";
+
+async function getStepContents(planPath: string): Promise<Map<number, string>> {
+    const provider = createSqliteProvider(planPath);
+    try {
+        const result = await provider.getSteps();
+        const map = new Map<number, string>();
+        if (result.success && result.data) {
+            for (const s of result.data) {
+                map.set(s.number, s.content);
+            }
+        }
+        return map;
+    } finally {
+        await provider.close();
+    }
+}
+
+async function getStepCodes(planPath: string): Promise<string[]> {
+    const provider = createSqliteProvider(planPath);
+    try {
+        const result = await provider.getSteps();
+        if (!result.success || !result.data) return [];
+        return result.data.sort((a, b) => a.number - b.number).map(s => `${String(s.number).padStart(2, "0")}-${s.code}.md`);
+    } finally {
+        await provider.close();
+    }
+}
 
 describe("Step Operations", () => {
-    let testDir: string;
     let planPath: string;
     let plan: Plan;
 
     beforeEach(async () => {
-        testDir = join(tmpdir(), `riotplan-steps-test-${Date.now()}`);
-        const result = await createPlan({
-            code: "test-plan",
+        planPath = await createTestPlan({
+            id: "test-plan",
             name: "Test Plan",
-            basePath: testDir,
             steps: [
-                { title: "First Step" },
-                { title: "Second Step" },
-                { title: "Third Step" },
+                { number: 1, code: "first-step", title: "First Step", status: "pending" },
+                { number: 2, code: "second-step", title: "Second Step", status: "pending" },
+                { number: 3, code: "third-step", title: "Third Step", status: "pending" },
             ],
         });
-        planPath = result.path;
         plan = await loadPlan(planPath);
     });
 
     afterEach(async () => {
         try {
-            await rm(testDir, { recursive: true });
+            await rm(dirname(planPath), { recursive: true });
         } catch {
             // Ignore cleanup errors
         }
@@ -61,9 +84,7 @@ describe("Step Operations", () => {
             expect(result.step.title).toBe("New First");
             expect(result.createdFile).toContain("01-new-first.md");
 
-            // Verify files
-            const planDir = join(planPath, "plan");
-            const files = await readdir(planDir);
+            const files = await getStepCodes(planPath);
             expect(files).toContain("01-new-first.md");
             expect(files).toContain("02-first-step.md");
             expect(files).toContain("03-second-step.md");
@@ -79,8 +100,7 @@ describe("Step Operations", () => {
             expect(result.step.number).toBe(2);
             expect(result.renamedFiles.length).toBeGreaterThan(0);
 
-            const planDir = join(planPath, "plan");
-            const files = await readdir(planDir);
+            const files = await getStepCodes(planPath);
             expect(files).toContain("01-first-step.md");
             expect(files).toContain("02-new-middle.md");
             expect(files).toContain("03-second-step.md");
@@ -95,8 +115,7 @@ describe("Step Operations", () => {
             expect(result.step.number).toBe(4);
             expect(result.renamedFiles.length).toBe(0);
 
-            const planDir = join(planPath, "plan");
-            const files = await readdir(planDir);
+            const files = await getStepCodes(planPath);
             expect(files).toContain("04-appended-step.md");
         });
 
@@ -108,8 +127,7 @@ describe("Step Operations", () => {
 
             expect(result.step.number).toBe(3);
 
-            const planDir = join(planPath, "plan");
-            const files = await readdir(planDir);
+            const files = await getStepCodes(planPath);
             expect(files).toContain("03-after-second.md");
             expect(files).toContain("04-third-step.md");
         });
@@ -121,7 +139,8 @@ describe("Step Operations", () => {
                 position: 1,
             });
 
-            const content = await readFile(result.createdFile, "utf-8");
+            const contents = await getStepContents(planPath);
+            const content = contents.get(1)!;
             expect(content).toContain("# Step 01: Documented Step");
             expect(content).toContain("This step does important things");
         });
@@ -141,11 +160,8 @@ describe("Step Operations", () => {
                 position: 1,
             });
 
-            const planDir = join(planPath, "plan");
-            const content = await readFile(
-                join(planDir, "02-first-step.md"),
-                "utf-8"
-            );
+            const contents = await getStepContents(planPath);
+            const content = contents.get(2)!;
             expect(content).toContain("# Step 02:");
         });
 
@@ -182,8 +198,7 @@ describe("Step Operations", () => {
             expect(result.removedStep.title).toContain("Second Step");
             expect(result.deletedFile).toContain("02-second-step.md");
 
-            const planDir = join(planPath, "plan");
-            const files = await readdir(planDir);
+            const files = await getStepCodes(planPath);
             expect(files.length).toBe(2);
             expect(files).toContain("01-first-step.md");
             expect(files).toContain("02-third-step.md");
@@ -192,8 +207,7 @@ describe("Step Operations", () => {
         it("should remove first step", async () => {
             await removeStep(plan, 1);
 
-            const planDir = join(planPath, "plan");
-            const files = await readdir(planDir);
+            const files = await getStepCodes(planPath);
             expect(files.length).toBe(2);
             expect(files).toContain("01-second-step.md");
             expect(files).toContain("02-third-step.md");
@@ -204,8 +218,7 @@ describe("Step Operations", () => {
 
             expect(result.renamedFiles.length).toBe(0);
 
-            const planDir = join(planPath, "plan");
-            const files = await readdir(planDir);
+            const files = await getStepCodes(planPath);
             expect(files.length).toBe(2);
             expect(files).toContain("01-first-step.md");
             expect(files).toContain("02-second-step.md");
@@ -220,11 +233,8 @@ describe("Step Operations", () => {
         it("should update step numbers in remaining files", async () => {
             await removeStep(plan, 1);
 
-            const planDir = join(planPath, "plan");
-            const content = await readFile(
-                join(planDir, "01-second-step.md"),
-                "utf-8"
-            );
+            const contents = await getStepContents(planPath);
+            const content = contents.get(1)!;
             expect(content).toContain("# Step 01:");
         });
     });
@@ -277,11 +287,8 @@ describe("Step Operations", () => {
         it("should update step numbers in file content", async () => {
             await moveStep(plan, 1, 3);
 
-            const planDir = join(planPath, "plan");
-            const content = await readFile(
-                join(planDir, "03-first-step.md"),
-                "utf-8"
-            );
+            const contents = await getStepContents(planPath);
+            const content = contents.get(3)!;
             expect(content).toContain("# Step 03:");
         });
 
@@ -316,9 +323,7 @@ describe("Step Operations", () => {
 
     describe("unblockStep", () => {
         it("should unblock step", () => {
-            // First block it
             const blocked = blockStep(plan, 2, "reason");
-            // Create a plan with the blocked step
             const blockedPlan = {
                 ...plan,
                 steps: plan.steps.map((s) =>
@@ -447,161 +452,87 @@ describe("Step Operations", () => {
 
     describe("plan completion detection", () => {
         it("should detect when all steps are completed", async () => {
-            // Complete all steps
             const step1 = await completeStep(plan, 1);
             const step2 = await completeStep(plan, 2);
             const step3 = await completeStep(plan, 3);
-            
-            // Update plan with completed steps
+
             const completedPlan = {
                 ...plan,
                 steps: [step1, step2, step3]
             };
-            
-            // Check if all steps are completed
+
             const allCompleted = completedPlan.steps.every(
                 s => s.status === 'completed' || s.status === 'skipped'
             );
-            
+
             expect(allCompleted).toBe(true);
         });
 
         it("should not detect completion when steps are pending", async () => {
-            // Complete only first two steps
             const step1 = await completeStep(plan, 1);
             const step2 = await completeStep(plan, 2);
-            
-            // Update plan with partially completed steps
+
             const partialPlan = {
                 ...plan,
                 steps: [step1, step2, plan.steps[2]]
             };
-            
-            // Check if all steps are completed
+
             const allCompleted = partialPlan.steps.every(
                 s => s.status === 'completed' || s.status === 'skipped'
             );
-            
+
             expect(allCompleted).toBe(false);
         });
 
         it("should detect completion with mix of completed and skipped steps", async () => {
-            // Complete first two, skip third
             const step1 = await completeStep(plan, 1);
             const step2 = await completeStep(plan, 2);
             const step3 = skipStep(plan, 3, "Not needed");
-            
-            // Update plan
+
             const mixedPlan = {
                 ...plan,
                 steps: [step1, step2, step3]
             };
-            
-            // Check if all steps are done (completed or skipped)
+
             const allCompleted = mixedPlan.steps.every(
                 s => s.status === 'completed' || s.status === 'skipped'
             );
-            
+
             expect(allCompleted).toBe(true);
         });
 
-        it("should not detect completion when a step is blocked", () => {
-            // Complete first two, block third
-            const step1 = completeStep(plan, 1);
-            const step2 = completeStep(plan, 2);
+        it("should not detect completion when a step is blocked", async () => {
+            const step1 = await completeStep(plan, 1);
+            const step2 = await completeStep(plan, 2);
             const step3 = blockStep(plan, 3, "Waiting on dependency");
-            
-            // Update plan
+
             const blockedPlan = {
                 ...plan,
                 steps: [step1, step2, step3]
             };
-            
-            // Check if all steps are completed
+
             const allCompleted = blockedPlan.steps.every(
                 s => s.status === 'completed' || s.status === 'skipped'
             );
-            
+
             expect(allCompleted).toBe(false);
         });
 
-        it("should not detect completion when a step has failed", () => {
-            // Complete first two, fail third
-            const step1 = completeStep(plan, 1);
-            const step2 = completeStep(plan, 2);
+        it("should not detect completion when a step has failed", async () => {
+            const step1 = await completeStep(plan, 1);
+            const step2 = await completeStep(plan, 2);
             const step3 = failStep(plan, 3, "Tests failed");
-            
-            // Update plan
+
             const failedPlan = {
                 ...plan,
                 steps: [step1, step2, step3]
             };
-            
-            // Check if all steps are completed
+
             const allCompleted = failedPlan.steps.every(
                 s => s.status === 'completed' || s.status === 'skipped'
             );
-            
+
             expect(allCompleted).toBe(false);
         });
     });
-
-    describe("plan/ subdirectory creation", () => {
-        it("should create plan/ subdirectory if it doesn't exist", async () => {
-            // Create a plan directory without plan/ subdirectory
-            const emptyPlanDir = join(tmpdir(), `riotplan-empty-test-${Date.now()}`);
-            const { mkdir, writeFile } = await import("node:fs/promises");
-            await mkdir(emptyPlanDir, { recursive: true });
-            
-            // Create minimal SUMMARY.md
-            await writeFile(
-                join(emptyPlanDir, "SUMMARY.md"),
-                "# Test Plan\n\nTest plan without plan/ subdirectory",
-                "utf-8"
-            );
-
-            // Load the plan (should have no steps initially)
-            const emptyPlan = await loadPlan(emptyPlanDir);
-            expect(emptyPlan.steps.length).toBe(0);
-
-            // Insert a step - should create plan/ subdirectory
-            const result = await insertStep(emptyPlan, {
-                title: "First Step",
-            });
-
-            // Verify file was created in plan/ subdirectory
-            expect(result.createdFile).toContain(join("plan", "01-first-step.md"));
-            
-            // Verify the file exists at the correct location
-            const planSubdir = join(emptyPlanDir, "plan");
-            const files = await readdir(planSubdir);
-            expect(files).toContain("01-first-step.md");
-
-            // Cleanup
-            await rm(emptyPlanDir, { recursive: true });
-        });
-
-        it("should use existing plan/ subdirectory if present", async () => {
-            // This is the normal case - plan/ already exists
-            const planDir = join(planPath, "plan");
-            const files = await readdir(planDir);
-            
-            // Verify initial steps are in plan/ subdirectory
-            expect(files).toContain("01-first-step.md");
-            expect(files).toContain("02-second-step.md");
-            expect(files).toContain("03-third-step.md");
-
-            // Add a new step
-            const result = await insertStep(plan, {
-                title: "Fourth Step",
-            });
-
-            // Verify new step is also in plan/ subdirectory
-            expect(result.createdFile).toContain(join("plan", "04-fourth-step.md"));
-            
-            const updatedFiles = await readdir(planDir);
-            expect(updatedFiles).toContain("04-fourth-step.md");
-        });
-    });
 });
-
