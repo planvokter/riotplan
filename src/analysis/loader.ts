@@ -1,21 +1,50 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Analysis, AnalysisMetadata, ElaborationRecord } from "./types.js";
+import { readPlanDoc } from "../artifacts/operations.js";
 
 /**
- * Load an analysis from disk
+ * Load an analysis from a plan directory or .plan SQLite file
  */
 export async function loadAnalysis(planPath: string): Promise<Analysis | null> {
+    if (planPath.endsWith(".plan")) {
+        return loadAnalysisFromSqlite(planPath);
+    }
+
+    return loadAnalysisFromDirectory(planPath);
+}
+
+async function loadAnalysisFromSqlite(planPath: string): Promise<Analysis | null> {
+    const reqDoc = await readPlanDoc(planPath, "other", "analysis/REQUIREMENTS.md");
+    if (!reqDoc) return null;
+
+    const philDoc = await readPlanDoc(planPath, "other", "analysis/PHILOSOPHY.md");
+
+    const metadata: AnalysisMetadata = {
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        elaborationCount: 0,
+        status: parseAnalysisStatus(reqDoc.content),
+    };
+
+    return {
+        path: planPath,
+        requirements: reqDoc.content,
+        philosophy: philDoc?.content,
+        elaborations: [],
+        metadata,
+    };
+}
+
+async function loadAnalysisFromDirectory(planPath: string): Promise<Analysis | null> {
     const analysisPath = join(planPath, "analysis");
-    
-    // Check if analysis exists
+
     try {
         await stat(analysisPath);
     } catch {
         return null;
     }
-    
-    // Load requirements
+
     let requirements = "";
     try {
         requirements = await readFile(
@@ -25,8 +54,7 @@ export async function loadAnalysis(planPath: string): Promise<Analysis | null> {
     } catch {
         // No requirements file
     }
-    
-    // Load philosophy (optional)
+
     let philosophy: string | undefined;
     try {
         philosophy = await readFile(
@@ -36,18 +64,16 @@ export async function loadAnalysis(planPath: string): Promise<Analysis | null> {
     } catch {
         // No philosophy file
     }
-    
-    // Load elaborations
+
     const elaborations = await loadElaborations(analysisPath);
-    
-    // Build metadata
+
     const metadata: AnalysisMetadata = {
-        createdAt: new Date(), // Could parse from REQUIREMENTS.md
+        createdAt: new Date(),
         updatedAt: new Date(),
         elaborationCount: elaborations.length,
         status: parseAnalysisStatus(requirements),
     };
-    
+
     return {
         path: analysisPath,
         requirements,
@@ -102,6 +128,11 @@ function parseAnalysisStatus(content: string): "draft" | "ready" | "converted" {
  * Check if a plan has an analysis
  */
 export async function hasAnalysis(planPath: string): Promise<boolean> {
+    if (planPath.endsWith(".plan")) {
+        const doc = await readPlanDoc(planPath, "other", "analysis/REQUIREMENTS.md");
+        return doc !== null;
+    }
+
     try {
         await stat(join(planPath, "analysis", "REQUIREMENTS.md"));
         return true;

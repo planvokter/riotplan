@@ -322,7 +322,7 @@ async function scanDirectory(
         return discovered;
     }
 
-    // Recurse into subdirectories
+    // Recurse into subdirectories and discover .plan files
     try {
         const entries = await readdir(dirPath, { withFileTypes: true });
 
@@ -337,6 +337,15 @@ async function scanDirectory(
                     includeHidden,
                     excludeDirs
                 );
+            } else if (entry.isFile() && entry.name.endsWith(".plan")) {
+                const planFilePath = join(dirPath, entry.name);
+                try {
+                    const planEntry = await createPlanEntry(planFilePath);
+                    registerPlan(registry, planEntry);
+                    discovered++;
+                } catch {
+                    // Skip .plan files that can't be loaded
+                }
             }
         }
     } catch {

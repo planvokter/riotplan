@@ -1,7 +1,7 @@
 /**
  * Plan Loader Module
  *
- * Loads plan directories into Plan data structures.
+ * Loads plans from directories or SQLite .plan files into Plan data structures.
  * Discovers and parses all standard files, steps, feedback, and evidence.
  */
 
@@ -22,6 +22,12 @@ import type {
 import { PLAN_CONVENTIONS } from "../types.js";
 import { parseDependenciesFromContent } from "../dependencies/index.js";
 import { readPlanManifestMetadata } from "./manifest.js";
+import { createSqliteProvider } from "@kjerneverk/riotplan-format";
+import type {
+    PlanStep as FormatStep,
+    PlanFile as FormatFile,
+    PlanMetadata as FormatMetadata,
+} from "@kjerneverk/riotplan-format";
 
 // ===== OPTIONS =====
 
@@ -42,9 +48,9 @@ export interface LoadPlanOptions {
 // ===== MAIN EXPORT =====
 
 /**
- * Load a plan from a directory
+ * Load a plan from a directory or .plan SQLite file
  *
- * @param path - Path to the plan directory
+ * @param path - Path to the plan directory or .plan file
  * @param options - Loading options
  * @returns The loaded plan
  *
@@ -59,16 +65,170 @@ export async function loadPlan(
     path: string,
     options: LoadPlanOptions = {}
 ): Promise<Plan> {
+    const planPath = resolve(path);
+
+    if (planPath.endsWith(".plan")) {
+        return loadPlanFromSqlite(planPath, options);
+    }
+
+    return loadPlanFromDirectory(planPath, options);
+}
+
+// ===== SQLITE LOADING =====
+
+async function loadPlanFromSqlite(
+    planPath: string,
+    options: LoadPlanOptions = {}
+): Promise<Plan> {
+    const { parseStatus = true } = options;
+
+    const provider = createSqliteProvider(planPath);
+    try {
+        const [metadataResult, stepsResult, filesResult] = await Promise.all([
+            provider.getMetadata(),
+            provider.getSteps(),
+            provider.getFiles(),
+        ]);
+
+        if (!metadataResult.success || !metadataResult.data) {
+            throw new Error(metadataResult.error || "Failed to read plan metadata");
+        }
+        if (!stepsResult.success) {
+            throw new Error(stepsResult.error || "Failed to read plan steps");
+        }
+        if (!filesResult.success) {
+            throw new Error(filesResult.error || "Failed to read plan files");
+        }
+
+        const fmtMeta = metadataResult.data;
+        const fmtSteps = stepsResult.data || [];
+        const fmtFiles = filesResult.data || [];
+
+        const metadata = mapSqliteMetadata(fmtMeta, planPath);
+        const steps = mapSqliteSteps(fmtSteps, planPath);
+        const files = mapSqliteFiles(fmtFiles, fmtSteps);
+
+        let state: PlanState = {
+            status: "pending",
+            lastUpdatedAt: new Date(),
+            blockers: [],
+            issues: [],
+            progress: 0,
+        };
+
+        if (parseStatus) {
+            const statusFile = fmtFiles.find(
+                (f) => f.type === "status" || f.filename === "STATUS.md"
+            );
+            if (statusFile) {
+                state = parseStatusDocument(statusFile.content, steps);
+            } else {
+                state = derivePlanState(steps);
+            }
+        }
+
+        return { metadata, files, steps, state };
+    } finally {
+        await provider.close();
+    }
+}
+
+function mapSqliteMetadata(fmt: FormatMetadata, planPath: string): PlanMetadata {
+    return {
+        code: fmt.id,
+        name: fmt.name,
+        description: fmt.description,
+        path: planPath,
+    };
+}
+
+function mapSqliteSteps(fmtSteps: FormatStep[], planPath: string): PlanStep[] {
+    return fmtSteps.map((s) => {
+        const stepNum = String(s.number).padStart(2, "0");
+        const filename = `${stepNum}-${s.code}.md`;
+        const dependencies = parseDependenciesFromContent(s.content);
+        return {
+            number: s.number,
+            code: s.code,
+            filename,
+            title: s.title,
+            description: s.description,
+            status: s.status as PlanStep["status"],
+            dependencies: dependencies.length > 0 ? dependencies : undefined,
+            startedAt: s.startedAt ? new Date(s.startedAt) : undefined,
+            completedAt: s.completedAt ? new Date(s.completedAt) : undefined,
+            filePath: join(planPath, "plan", filename),
+        };
+    });
+}
+
+function mapSqliteFiles(fmtFiles: FormatFile[], fmtSteps: FormatStep[]): PlanFiles {
+    const files: PlanFiles = {
+        steps: fmtSteps.map((s) => {
+            const stepNum = String(s.number).padStart(2, "0");
+            return `${stepNum}-${s.code}.md`;
+        }),
+        subdirectories: [],
+    };
+
+    for (const f of fmtFiles) {
+        if (f.filename === "SUMMARY.md" || f.type === "summary") {
+            files.summary = "SUMMARY.md";
+        } else if (f.filename === "STATUS.md" || f.type === "status") {
+            files.status = "STATUS.md";
+        } else if (f.filename === "EXECUTION_PLAN.md" || f.type === "execution_plan") {
+            files.executionPlan = "EXECUTION_PLAN.md";
+        } else if (f.type === "evidence") {
+            files.evidenceDir = files.evidenceDir || "evidence";
+            files.evidenceFiles = files.evidenceFiles || [];
+            files.evidenceFiles.push(f.filename);
+        } else if (f.type === "feedback") {
+            files.feedbackDir = files.feedbackDir || "feedback";
+            files.feedbackFiles = files.feedbackFiles || [];
+            files.feedbackFiles.push(f.filename);
+        }
+    }
+
+    return files;
+}
+
+function derivePlanState(steps: PlanStep[]): PlanState {
+    const completedSteps = steps.filter((s) => s.status === "completed").length;
+    const currentStep = steps.find((s) => s.status === "in_progress");
+    const completedNumbers = steps
+        .filter((s) => s.status === "completed")
+        .map((s) => s.number);
+
+    let status: PlanState["status"] = "pending";
+    if (completedSteps === steps.length && steps.length > 0) {
+        status = "completed";
+    } else if (currentStep || completedSteps > 0) {
+        status = "in_progress";
+    }
+
+    return {
+        status,
+        lastUpdatedAt: new Date(),
+        blockers: [],
+        issues: [],
+        progress: steps.length > 0 ? Math.round((completedSteps / steps.length) * 100) : 0,
+        currentStep: currentStep?.number,
+        lastCompletedStep: completedNumbers.length > 0 ? Math.max(...completedNumbers) : undefined,
+    };
+}
+
+// ===== DIRECTORY LOADING =====
+
+async function loadPlanFromDirectory(
+    planPath: string,
+    options: LoadPlanOptions = {}
+): Promise<Plan> {
     const {
         includeFeedback = true,
         includeEvidence = true,
         parseStatus = true,
     } = options;
 
-    // Resolve to absolute path
-    const planPath = resolve(path);
-
-    // Verify path exists and is directory
     let pathStat;
     try {
         pathStat = await stat(planPath);
@@ -80,17 +240,11 @@ export async function loadPlan(
         throw new Error(`Plan path is not a directory: ${planPath}`);
     }
 
-    // Discover files
     const files = await discoverPlanFiles(planPath);
-
-    // Extract metadata
     const metadata = await extractMetadata(planPath, files);
-
-    // Load steps
     const steps =
         files.steps.length > 0 ? await loadSteps(planPath, files) : [];
 
-    // Initialize state
     let state: PlanState = {
         status: "pending",
         lastUpdatedAt: new Date(),
@@ -99,7 +253,6 @@ export async function loadPlan(
         progress: 0,
     };
 
-    // Parse STATUS.md if present and requested
     if (parseStatus && files.status) {
         const statusContent = await readFile(
             join(planPath, files.status),
@@ -108,13 +261,11 @@ export async function loadPlan(
         state = parseStatusDocument(statusContent, steps);
     }
 
-    // Load feedback if requested
     const feedback =
         includeFeedback && files.feedbackDir
             ? await loadFeedbackRecords(join(planPath, files.feedbackDir))
             : undefined;
 
-    // Load evidence if requested
     const evidence =
         includeEvidence && files.evidenceDir
             ? await loadEvidenceRecords(join(planPath, files.evidenceDir))

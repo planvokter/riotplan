@@ -114,11 +114,11 @@ describe('Retrospective Reference Reader', () => {
                 'utf-8'
             );
 
-            expect(retrospectiveExists(planPath)).toBe(true);
+            await expect(retrospectiveExists(planPath)).resolves.toBe(true);
         });
 
-        it('should return false when retrospective does not exist', () => {
-            expect(retrospectiveExists(planPath)).toBe(false);
+        it('should return false when retrospective does not exist', async () => {
+            await expect(retrospectiveExists(planPath)).resolves.toBe(false);
         });
     });
 

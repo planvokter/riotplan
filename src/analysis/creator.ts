@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { savePlanDoc } from "../artifacts/operations.js";
 
 export interface CreateAnalysisOptions {
     planPath: string;
@@ -8,25 +9,27 @@ export interface CreateAnalysisOptions {
 }
 
 /**
- * Create the analysis directory structure
+ * Create the analysis directory structure (or SQLite entries for .plan files)
  */
 export async function createAnalysisDirectory(
     options: CreateAnalysisOptions
 ): Promise<string> {
     const { planPath, planName, initialPrompt } = options;
-    const analysisPath = join(planPath, "analysis");
-    
-    // Create directories
-    await mkdir(join(analysisPath, "prompts"), { recursive: true });
-    
-    // Create initial REQUIREMENTS.md
     const requirementsContent = generateRequirementsTemplate(planName, initialPrompt);
+
+    if (planPath.endsWith(".plan")) {
+        await savePlanDoc(planPath, "other", "analysis/REQUIREMENTS.md", requirementsContent);
+        return "analysis";
+    }
+
+    const analysisPath = join(planPath, "analysis");
+    await mkdir(join(analysisPath, "prompts"), { recursive: true });
     await writeFile(
         join(analysisPath, "REQUIREMENTS.md"),
         requirementsContent,
         "utf-8"
     );
-    
+
     return analysisPath;
 }
 

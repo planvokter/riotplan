@@ -5,26 +5,10 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "bin": {
-    "riotplan": "./dist/bin.js",
-    "riotplan-mcp-http": "./dist/mcp-server-http.js"
-  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./ai/artifacts": {
-      "types": "./src/ai/artifacts.d.ts",
-      "import": "./src/ai/artifacts.js"
-    },
-    "./ai/generator": {
-      "types": "./src/ai/generator.d.ts",
-      "import": "./src/ai/generator.js"
-    },
-    "./ai/provider-loader": {
-      "types": "./src/ai/provider-loader.d.ts",
-      "import": "./src/ai/provider-loader.js"
     },
     "./config": {
       "types": "./src/config/index.d.ts",
@@ -41,14 +25,6 @@
     "./status/generator": {
       "types": "./src/status/generator.d.ts",
       "import": "./src/status/generator.js"
-    },
-    "./core": {
-      "types": "./src/core/index.d.ts",
-      "import": "./src/core/index.js"
-    },
-    "./cloud/runtime": {
-      "types": "./src/cloud/runtime.d.ts",
-      "import": "./src/cloud/runtime.js"
     }
   },
   "engines": {
@@ -56,16 +32,12 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "vite build && node scripts/build-mcp.js",
+    "build": "vite build",
     "test": "vitest run --coverage",
     "test:coverage": "vitest run --coverage",
-    "test:sampling": "bash scripts/run-sampling-tests.sh",
-    "test:sampling:check": "bash scripts/check-python-env.sh",
     "lint": "eslint src",
-    "precommit": "npm run build && npm run lint && npm run test && npm run test:sampling",
+    "precommit": "npm run build && npm run lint && npm run test",
     "prepublishOnly": "npm run clean && npm run build",
-    "mcp:build": "vite build && node scripts/build-mcp.js",
-    "mcp:inspect": "mcp-inspector npx -y @kjerneverk/riotplan",
     "docs:dev": "cd docs && cp ../README.md public/ && npm install && npm run dev",
     "docs:build": "cd docs && cp ../README.md public/ && npm install && npm run build",
     "docs:preview": "cd docs && npm run preview",
@@ -91,43 +63,25 @@
   },
   "dependencies": {
     "@fjell/logging": "^4.4.69",
-    "@google-cloud/storage": "^7.19.0",
-    "@hono/mcp": "^0.2.3",
-    "@hono/node-server": "^1.19.9",
-    "@kjerneverk/agentic": "^1.0.8",
-    "@kjerneverk/execution": "^1.0.7",
-    "@kjerneverk/execution-anthropic": "^1.0.12",
-    "@kjerneverk/execution-openai": "^1.0.12",
-    "@kjerneverk/execution-sampling": "^1.0.4",
-    "@kjerneverk/riotplan-catalyst": "^1.0.6",
-    "@kjerneverk/riotplan-format": "^1.0.1",
-    "@modelcontextprotocol/sdk": "^1.25.3",
+    "@kjerneverk/riotplan-ai": "file:../riotplan-ai",
+    "@kjerneverk/riotplan-cloud": "file:../riotplan-cloud",
+    "@kjerneverk/riotplan-catalyst": "file:../riotplan-catalyst",
+    "@kjerneverk/riotplan-format": "file:../riotplan-format",
+    "@kjerneverk/riotplan-render": "file:../riotplan-render",
+    "@kjerneverk/riotplan-templates": "file:../riotplan-templates",
+    "@kjerneverk/riotplan-verify": "file:../riotplan-verify",
     "@redaksjon/context": "^0.0.11",
-    "@types/inquirer": "^9.0.9",
     "@utilarium/cardigantime": "^0.0.25",
     "@utilarium/overcontext": "^0.0.8",
     "better-sqlite3": "^12.6.2",
-    "chalk": "^5.4.1",
-    "commander": "^14.0.2",
-    "hono": "^4.11.9",
-    "inquirer": "^13.2.1",
     "js-yaml": "^4.1.1",
-    "marked": "^17.0.1",
     "yaml": "^2.7.1",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@kjerneverk/agentic": "^1.0.8",
-    "@kjerneverk/execution": "^1.0.7",
     "@kjerneverk/riotprompt": "^1.0.15"
   },
   "peerDependenciesMeta": {
-    "@kjerneverk/agentic": {
-      "optional": true
-    },
-    "@kjerneverk/execution": {
-      "optional": true
-    },
     "@kjerneverk/riotprompt": {
       "optional": true
     }

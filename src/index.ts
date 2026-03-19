@@ -7,20 +7,6 @@
  * - Are organized into numbered steps
  * - Can be interrupted and resumed
  * - Track progress with checkboxes and statuses
- *
- * @example Plan directory structure:
- * ```
- * my-plan/
- * ├── my-plan-prompt.md     # Meta-prompt (prompt-of-prompts)
- * ├── SUMMARY.md            # Overview of the approach
- * ├── EXECUTION_PLAN.md     # Step-by-step strategy
- * ├── STATUS.md             # Current state (auto-updated)
- * ├── plan/                 # Step files (optional subdirectory)
- * │   ├── 01-first-step.md
- * │   ├── 02-second-step.md
- * │   └── ...
- * └── analysis/             # Analysis output (optional)
- * ```
  */
 
 // ===== EXPORTS =====
@@ -157,6 +143,24 @@ export {
     type StepReflection,
 } from "./reflections/reader.js";
 
+// Plan Artifact Operations
+export {
+    readPlanDoc,
+    savePlanDoc,
+    readIdeaDoc,
+    saveIdeaDoc,
+    readShapingDoc,
+    saveShapingDoc,
+    readStatusDoc,
+    saveStatusDoc,
+    readEvidenceRecords,
+    readTimelineEvents,
+    readPlanIdentity,
+    type PlanDoc,
+    type EvidenceEntry,
+    type TimelineEventEntry,
+} from "./artifacts/operations.js";
+
 // Retrospective Operations
 export {
     loadRetrospectiveAsContext,
@@ -166,25 +170,18 @@ export {
 
 // Dependency Operations
 export {
-    // Parsing
     parseDependenciesFromContent,
     parseDependenciesFromFile,
     parseAllDependencies,
-    // Graph Building
     buildDependencyGraph,
     buildDependencyGraphFromMap,
-    // Validation
     validateDependencies,
-    // Critical Path
     findCriticalPath,
-    // Execution Order
     computeExecutionOrder,
-    // Helpers
     getReadySteps,
     getBlockedSteps,
     getDependencyChain,
     updateStepDependencies,
-    // Types
     type StepDependency,
     type DependencyGraph,
     type DependencyValidation,
@@ -194,18 +191,14 @@ export {
     type ExecutionOrder,
 } from "./dependencies/index.js";
 
-// Relationship Operations (library-focused; not part of MCP runtime flows)
+// Relationship Operations
 export {
-    // Parsing
     parseRelationshipsFromContent,
     parseRelationshipsFromPlan,
-    // Management
     addRelationship,
     removeRelationship,
     createBidirectionalRelationship,
-    // Validation
     validateRelationships,
-    // Queries
     getRelationshipsByType,
     getInverseRelationType,
     getBlockingPlans,
@@ -213,10 +206,8 @@ export {
     getParentPlan,
     getChildPlans,
     getRelatedPlans,
-    // Serialization
     generateRelationshipsMarkdown,
     updatePlanRelationships,
-    // Types
     type AddRelationshipOptions,
     type AddRelationshipResult,
     type RelationshipValidation,
@@ -226,26 +217,20 @@ export {
 
 // Plan Registry Operations
 export {
-    // Registry Management
     createRegistry,
     loadRegistry,
     saveRegistry,
     getDefaultRegistryPath,
-    // Plan Discovery
     scanForPlans,
-    // Plan Registration
     registerPlan,
     unregisterPlan,
     refreshPlan,
     refreshAllPlans,
-    // Search and Query
     searchPlans,
     getPlanByCode,
     getPlanByPath,
     getPlansByStatus,
-    // Statistics
     getRegistryStats,
-    // Types
     type RegisteredPlan,
     type PlanRegistry,
     type RegistryOptions,
@@ -292,7 +277,7 @@ export {
     type RollbackResult,
 } from "./history/milestones.js";
 
-// Renderer Operations
+// Renderer Operations (re-exported from @kjerneverk/riotplan-render)
 export {
     renderPlan,
     renderToMarkdown,
@@ -304,83 +289,39 @@ export {
     type MarkdownRenderOptions,
     type JsonRenderOptions,
     type HtmlRenderOptions,
-} from "./renderer/index.js";
+} from "@kjerneverk/riotplan-render";
 
-// Template Operations
+// Template Operations (re-exported from @kjerneverk/riotplan-templates)
 export {
     listTemplates,
     getTemplate,
     registerTemplate,
     listTemplatesByCategory,
     searchTemplatesByTag,
-    type PlanTemplate,
-    type TemplateStep,
-} from "./templates/registry.js";
-
-export {
-    applyTemplate,
-    type ApplyTemplateOptions,
-    type ApplyTemplateResult,
-} from "./templates/apply.js";
-
-export {
     BasicTemplate,
     FeatureTemplate,
     RefactoringTemplate,
     MigrationTemplate,
     SprintTemplate,
-} from "./templates/templates/index.js";
+    type PlanTemplate,
+    type TemplateStep,
+    type ApplyTemplateResult,
+} from "@kjerneverk/riotplan-templates";
+export type { ApplyTemplateOptions } from "@kjerneverk/riotplan-templates";
 
-// Execution Operations
-export {
-    createExecutor,
-    executeStep as executeStepWithExecutor,
-    executePendingSteps,
-    MockStepExecutor,
-    type ExecutionProviderType,
-    type ProviderConfig,
-    type ExecutionContext,
-    type StepExecutor,
-    type ExecutorFactory,
-} from "./execution/index.js";
+import { applyTemplate as _applyTemplate, type ApplyTemplateOptions as _ApplyOpts } from "@kjerneverk/riotplan-templates";
+import { createPlan } from "./plan/creator.js";
 
-// CLI Utilities
-export {
-    outputSuccess,
-    outputError,
-    outputWarning,
-    outputInfo,
-    getStatusIcon,
-    formatStatus,
-    outputStepList,
-    outputPlanSummary,
-    outputJson,
-    CliError,
-    handleError,
-    notImplemented,
-} from "./cli/utils/index.js";
+/**
+ * Backward-compatible applyTemplate that auto-injects createPlan.
+ * The upstream @kjerneverk/riotplan-templates version requires createPlan
+ * to be passed explicitly to avoid a circular dependency.
+ */
+export async function applyTemplate(options: Omit<_ApplyOpts, 'createPlan'> & { createPlan?: _ApplyOpts['createPlan'] }) {
+    return _applyTemplate({ ...options, createPlan: options.createPlan ?? createPlan });
+}
 
-export { createProgram } from "./cli/cli.js";
-
-// Plan Commands
-export {
-    registerPlanCommands,
-    initCommand,
-    validateCommand,
-    archiveCommand,
-    templateCommand,
-    templateListCommand,
-    templateShowCommand,
-    templateUseCommand,
-} from "./commands/plan/index.js";
-
-// Render Commands
-export {
-    registerRenderCommands,
-    renderCommand,
-} from "./commands/render/index.js";
-
-// Verification Types and Constants
+// Verification (re-exported from @kjerneverk/riotplan-verify)
 export type {
     CriteriaPriority,
     CriteriaStatus,
@@ -392,92 +333,20 @@ export type {
     StepCompletionResult,
     CompletionReport,
     VerificationReport,
-} from "./verification/index.js";
+    ParsedCriteria,
+    CoverageOptions,
+} from "@kjerneverk/riotplan-verify";
 
 export {
     PRIORITY_WEIGHTS,
     CRITERIA_PATTERNS,
     HEALTH_THRESHOLDS,
-} from "./verification/index.js";
-
-// Verification Criteria Parser
-export type { ParsedCriteria } from "./verification/index.js";
-
-export {
     parseCriteria,
     parseCriteriaFromContent,
     getCriteriaSummary,
-} from "./verification/index.js";
-
-// Verification Coverage Checker
-export type { CoverageOptions } from "./verification/index.js";
-
-export { checkCoverage } from "./verification/index.js";
-
-// Verification Completion Checker
-export { checkCompletion } from "./verification/index.js";
+    checkCoverage,
+    checkCompletion,
+} from "@kjerneverk/riotplan-verify";
 
 // Version
 export const VERSION = "0.0.1";
-
-// ===== STUB IMPLEMENTATIONS =====
-// These will be implemented as the project develops
-
-/**
- * Execute a plan step
- *
- * @param plan - The plan
- * @param stepNumber - Step to execute
- * @param context - Execution context
- * @returns Step result
- *
- * @stub Not yet implemented
- */
-export async function executeStep(
-    _plan: unknown,
-    _stepNumber: number,
-    _context?: unknown
-): Promise<never> {
-    throw new Error(
-        "riotplan.executeStep is not yet implemented. Coming in v0.1.0!"
-    );
-}
-
-/**
- * Resume a plan from its current state
- *
- * @param plan - The plan to resume
- * @param context - Execution context
- * @returns Plan result
- *
- * @stub Not yet implemented
- */
-export async function resumePlan(
-    _plan: unknown,
-    _context?: unknown
-): Promise<never> {
-    throw new Error(
-        "riotplan.resumePlan is not yet implemented. Coming in v0.1.0!"
-    );
-}
-
-/**
- * Update plan state after step completion
- *
- * @param plan - The plan
- * @param stepNumber - Completed step
- * @param result - Step result
- * @returns Updated plan
- *
- * @stub Not yet implemented
- */
-export function updatePlanState(
-    _plan: unknown,
-    _stepNumber: number,
-    _result: unknown
-): never {
-    throw new Error(
-        "riotplan.updatePlanState is not yet implemented. Coming in v0.1.0!"
-    );
-}
-
