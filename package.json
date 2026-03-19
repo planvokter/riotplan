@@ -13,6 +13,42 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./ai/artifacts": {
+      "types": "./src/ai/artifacts.d.ts",
+      "import": "./src/ai/artifacts.js"
+    },
+    "./ai/generator": {
+      "types": "./src/ai/generator.d.ts",
+      "import": "./src/ai/generator.js"
+    },
+    "./ai/provider-loader": {
+      "types": "./src/ai/provider-loader.d.ts",
+      "import": "./src/ai/provider-loader.js"
+    },
+    "./config": {
+      "types": "./src/config/index.d.ts",
+      "import": "./src/config/index.js"
+    },
+    "./plan/category": {
+      "types": "./src/plan/category.d.ts",
+      "import": "./src/plan/category.js"
+    },
+    "./plan/loader": {
+      "types": "./src/plan/loader.d.ts",
+      "import": "./src/plan/loader.js"
+    },
+    "./status/generator": {
+      "types": "./src/status/generator.d.ts",
+      "import": "./src/status/generator.js"
+    },
+    "./core": {
+      "types": "./src/core/index.d.ts",
+      "import": "./src/core/index.js"
+    },
+    "./cloud/runtime": {
+      "types": "./src/cloud/runtime.d.ts",
+      "import": "./src/cloud/runtime.js"
     }
   },
   "engines": {
