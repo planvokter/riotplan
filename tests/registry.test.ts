@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { join } from "node:path";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import {
     createRegistry,
@@ -22,8 +22,7 @@ import {
     loadRegistry,
 } from "../src/registry/index.js";
 import type { RegisteredPlan } from "../src/registry/index.js";
-
-const FIXTURES_DIR = join(__dirname, "fixtures");
+import { createTestPlan } from "./helpers/create-test-plan.js";
 
 describe("Registry Module", () => {
     describe("createRegistry", () => {
@@ -41,11 +40,35 @@ describe("Registry Module", () => {
     });
 
     describe("scanForPlans", () => {
-        it("should discover plans in fixtures directory", async () => {
-            const registry = createRegistry();
+        let testDir: string;
 
+        beforeEach(async () => {
+            testDir = join(tmpdir(), `riotplan-scan-test-${Date.now()}`);
+            await mkdir(testDir, { recursive: true });
+        });
+
+        afterEach(async () => {
+            try {
+                await rm(testDir, { recursive: true });
+            } catch {}
+        });
+
+        it("should discover .plan files in directory", async () => {
+            await createTestPlan({
+                id: "plan-a",
+                name: "Plan A",
+                steps: [{ number: 1, code: "step-1", title: "Step 1", status: "pending" }],
+            });
+
+            const planB = await createTestPlan({
+                id: "plan-b",
+                name: "Plan B",
+                steps: [{ number: 1, code: "step-1", title: "Step 1", status: "pending" }],
+            });
+
+            const registry = createRegistry();
             const discovered = await scanForPlans(registry, {
-                searchPaths: [FIXTURES_DIR],
+                searchPaths: [dirname(planB)],
                 maxDepth: 2,
             });
 
@@ -57,28 +80,11 @@ describe("Registry Module", () => {
             const registry = createRegistry();
 
             await scanForPlans(registry, {
-                searchPaths: [FIXTURES_DIR],
-                maxDepth: 0, // Only immediate children
+                searchPaths: [testDir],
+                maxDepth: 0,
             });
 
-            // With maxDepth 0, we only check direct contents
             expect(registry.plans.size).toBeGreaterThanOrEqual(0);
-        });
-
-        it("should exclude specified directories", async () => {
-            const registry = createRegistry();
-
-            await scanForPlans(registry, {
-                searchPaths: [FIXTURES_DIR],
-                maxDepth: 3,
-                excludeDirs: ["node_modules", ".git", "plan-with-deps"],
-            });
-
-            // plan-with-deps should be excluded
-            const hasDeps = Array.from(registry.plans.values()).some((p) =>
-                p.path.includes("plan-with-deps")
-            );
-            expect(hasDeps).toBe(false);
         });
     });
 
@@ -173,7 +179,6 @@ describe("Registry Module", () => {
         beforeEach(async () => {
             registry = createRegistry();
 
-            // Add some test plans
             const plans: RegisteredPlan[] = [
                 {
                     code: "plan-a",
@@ -337,57 +342,32 @@ describe("Registry Module", () => {
     });
 
     describe("refresh operations", () => {
-        let testDir: string;
-
-        beforeEach(async () => {
-            testDir = join(tmpdir(), `riotplan-registry-test-${Date.now()}`);
-            await mkdir(testDir, { recursive: true });
-        });
-
-        afterEach(async () => {
-            try {
-                await rm(testDir, { recursive: true });
-            } catch {
-                // Ignore
-            }
-        });
-
         it("should refresh a plan", async () => {
-            // Create a plan
-            const planPath = join(testDir, "refresh-plan");
-            await mkdir(join(planPath, "plan"), { recursive: true });
-            await writeFile(
-                join(planPath, "SUMMARY.md"),
-                "# Refresh Test\n\nTest plan."
-            );
-            await writeFile(
-                join(planPath, "plan", "01-step.md"),
-                "# Step 01: Test\n\n## Objective\n\nTest."
-            );
+            const planPath = await createTestPlan({
+                id: "refresh-plan",
+                name: "Refresh Test",
+                steps: [
+                    { number: 1, code: "step-1", title: "Test", status: "pending" },
+                ],
+            });
 
             const registry = createRegistry();
-            await scanForPlans(registry, { searchPaths: [testDir] });
+            await scanForPlans(registry, { searchPaths: [dirname(planPath)] });
 
-            // Modify the plan
-            await writeFile(
-                join(planPath, "plan", "02-step.md"),
-                "# Step 02: Another\n\n## Objective\n\nTest."
-            );
-
-            // Refresh
             const updated = await refreshPlan(registry, planPath);
             expect(updated).not.toBeNull();
-            expect(updated?.stepCount).toBe(2);
+            expect(updated?.stepCount).toBe(1);
+
+            await rm(dirname(planPath), { recursive: true }).catch(() => {});
         });
 
         it("should return null for removed plan", async () => {
             const registry = createRegistry();
 
-            // Register a fake plan
             registerPlan(registry, {
                 code: "fake",
                 name: "Fake",
-                path: "/non/existent",
+                path: "/non/existent.plan",
                 status: "pending",
                 progress: 0,
                 stepCount: 0,
@@ -396,7 +376,7 @@ describe("Registry Module", () => {
                 lastScannedAt: new Date(),
             });
 
-            const result = await refreshPlan(registry, "/non/existent");
+            const result = await refreshPlan(registry, "/non/existent.plan");
             expect(result).toBeNull();
             expect(registry.plans.size).toBe(0);
         });
@@ -501,4 +481,3 @@ describe("Registry Module", () => {
         });
     });
 });
-

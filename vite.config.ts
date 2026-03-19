@@ -1,40 +1,33 @@
 import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
-import { chmod, copyFile } from 'node:fs/promises';
 import path from 'node:path';
+import { copyFile } from 'node:fs/promises';
 
 export default defineConfig({
   build: {
     lib: {
       entry: {
         index: "src/index.ts",
-        cli: "src/cli/cli.ts",
-        bin: "src/cli/bin.ts",
       },
       name: "riotplan",
       formats: ["es"],
     },
     rollupOptions: {
       external: [
-        "commander",
-        "chalk",
         "js-yaml",
-        "marked",
-        "inquirer",
-        "riotprompt",
-        "agentic",
-        "execution",
-        "@kjerneverk/execution",
-        "@kjerneverk/execution-anthropic",
-        "@kjerneverk/execution-openai",
-        "@kjerneverk/execution-gemini",
+        "@kjerneverk/riotplan-ai",
+        "@kjerneverk/riotplan-cloud",
+        "@kjerneverk/riotplan-format",
+        "@kjerneverk/riotplan-render",
+        "@kjerneverk/riotplan-templates",
+        "@kjerneverk/riotplan-verify",
         "@kjerneverk/riotprompt",
-        "@kjerneverk/agentic",
+        "@redaksjon/context",
+        "@fjell/logging",
         "@utilarium/cardigantime",
-        "@modelcontextprotocol/sdk",
-        "@modelcontextprotocol/sdk/server/mcp.js",
-        "@modelcontextprotocol/sdk/server/stdio.js",
+        "@utilarium/overcontext",
         "zod",
+        "yaml",
         "better-sqlite3",
         "bindings",
         "file-uri-to-path",
@@ -45,8 +38,6 @@ export default defineConfig({
         "node:http",
         "node:url",
         "node:process",
-        "node:readline",
-        "node:async_hooks",
         "node:util",
         "node:crypto",
         "node:child_process",
@@ -56,13 +47,8 @@ export default defineConfig({
       },
       plugins: [
         {
-          name: 'chmod-bin',
+          name: 'copy-schema',
           writeBundle: async () => {
-            // Make bin executable after build
-            const binPath = path.resolve('dist/bin.js');
-            await chmod(binPath, 0o755);
-            
-            // Copy schema.sql from riotplan-format for SQLite provider
             const schemaSource = path.resolve('../riotplan-format/dist/schema.sql');
             const schemaDest = path.resolve('dist/schema.sql');
             try {

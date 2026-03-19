@@ -1,38 +1,21 @@
 /**
  * History Manager
  *
- * Manage plan history storage.
+ * Manage plan history storage via SQLite .plan files.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
 import type { PlanHistory } from "../types.js";
+import { createSqliteProvider } from "@kjerneverk/riotplan-format";
 
-/**
- * History manager interface
- */
+const HISTORY_FILE = ".history/HISTORY.json";
+
 export interface HistoryManager {
-  /** History data */
   history: PlanHistory;
-
-  /** Path to history file */
   path: string;
-
-  /** Save history to disk */
   save(): Promise<void>;
-
-  /** Reload history from disk */
   reload(): Promise<void>;
 }
 
-/**
- * Default history file name
- */
-const HISTORY_FILE = ".history/HISTORY.json";
-
-/**
- * Initialize a new history for a plan
- */
 export function initHistory(initialVersion = "0.1"): PlanHistory {
     return {
         revisions: [
@@ -47,84 +30,89 @@ export function initHistory(initialVersion = "0.1"): PlanHistory {
     };
 }
 
-/**
- * Load history from disk
- */
 export async function loadHistory(planPath: string): Promise<HistoryManager> {
-    const historyPath = join(planPath, HISTORY_FILE);
-
     let history: PlanHistory;
 
+    const provider = createSqliteProvider(planPath);
     try {
-        const content = await readFile(historyPath, "utf-8");
-        const data = JSON.parse(content);
-
-        // Parse dates
-        history = {
-            ...data,
-            revisions: data.revisions.map((r: Record<string, unknown>) => ({
-                ...r,
-                createdAt: new Date(r.createdAt as string),
-            })),
-            milestones: data.milestones?.map((m: Record<string, unknown>) => ({
-                ...m,
-                createdAt: new Date(m.createdAt as string),
-            })),
-        };
+        const result = await provider.getFile("other", HISTORY_FILE);
+        if (result.success && result.data) {
+            const data = JSON.parse(result.data.content);
+            history = parseHistoryDates(data);
+        } else {
+            history = initHistory();
+        }
     } catch {
-    // Initialize new history if file doesn't exist
         history = initHistory();
+    } finally {
+        await provider.close();
     }
 
-    return createHistoryManager(history, historyPath);
+    return createHistoryManager(history, planPath);
 }
 
-/**
- * Save history to disk
- */
 export async function saveHistory(
     history: PlanHistory,
     planPath: string,
 ): Promise<void> {
-    const historyPath = join(planPath, HISTORY_FILE);
+    const data = serializeHistory(history);
+    const now = new Date().toISOString();
+    const provider = createSqliteProvider(planPath);
+    try {
+        await provider.saveFile({
+            type: "other",
+            filename: HISTORY_FILE,
+            content: JSON.stringify(data, null, 2),
+            createdAt: now,
+            updatedAt: now,
+        });
+    } finally {
+        await provider.close();
+    }
+}
 
-    // Ensure directory exists
-    await mkdir(dirname(historyPath), { recursive: true });
+function parseHistoryDates(data: Record<string, unknown>): PlanHistory {
+    const revisions = data.revisions as Array<Record<string, unknown>> | undefined;
+    const milestones = data.milestones as Array<Record<string, unknown>> | undefined;
 
-    // Serialize with date conversion
-    const data = {
+    return {
+        ...data,
+        revisions: (revisions || []).map((r) => ({
+            ...r,
+            createdAt: new Date(r.createdAt as string),
+        })),
+        milestones: milestones?.map((m) => ({
+            ...m,
+            createdAt: new Date(m.createdAt as string),
+        })),
+    } as PlanHistory;
+}
+
+function serializeHistory(history: PlanHistory): Record<string, unknown> {
+    return {
         ...history,
         revisions: history.revisions.map((r) => ({
             ...r,
-            createdAt:
-        r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+            createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
         })),
         milestones: history.milestones?.map((m) => ({
             ...m,
-            createdAt:
-        m.createdAt instanceof Date ? m.createdAt.toISOString() : m.createdAt,
+            createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : m.createdAt,
         })),
     };
-
-    await writeFile(historyPath, JSON.stringify(data, null, 2), "utf-8");
 }
 
-/**
- * Create a history manager instance
- */
 function createHistoryManager(
     history: PlanHistory,
-    path: string,
+    planPath: string,
 ): HistoryManager {
     return {
         history,
-        path,
+        path: planPath,
         async save() {
-            const planPath = dirname(dirname(path));
             await saveHistory(history, planPath);
         },
         async reload() {
-            const planPath = dirname(dirname(path));
             const reloaded = await loadHistory(planPath);
             Object.assign(history, reloaded.history);
         },

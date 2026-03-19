@@ -2,8 +2,9 @@
  * Tests for the Dependencies module
  */
 
-import { describe, it, expect } from "vitest";
-import { join } from "node:path";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import {
     parseDependenciesFromContent,
     buildDependencyGraph,
@@ -14,8 +15,7 @@ import {
     getDependencyChain,
 } from "../src/dependencies/index.js";
 import { loadPlan } from "../src/plan/loader.js";
-
-const FIXTURES_DIR = join(__dirname, "fixtures");
+import { createTestPlan } from "./helpers/create-test-plan.js";
 
 describe("Dependencies Module", () => {
     describe("parseDependenciesFromContent", () => {
@@ -138,22 +138,35 @@ Work
     });
 
     describe("buildDependencyGraph", () => {
-        it("should build a correct dependency graph", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
+        let planPath: string;
 
+        beforeEach(async () => {
+            planPath = await createTestPlan({
+                id: "plan-with-deps",
+                name: "Plan With Dependencies",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Tasks\n\nFirst step." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond step." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 01\n- Step 02\n\n## Tasks\n\nThird step." },
+                    { number: 4, code: "step-4", title: "Step 4", content: "# Step 04: Step 4\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nFourth step." },
+                    { number: 5, code: "step-5", title: "Step 5", content: "# Step 05: Step 5\n\n## Dependencies\n\n- Step 03\n- Step 04\n\n## Tasks\n\nFifth step." },
+                ],
+            });
+        });
+
+        afterEach(async () => {
+            try { await rm(dirname(planPath), { recursive: true }); } catch {}
+        });
+
+        it("should build a correct dependency graph", async () => {
+            const plan = await loadPlan(planPath);
             const graph = await buildDependencyGraph(plan);
 
-            // Check roots (steps with no dependencies)
             expect(graph.roots).toEqual([1]);
-
-            // Check leaves (steps with no dependents)
             expect(graph.leaves).toEqual([5]);
-
-            // Check no circular dependencies
             expect(graph.hasCircular).toBe(false);
             expect(graph.circularChains).toEqual([]);
 
-            // Check specific dependencies
             const step1 = graph.dependencies.get(1)!;
             expect(step1.dependsOn).toEqual([]);
             expect(step1.blockedBy).toContain(2);
@@ -169,27 +182,54 @@ Work
         });
 
         it("should detect circular dependencies", async () => {
-            const plan = await loadPlan(
-                join(FIXTURES_DIR, "plan-circular-deps")
-            );
+            const circularPath = await createTestPlan({
+                id: "plan-circular-deps",
+                name: "Plan Circular Deps",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Dependencies\n\n- Step 03\n\n## Tasks\n\nFirst." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nThird." },
+                ],
+            });
 
+            const plan = await loadPlan(circularPath);
             const graph = await buildDependencyGraph(plan);
 
             expect(graph.hasCircular).toBe(true);
             expect(graph.circularChains.length).toBeGreaterThan(0);
 
-            // The cycle is 1 -> 3 -> 2 -> 1
             const cycle = graph.circularChains[0];
             expect(cycle).toContain(1);
             expect(cycle).toContain(2);
             expect(cycle).toContain(3);
+
+            await rm(dirname(circularPath), { recursive: true }).catch(() => {});
         });
     });
 
     describe("validateDependencies", () => {
-        it("should pass validation for valid dependencies", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
+        let planPath: string;
 
+        beforeEach(async () => {
+            planPath = await createTestPlan({
+                id: "plan-with-deps",
+                name: "Plan With Dependencies",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Tasks\n\nFirst step." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond step." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 01\n- Step 02\n\n## Tasks\n\nThird step." },
+                    { number: 4, code: "step-4", title: "Step 4", content: "# Step 04: Step 4\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nFourth step." },
+                    { number: 5, code: "step-5", title: "Step 5", content: "# Step 05: Step 5\n\n## Dependencies\n\n- Step 03\n- Step 04\n\n## Tasks\n\nFifth step." },
+                ],
+            });
+        });
+
+        afterEach(async () => {
+            try { await rm(dirname(planPath), { recursive: true }); } catch {}
+        });
+
+        it("should pass validation for valid dependencies", async () => {
+            const plan = await loadPlan(planPath);
             const result = await validateDependencies(plan);
 
             expect(result.valid).toBe(true);
@@ -197,23 +237,31 @@ Work
         });
 
         it("should fail validation for circular dependencies", async () => {
-            const plan = await loadPlan(
-                join(FIXTURES_DIR, "plan-circular-deps")
-            );
+            const circularPath = await createTestPlan({
+                id: "plan-circular-deps",
+                name: "Plan Circular Deps",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Dependencies\n\n- Step 03\n\n## Tasks\n\nFirst." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nThird." },
+                ],
+            });
 
+            const plan = await loadPlan(circularPath);
             const result = await validateDependencies(plan);
 
             expect(result.valid).toBe(false);
             expect(result.errors.some((e) => e.type === "circular")).toBe(true);
+
+            await rm(dirname(circularPath), { recursive: true }).catch(() => {});
         });
 
         it("should detect invalid step references", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
+            const plan = await loadPlan(planPath);
 
-            // Manually add an invalid dependency
             const deps = new Map<number, number[]>();
             deps.set(1, []);
-            deps.set(2, [1, 99]); // 99 doesn't exist
+            deps.set(2, [1, 99]);
             deps.set(3, [1, 2]);
             deps.set(4, [2]);
             deps.set(5, [3, 4]);
@@ -222,7 +270,6 @@ Work
                 "../src/dependencies/index.js"
             );
             const graph = buildDependencyGraphFromMap(plan, deps);
-            // Pass raw deps to validation so it can check for invalid references
             const result = await validateDependencies(plan, graph, deps);
 
             expect(result.valid).toBe(false);
@@ -233,90 +280,139 @@ Work
     });
 
     describe("findCriticalPath", () => {
-        it("should find the critical path", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
+        let planPath: string;
 
+        beforeEach(async () => {
+            planPath = await createTestPlan({
+                id: "plan-with-deps",
+                name: "Plan With Dependencies",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Tasks\n\nFirst step." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond step." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 01\n- Step 02\n\n## Tasks\n\nThird step." },
+                    { number: 4, code: "step-4", title: "Step 4", content: "# Step 04: Step 4\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nFourth step." },
+                    { number: 5, code: "step-5", title: "Step 5", content: "# Step 05: Step 5\n\n## Dependencies\n\n- Step 03\n- Step 04\n\n## Tasks\n\nFifth step." },
+                ],
+            });
+        });
+
+        afterEach(async () => {
+            try { await rm(dirname(planPath), { recursive: true }); } catch {}
+        });
+
+        it("should find the critical path", async () => {
+            const plan = await loadPlan(planPath);
             const critical = await findCriticalPath(plan);
 
-            // The critical path should be: 1 -> 2 -> 3 -> 5 (length 4)
-            // OR 1 -> 2 -> 4 -> 5 (length 4)
             expect(critical.length).toBe(4);
             expect(critical.path[0]).toBe(1);
             expect(critical.path[critical.path.length - 1]).toBe(5);
         });
 
         it("should return empty path for circular dependencies", async () => {
-            const plan = await loadPlan(
-                join(FIXTURES_DIR, "plan-circular-deps")
-            );
+            const circularPath = await createTestPlan({
+                id: "plan-circular-deps",
+                name: "Plan Circular Deps",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Dependencies\n\n- Step 03\n\n## Tasks\n\nFirst." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nThird." },
+                ],
+            });
 
+            const plan = await loadPlan(circularPath);
             const critical = await findCriticalPath(plan);
 
             expect(critical.path).toEqual([]);
             expect(critical.length).toBe(0);
+
+            await rm(dirname(circularPath), { recursive: true }).catch(() => {});
         });
     });
 
     describe("computeExecutionOrder", () => {
-        it("should compute valid execution order", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
+        let planPath: string;
 
+        beforeEach(async () => {
+            planPath = await createTestPlan({
+                id: "plan-with-deps",
+                name: "Plan With Dependencies",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Tasks\n\nFirst step." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond step." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 01\n- Step 02\n\n## Tasks\n\nThird step." },
+                    { number: 4, code: "step-4", title: "Step 4", content: "# Step 04: Step 4\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nFourth step." },
+                    { number: 5, code: "step-5", title: "Step 5", content: "# Step 05: Step 5\n\n## Dependencies\n\n- Step 03\n- Step 04\n\n## Tasks\n\nFifth step." },
+                ],
+            });
+        });
+
+        afterEach(async () => {
+            try { await rm(dirname(planPath), { recursive: true }); } catch {}
+        });
+
+        it("should compute valid execution order", async () => {
+            const plan = await loadPlan(planPath);
             const order = await computeExecutionOrder(plan);
 
-            // Step 1 must come first
             expect(order.order[0]).toBe(1);
-
-            // Step 2 must come before Step 3 and Step 4
             const idx2 = order.order.indexOf(2);
             const idx3 = order.order.indexOf(3);
             const idx4 = order.order.indexOf(4);
             expect(idx2).toBeLessThan(idx3);
             expect(idx2).toBeLessThan(idx4);
-
-            // Step 5 must come last
             expect(order.order[order.order.length - 1]).toBe(5);
         });
 
         it("should identify parallel execution levels", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
-
+            const plan = await loadPlan(planPath);
             const order = await computeExecutionOrder(plan);
 
-            // Level 0: Step 1
             expect(order.levels[0]).toEqual([1]);
-
-            // Level 1: Step 2
             expect(order.levels[1]).toEqual([2]);
-
-            // Level 2: Steps 3 and 4 (can run in parallel)
             expect(order.levels[2].sort()).toEqual([3, 4]);
-
-            // Level 3: Step 5
             expect(order.levels[3]).toEqual([5]);
         });
     });
 
     describe("getReadySteps", () => {
-        it("should return steps ready to start", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
+        let planPath: string;
 
-            // Initially only step 1 is ready
+        beforeEach(async () => {
+            planPath = await createTestPlan({
+                id: "plan-with-deps",
+                name: "Plan With Dependencies",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Tasks\n\nFirst step." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond step." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 01\n- Step 02\n\n## Tasks\n\nThird step." },
+                    { number: 4, code: "step-4", title: "Step 4", content: "# Step 04: Step 4\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nFourth step." },
+                    { number: 5, code: "step-5", title: "Step 5", content: "# Step 05: Step 5\n\n## Dependencies\n\n- Step 03\n- Step 04\n\n## Tasks\n\nFifth step." },
+                ],
+            });
+        });
+
+        afterEach(async () => {
+            try { await rm(dirname(planPath), { recursive: true }); } catch {}
+        });
+
+        it("should return steps ready to start", async () => {
+            const plan = await loadPlan(planPath);
+
             let ready = await getReadySteps(plan);
             expect(ready.map((s) => s.number)).toEqual([1]);
 
-            // After completing step 1, step 2 is ready
             plan.steps[0].status = "completed";
             ready = await getReadySteps(plan);
             expect(ready.map((s) => s.number)).toEqual([2]);
 
-            // After completing step 2, steps 3 and 4 are ready
             plan.steps[1].status = "completed";
             ready = await getReadySteps(plan);
             expect(ready.map((s) => s.number).sort()).toEqual([3, 4]);
         });
 
         it("should not return in-progress or blocked steps", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
+            const plan = await loadPlan(planPath);
 
             plan.steps[0].status = "completed";
             plan.steps[1].status = "in_progress";
@@ -327,41 +423,68 @@ Work
     });
 
     describe("getDependencyChain", () => {
-        it("should return all transitive dependencies", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
+        let planPath: string;
 
-            // Step 5 depends on 3, 4 which depend on 2 and 1
+        beforeEach(async () => {
+            planPath = await createTestPlan({
+                id: "plan-with-deps",
+                name: "Plan With Dependencies",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Tasks\n\nFirst step." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond step." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 01\n- Step 02\n\n## Tasks\n\nThird step." },
+                    { number: 4, code: "step-4", title: "Step 4", content: "# Step 04: Step 4\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nFourth step." },
+                    { number: 5, code: "step-5", title: "Step 5", content: "# Step 05: Step 5\n\n## Dependencies\n\n- Step 03\n- Step 04\n\n## Tasks\n\nFifth step." },
+                ],
+            });
+        });
+
+        afterEach(async () => {
+            try { await rm(dirname(planPath), { recursive: true }); } catch {}
+        });
+
+        it("should return all transitive dependencies", async () => {
+            const plan = await loadPlan(planPath);
             const chain = await getDependencyChain(plan, 5);
             expect(chain.sort()).toEqual([1, 2, 3, 4]);
         });
 
         it("should return empty array for root steps", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
-
+            const plan = await loadPlan(planPath);
             const chain = await getDependencyChain(plan, 1);
             expect(chain).toEqual([]);
         });
     });
 
     describe("loader integration", () => {
+        let planPath: string;
+
+        beforeEach(async () => {
+            planPath = await createTestPlan({
+                id: "plan-with-deps",
+                name: "Plan With Dependencies",
+                steps: [
+                    { number: 1, code: "step-1", title: "Step 1", content: "# Step 01: Step 1\n\n## Tasks\n\nFirst step." },
+                    { number: 2, code: "step-2", title: "Step 2", content: "# Step 02: Step 2\n\n## Dependencies\n\n- Step 01\n\n## Tasks\n\nSecond step." },
+                    { number: 3, code: "step-3", title: "Step 3", content: "# Step 03: Step 3\n\n## Dependencies\n\n- Step 01\n- Step 02\n\n## Tasks\n\nThird step." },
+                    { number: 4, code: "step-4", title: "Step 4", content: "# Step 04: Step 4\n\n## Dependencies\n\n- Step 02\n\n## Tasks\n\nFourth step." },
+                    { number: 5, code: "step-5", title: "Step 5", content: "# Step 05: Step 5\n\n## Dependencies\n\n- Step 03\n- Step 04\n\n## Tasks\n\nFifth step." },
+                ],
+            });
+        });
+
+        afterEach(async () => {
+            try { await rm(dirname(planPath), { recursive: true }); } catch {}
+        });
+
         it("should populate step dependencies when loading", async () => {
-            const plan = await loadPlan(join(FIXTURES_DIR, "plan-with-deps"));
+            const plan = await loadPlan(planPath);
 
-            // Step 1 has no dependencies
             expect(plan.steps[0].dependencies).toBeUndefined();
-
-            // Step 2 depends on step 1
             expect(plan.steps[1].dependencies).toEqual([1]);
-
-            // Step 3 depends on steps 1 and 2
             expect(plan.steps[2].dependencies).toEqual([1, 2]);
-
-            // Step 4 depends on step 2
             expect(plan.steps[3].dependencies).toEqual([2]);
-
-            // Step 5 depends on steps 3 and 4
             expect(plan.steps[4].dependencies).toEqual([3, 4]);
         });
     });
 });
-

@@ -9,11 +9,12 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { readPlanDoc } from '../artifacts/operations.js';
 
 /**
  * Load a retrospective file and wrap it with contextual framing
  * 
- * @param retrospectivePath - Path to the plan directory containing retrospective.md
+ * @param retrospectivePath - Path to the plan directory or .plan file
  * @param reason - User's explanation of why this retrospective is relevant
  * @returns Wrapped retrospective content ready for context inclusion
  * @throws Error if retrospective file doesn't exist
@@ -22,18 +23,23 @@ export async function loadRetrospectiveAsContext(
     retrospectivePath: string,
     reason: string
 ): Promise<string> {
-    const retroFile = join(retrospectivePath, 'retrospective.md');
-    
-    if (!existsSync(retroFile)) {
+    const doc = await readPlanDoc(retrospectivePath, 'other', 'RETROSPECTIVE.md');
+
+    if (!doc) {
+        if (!retrospectivePath.endsWith('.plan')) {
+            const retroFile = join(retrospectivePath, 'retrospective.md');
+            if (existsSync(retroFile)) {
+                const content = await readFile(retroFile, 'utf-8');
+                return formatRetrospectiveContext(retrospectivePath, reason, content);
+            }
+        }
         throw new Error(
-            `Retrospective not found at ${retroFile}. ` +
+            `Retrospective not found at ${retrospectivePath}. ` +
             `Ensure the plan has been completed and retrospective generated.`
         );
     }
-    
-    const content = await readFile(retroFile, 'utf-8');
-    
-    return formatRetrospectiveContext(retrospectivePath, reason, content);
+
+    return formatRetrospectiveContext(retrospectivePath, reason, doc.content);
 }
 
 /**
@@ -71,11 +77,16 @@ ${content}
 /**
  * Check if a retrospective exists for a given plan
  * 
- * @param planPath - Path to the plan directory
- * @returns True if retrospective.md exists
+ * @param planPath - Path to the plan directory or .plan file
+ * @returns True if retrospective exists
  */
-export function retrospectiveExists(planPath: string): boolean {
-    return existsSync(join(planPath, 'retrospective.md'));
+export async function retrospectiveExists(planPath: string): Promise<boolean> {
+    if (planPath.endsWith('.plan')) {
+        const doc = await readPlanDoc(planPath, 'other', 'RETROSPECTIVE.md');
+        return doc !== null;
+    }
+    return existsSync(join(planPath, 'retrospective.md')) ||
+           existsSync(join(planPath, 'RETROSPECTIVE.md'));
 }
 
 /**

@@ -8,10 +8,10 @@
  * - Validate relationship targets
  */
 
-import { readFile, access, writeFile } from "node:fs/promises";
-import { join, resolve, relative, isAbsolute } from "node:path";
+import { resolve, relative, isAbsolute } from "node:path";
 import type { Plan, PlanRelationship, RelationshipType } from "../types.js";
 import { loadPlan } from "../plan/loader.js";
+import { readPlanDoc, savePlanDoc } from "../artifacts/operations.js";
 
 // ===== TYPES =====
 
@@ -294,41 +294,13 @@ function normalizeRelationType(str: string): RelationshipType | null {
 export async function parseRelationshipsFromPlan(
     planPath: string
 ): Promise<ParsedRelationship[]> {
-    const absolutePath = resolve(planPath);
     const relationships: ParsedRelationship[] = [];
 
-    // Try SUMMARY.md first
-    try {
-        const summaryPath = join(absolutePath, "SUMMARY.md");
-        const content = await readFile(summaryPath, "utf-8");
-        relationships.push(...parseRelationshipsFromContent(content));
-    } catch {
-        // No SUMMARY.md
+    const summaryDoc = await readPlanDoc(planPath, "summary", "SUMMARY.md");
+    if (summaryDoc) {
+        relationships.push(...parseRelationshipsFromContent(summaryDoc.content));
     }
 
-    // Also check meta-prompt
-    try {
-        const files = ["prompt-of-prompts.md"];
-        // Add plan-code-prompt.md pattern
-        const planCode = absolutePath.split("/").pop();
-        if (planCode) {
-            files.push(`${planCode}-prompt.md`, `${planCode}.md`);
-        }
-
-        for (const file of files) {
-            try {
-                const filePath = join(absolutePath, file);
-                const content = await readFile(filePath, "utf-8");
-                relationships.push(...parseRelationshipsFromContent(content));
-            } catch {
-                // File doesn't exist
-            }
-        }
-    } catch {
-        // Error reading files
-    }
-
-    // Deduplicate
     const seen = new Set<string>();
     return relationships.filter((r) => {
         const key = `${r.type}:${r.targetPath}`;
@@ -358,12 +330,10 @@ export async function addRelationship(
         ? targetPath
         : resolve(plan.metadata.path, targetPath);
 
-    // Check if target exists
     let targetValid = false;
     let targetPlan: AddRelationshipResult["targetPlan"];
 
     try {
-        await access(resolvedTarget);
         const target = await loadPlan(resolvedTarget);
         targetValid = true;
         targetPlan = {
@@ -517,10 +487,7 @@ export async function validateRelationships(
             ? rel.planPath
             : resolve(plan.metadata.path, rel.planPath);
 
-        // Check if target exists
         try {
-            await access(resolvedPath);
-            // Try to load as plan
             await loadPlan(resolvedPath);
             validRelationships.push(rel);
         } catch {
@@ -647,18 +614,15 @@ export function generateRelationshipsMarkdown(plan: Plan): string {
  * @param plan - The plan to update
  */
 export async function updatePlanRelationships(plan: Plan): Promise<void> {
-    const summaryPath = join(plan.metadata.path, "SUMMARY.md");
+    const doc = await readPlanDoc(plan.metadata.path, "summary", "SUMMARY.md");
 
     let content: string;
-    try {
-        content = await readFile(summaryPath, "utf-8");
-    } catch {
-        // Create new SUMMARY.md
+    if (doc) {
+        content = doc.content;
+    } else {
         content = `# ${plan.metadata.name}\n\n${plan.metadata.description || "Plan summary."}\n\n`;
     }
 
-    // Remove existing Related Plans section
-    // Split by headings to avoid polynomial regex
     const lines = content.split('\n');
     const filtered: string[] = [];
     let inRelatedSection = false;
@@ -666,18 +630,15 @@ export async function updatePlanRelationships(plan: Plan): Promise<void> {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         
-        // Check if we're entering the Related Plans section
         if (/^##\s+Related\s+Plans?$/i.test(line)) {
             inRelatedSection = true;
             continue;
         }
         
-        // Check if we're entering a new section (exit Related Plans)
         if (inRelatedSection && /^#/.test(line)) {
             inRelatedSection = false;
         }
         
-        // Keep lines that aren't in the Related Plans section
         if (!inRelatedSection) {
             filtered.push(line);
         }
@@ -685,12 +646,11 @@ export async function updatePlanRelationships(plan: Plan): Promise<void> {
     
     content = filtered.join('\n');
 
-    // Add new section
     const relSection = generateRelationshipsMarkdown(plan);
     if (relSection) {
         content = content.trimEnd() + "\n\n" + relSection;
     }
 
-    await writeFile(summaryPath, content);
+    await savePlanDoc(plan.metadata.path, "summary", "SUMMARY.md", content);
 }
 

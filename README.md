@@ -722,9 +722,66 @@ A plan provides structure for complex, iterative AI-assisted work where:
 - Humans need to review and provide feedback
 - The approach may evolve based on findings
 
+## Package Architecture
+
+RiotPlan is being split into three packages. During the migration, `riotplan`
+remains the single published package and source of truth. The sibling packages
+contain real extracted code with proper package imports, but don't have
+standalone builds or test suites yet.
+
+### What's in `@kjerneverk/riotplan` (this package)
+
+Everything. This is still the monolith. Here's why each module exists here:
+
+| Module | Purpose | Extraction status |
+|---|---|---|
+| `src/mcp/` | HTTP MCP server, tools, resources, prompts, session, RBAC | Copied to `riotplan-mcp-http`. Both copies exist; this one is tested. |
+| `src/core/` | Domain contracts, services, adapters, composition root | Copied to `riotplan-core`. Both copies exist; this one is tested. |
+| `src/ai/` | Artifact loading, plan generation prompts, provider loading | Stays here. MCP-HTTP imports via `@kjerneverk/riotplan/ai/*`. |
+| `src/plan/` | Plan loader, creator, validator, category | Stays here. Core library functionality. |
+| `src/cli/` | CLI commands, agent tools, explore command | Stays here. CLI is not being extracted. |
+| `src/cloud/` | GCS cloud sync runtime | Stays here. Server infrastructure. |
+| `src/config/` | Configuration loading, schema, catalyst loader | Stays here. Shared config infrastructure. |
+| `src/steps/` | Step mutation operations (insert, remove, move, start, complete) | Stays here. Core library exports. |
+| `src/status/` | Status parsing and generation | Stays here. Core library exports. |
+| `src/reflections/` | Step reflection reader/writer | Stays here. Core library exports. |
+| `src/history/` | Revision and milestone management | Stays here. Core library functionality. |
+| `src/verification/` | Acceptance criteria checking, completion verification | Stays here. Core library functionality. |
+| `src/templates/` | Plan templates (basic, feature, refactoring, etc.) | Stays here. Core library functionality. |
+| `src/renderer/` | Plan rendering (markdown, JSON, HTML) | Stays here. Core library functionality. |
+| `src/registry/` | Multi-plan registry, scan, search | Stays here. Core library functionality. |
+| `src/relationships/` | Cross-plan relationship management | Stays here. Core library functionality. |
+| `src/dependencies/` | Step dependency graph, critical path | Stays here. Core library functionality. |
+| `src/analysis/` | Analysis directory management | Stays here. Core library functionality. |
+| `src/feedback/` | Feedback record management | Stays here. Core library functionality. |
+| `src/retrospective/` | Retrospective generation and reference | Stays here. Core library functionality. |
+| `src/execution/` | Step executor framework | Stays here. Core library functionality. |
+| `src/types.ts` | All shared TypeScript types | Stays here. Root type definitions. |
+| `src/mcp-http/` | Transitional barrel (forwards to `src/mcp/*`) | Will be removed once `riotplan-mcp-http` is standalone. |
+| `src/compat/` | Compatibility shims | Will be removed after migration. |
+| `src/migration/` | Migration utilities | Will be removed after migration. |
+
+### Sibling packages
+
+| Package | What it owns | Dependencies |
+|---|---|---|
+| [`@kjerneverk/riotplan-core`](../riotplan-core/) | Domain contracts, services, adapters, composition | `@kjerneverk/riotplan` (types + plan ops), `@kjerneverk/riotplan-format` |
+| [`@kjerneverk/riotplan-mcp-http`](../riotplan-mcp-http/) | HTTP server, MCP tools/resources/prompts, RBAC, sessions | `@kjerneverk/riotplan` (ai, config, plan, types), `@kjerneverk/riotplan-core`, `@kjerneverk/riotplan-format` |
+| `@kjerneverk/riotplan-format` | SQLite schema, provider, plan file format | (independent) |
+
+### Why duplicated code?
+
+`src/mcp/` and `src/core/` still exist in this package because:
+
+1. All tests run here against the original source
+2. The build produces a single bundle from this tree
+3. The npm-published `@kjerneverk/riotplan` package ships from here
+4. The sibling packages aren't published yet
+
+Once `riotplan-core` and `riotplan-mcp-http` have their own builds, test
+suites, and are published to npm, the duplicated modules will be removed from
+this package and replaced with dependency imports.
+
 ## License
 
 Apache-2.0
-
-<!-- v1.0.0 -->
-TEST

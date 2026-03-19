@@ -12,7 +12,6 @@ import { readdir, readFile, writeFile, access } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";
 import { homedir } from "node:os";
 import type { TaskStatus } from "../types.js";
-import { PLAN_CONVENTIONS } from "../types.js";
 import { loadPlan } from "../plan/loader.js";
 
 // ===== TYPES =====
@@ -290,7 +289,7 @@ export async function scanForPlans(
 }
 
 /**
- * Recursively scan a directory for plans
+ * Recursively scan a directory for .plan SQLite files
  */
 async function scanDirectory(
     registry: PlanRegistry,
@@ -305,24 +304,9 @@ async function scanDirectory(
     let discovered = 0;
     const dirName = basename(dirPath);
 
-    // Skip excluded directories
     if (excludeDirs.includes(dirName)) return 0;
     if (!includeHidden && dirName.startsWith(".")) return 0;
 
-    // Check if this directory is a plan
-    if (await isPlanDirectory(dirPath)) {
-        try {
-            const entry = await createPlanEntry(dirPath);
-            registerPlan(registry, entry);
-            discovered++;
-        } catch {
-            // Skip plans that can't be loaded
-        }
-        // Don't recurse into plan directories
-        return discovered;
-    }
-
-    // Recurse into subdirectories
     try {
         const entries = await readdir(dirPath, { withFileTypes: true });
 
@@ -337,6 +321,15 @@ async function scanDirectory(
                     includeHidden,
                     excludeDirs
                 );
+            } else if (entry.isFile() && entry.name.endsWith(".plan")) {
+                const planFilePath = join(dirPath, entry.name);
+                try {
+                    const planEntry = await createPlanEntry(planFilePath);
+                    registerPlan(registry, planEntry);
+                    discovered++;
+                } catch {
+                    // Skip .plan files that can't be loaded
+                }
             }
         }
     } catch {
@@ -344,55 +337,6 @@ async function scanDirectory(
     }
 
     return discovered;
-}
-
-/**
- * Check if a directory looks like a plan
- */
-async function isPlanDirectory(dirPath: string): Promise<boolean> {
-    // Check for common plan indicators
-    const indicators = [
-        "SUMMARY.md",
-        "STATUS.md",
-        "EXECUTION_PLAN.md",
-        "plan/", // plan subdirectory
-    ];
-
-    let matches = 0;
-
-    for (const indicator of indicators) {
-        try {
-            const checkPath = join(dirPath, indicator);
-            await access(checkPath);
-            matches++;
-        } catch {
-            // File/dir doesn't exist
-        }
-    }
-
-    // At least 2 indicators or check for step files
-    if (matches >= 2) return true;
-
-    // Check for step files in root
-    try {
-        const files = await readdir(dirPath);
-        const hasSteps = files.some((f) => PLAN_CONVENTIONS.stepPattern.test(f));
-        if (hasSteps) return true;
-    } catch {
-        // Can't read
-    }
-
-    // Check for plan/ subdirectory with step files
-    try {
-        const planDir = join(dirPath, "plan");
-        const files = await readdir(planDir);
-        const hasSteps = files.some((f) => PLAN_CONVENTIONS.stepPattern.test(f));
-        if (hasSteps) return true;
-    } catch {
-        // No plan subdir
-    }
-
-    return false;
 }
 
 /**

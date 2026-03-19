@@ -3,39 +3,40 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createPlan, completeStep, startStep } from '../src/index.js';
+import { loadPlan, completeStep } from '../src/index.js';
 import {
     loadRetrospectiveContext,
     formatRetrospectivePrompt,
     generateRetrospective,
 } from '../src/retrospective/generator.js';
 import { writeStepReflection } from '../src/reflections/writer.js';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { rm } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { createTestPlan } from './helpers/create-test-plan.js';
 
 describe('Retrospective Generator', () => {
-    let testDir: string;
     let planPath: string;
 
     beforeEach(async () => {
-        testDir = await mkdtemp(join(tmpdir(), 'riotplan-retro-test-'));
-        const result = await createPlan({
-            code: 'test-plan',
+        planPath = await createTestPlan({
+            id: 'test-plan',
             name: 'Test Plan',
-            basePath: testDir,
             steps: [
-                { title: 'First Step' },
-                { title: 'Second Step' },
-                { title: 'Third Step' },
+                { number: 1, code: 'first-step', title: 'First Step', status: 'pending' },
+                { number: 2, code: 'second-step', title: 'Second Step', status: 'pending' },
+                { number: 3, code: 'third-step', title: 'Third Step', status: 'pending' },
+            ],
+            files: [
+                { type: 'summary', filename: 'SUMMARY.md', content: '# Test Plan\n\nA test plan.' },
+                { type: 'execution_plan', filename: 'EXECUTION_PLAN.md', content: '# Execution Plan\n\nDo the things.' },
+                { type: 'status', filename: 'STATUS.md', content: '# Status\n\nPending.' },
             ],
         });
-        planPath = result.path;
     });
 
     afterEach(async () => {
         try {
-            await rm(testDir, { recursive: true, force: true });
+            await rm(dirname(planPath), { recursive: true, force: true });
         } catch {
             // Ignore cleanup errors
         }
@@ -43,13 +44,7 @@ describe('Retrospective Generator', () => {
 
     describe('loadRetrospectiveContext', () => {
         it('should load plan and reflections', async () => {
-            // Complete a step and add reflection
-            const step1 = completeStep(await import('../src/index.js').then(m => m.loadPlan(planPath)), 1);
-            await writeStepReflection(
-                planPath,
-                1,
-                'Reflection for step 1'
-            );
+            await writeStepReflection(planPath, 1, 'Reflection for step 1');
 
             const context = await loadRetrospectiveContext(planPath);
 
@@ -133,18 +128,6 @@ describe('Retrospective Generator', () => {
         });
 
         it('should succeed for completed plan', async () => {
-            // Complete all steps
-            const { loadPlan } = await import('../src/index.js');
-            let plan = await loadPlan(planPath);
-            
-            for (let i = 1; i <= 3; i++) {
-                const updatedStep = completeStep(plan, i);
-                const stepIndex = plan.steps.findIndex(s => s.number === i);
-                if (stepIndex >= 0) {
-                    plan.steps[stepIndex] = updatedStep;
-                }
-            }
-
             const result = await generateRetrospective(planPath, {
                 force: true,
             });

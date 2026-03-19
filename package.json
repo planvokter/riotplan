@@ -1,19 +1,30 @@
 {
   "name": "@kjerneverk/riotplan",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "description": "Framework for long-lived, stateful AI workflows (plans)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "bin": {
-    "riotplan": "./dist/bin.js",
-    "riotplan-mcp": "./dist/mcp-server.js",
-    "riotplan-mcp-http": "./dist/mcp-server-http.js"
-  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./src/config/index.d.ts",
+      "import": "./src/config/index.js"
+    },
+    "./plan/category": {
+      "types": "./src/plan/category.d.ts",
+      "import": "./src/plan/category.js"
+    },
+    "./plan/loader": {
+      "types": "./src/plan/loader.d.ts",
+      "import": "./src/plan/loader.js"
+    },
+    "./status/generator": {
+      "types": "./src/status/generator.d.ts",
+      "import": "./src/status/generator.js"
     }
   },
   "engines": {
@@ -21,16 +32,12 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "vite build && node scripts/build-mcp.js && chmod 755 ./dist/mcp-server.js 2>/dev/null",
+    "build": "vite build",
     "test": "vitest run --coverage",
     "test:coverage": "vitest run --coverage",
-    "test:sampling": "bash scripts/run-sampling-tests.sh",
-    "test:sampling:check": "bash scripts/check-python-env.sh",
     "lint": "eslint src",
-    "precommit": "npm run build && npm run lint && npm run test && npm run test:sampling",
+    "precommit": "npm run build && npm run lint && npm run test",
     "prepublishOnly": "npm run clean && npm run build",
-    "mcp:build": "vite build && chmod 755 ./dist/mcp-server.js 2>/dev/null",
-    "mcp:inspect": "mcp-inspector npx -y @kjerneverk/riotplan",
     "docs:dev": "cd docs && cp ../README.md public/ && npm install && npm run dev",
     "docs:build": "cd docs && cp ../README.md public/ && npm install && npm run build",
     "docs:preview": "cd docs && npm run preview",
@@ -56,43 +63,24 @@
   },
   "dependencies": {
     "@fjell/logging": "^4.4.69",
-    "@google-cloud/storage": "^7.19.0",
-    "@hono/mcp": "^0.2.3",
-    "@hono/node-server": "^1.19.9",
-    "@kjerneverk/agentic": "^1.0.8",
-    "@kjerneverk/execution": "^1.0.7",
-    "@kjerneverk/execution-anthropic": "^1.0.12",
-    "@kjerneverk/execution-openai": "^1.0.12",
-    "@kjerneverk/execution-sampling": "^1.0.4",
     "@kjerneverk/riotplan-catalyst": "^1.0.6",
+    "@kjerneverk/riotplan-core": "^1.0.26",
     "@kjerneverk/riotplan-format": "^1.0.1",
-    "@modelcontextprotocol/sdk": "^1.25.3",
+    "@kjerneverk/riotplan-render": "^1.0.0",
+    "@kjerneverk/riotplan-templates": "^1.0.0",
+    "@kjerneverk/riotplan-verify": "^1.0.0",
     "@redaksjon/context": "^0.0.11",
-    "@types/inquirer": "^9.0.9",
     "@utilarium/cardigantime": "^0.0.25",
     "@utilarium/overcontext": "^0.0.8",
     "better-sqlite3": "^12.6.2",
-    "chalk": "^5.4.1",
-    "commander": "^14.0.2",
-    "hono": "^4.11.9",
-    "inquirer": "^13.2.1",
     "js-yaml": "^4.1.1",
-    "marked": "^17.0.1",
     "yaml": "^2.7.1",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@kjerneverk/agentic": "^1.0.8",
-    "@kjerneverk/execution": "^1.0.7",
     "@kjerneverk/riotprompt": "^1.0.15"
   },
   "peerDependenciesMeta": {
-    "@kjerneverk/agentic": {
-      "optional": true
-    },
-    "@kjerneverk/execution": {
-      "optional": true
-    },
     "@kjerneverk/riotprompt": {
       "optional": true
     }
@@ -113,5 +101,8 @@
     "vite": "^7.0.4",
     "vite-plugin-dts": "^4.5.4",
     "vitest": "^4.0.17"
+  },
+  "publishConfig": {
+    "tag": "dev"
   }
 }

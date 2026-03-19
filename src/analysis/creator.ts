@@ -1,5 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { savePlanDoc } from "../artifacts/operations.js";
 
 export interface CreateAnalysisOptions {
     planPath: string;
@@ -8,31 +7,17 @@ export interface CreateAnalysisOptions {
 }
 
 /**
- * Create the analysis directory structure
+ * Create analysis entries in a .plan SQLite file
  */
 export async function createAnalysisDirectory(
     options: CreateAnalysisOptions
 ): Promise<string> {
     const { planPath, planName, initialPrompt } = options;
-    const analysisPath = join(planPath, "analysis");
-    
-    // Create directories
-    await mkdir(join(analysisPath, "prompts"), { recursive: true });
-    
-    // Create initial REQUIREMENTS.md
     const requirementsContent = generateRequirementsTemplate(planName, initialPrompt);
-    await writeFile(
-        join(analysisPath, "REQUIREMENTS.md"),
-        requirementsContent,
-        "utf-8"
-    );
-    
-    return analysisPath;
+    await savePlanDoc(planPath, "other", "analysis/REQUIREMENTS.md", requirementsContent);
+    return "analysis";
 }
 
-/**
- * Generate the initial REQUIREMENTS.md template
- */
 function generateRequirementsTemplate(planName: string, prompt: string): string {
     return `# ${formatPlanName(planName)} - Requirements Analysis
 
@@ -98,9 +83,6 @@ _Add any additional context or notes here._
 `;
 }
 
-/**
- * Convert kebab-case to Title Case
- */
 function formatPlanName(name: string): string {
     return name
         .split("-")

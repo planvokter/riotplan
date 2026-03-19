@@ -10,6 +10,8 @@ Part of [Kjerneverk](https://kjerneverk.github.io) - structured formats for work
 
 **✨ MCP Sampling Support** - No duplicate API keys needed when using RiotPlan via MCP! [Learn more →](docs/SAMPLING.md)
 
+> **Storage model:** RiotPlan now uses SQLite-backed `.plan` files as the only supported runtime format. Legacy directory-based plan workflows are deprecated and should be migrated.
+
 ## Why RiotPlan?
 
 ### Before: Inadequate Planning
@@ -558,6 +560,23 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
   }
 }
 ```
+
+If Cursor should connect to a remote HTTP deployment (`riotplan-mcp-http`) instead of launching a local process:
+
+```json
+{
+  "mcpServers": {
+    "riotplan-http": {
+      "url": "https://your-host.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <raw_key_secret>"
+      }
+    }
+  }
+}
+```
+
+`riotplan-mcp-http` also accepts `X-API-Key: <raw_key_secret>`.
 
 **Zero-Config Experience:** If you don't set `RIOTPLAN_PLAN_DIRECTORY`, RiotPlan will automatically find your `plans/` directory by walking up from your workspace root. No configuration needed!
 

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createPlan, loadPlan, completeStep, startStep } from '../src/index.js';
+import { loadPlan, completeStep } from '../src/index.js';
 import type { Plan } from '../src/index.js';
 import { writeStepReflection } from '../src/reflections/writer.js';
 import {
@@ -11,71 +11,61 @@ import {
     readAllReflections,
     readPriorReflections,
 } from '../src/reflections/reader.js';
-import { rm, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { existsSync } from 'node:fs';
-import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+import { rm } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { createTestPlan } from './helpers/create-test-plan.js';
 
 describe('Reflection System', () => {
-    let testDir: string;
     let planPath: string;
     let plan: Plan;
 
     beforeEach(async () => {
-        testDir = join(tmpdir(), `riotplan-reflections-test-${Date.now()}`);
-        const result = await createPlan({
-            code: 'test-plan',
+        planPath = await createTestPlan({
+            id: 'reflections-test',
             name: 'Test Plan',
-            basePath: testDir,
             steps: [
-                { title: 'First Step' },
-                { title: 'Second Step' },
-                { title: 'Third Step' },
+                { number: 1, code: 'first-step', title: 'First Step', status: 'pending' },
+                { number: 2, code: 'second-step', title: 'Second Step', status: 'pending' },
+                { number: 3, code: 'third-step', title: 'Third Step', status: 'pending' },
             ],
         });
-        planPath = result.path;
         plan = await loadPlan(planPath);
     });
 
     afterEach(async () => {
         try {
-            await rm(testDir, { recursive: true });
+            await rm(dirname(planPath), { recursive: true });
         } catch {
             // Ignore cleanup errors
         }
     });
 
     describe('writeStepReflection', () => {
-        it('should create reflections directory if it does not exist', async () => {
-            const reflectionsDir = join(planPath, 'reflections');
-            expect(existsSync(reflectionsDir)).toBe(false);
-
-            await writeStepReflection(planPath, 1, 'Test reflection content');
-
-            expect(existsSync(reflectionsDir)).toBe(true);
+        it('should write reflection to SQLite', async () => {
+            const filename = await writeStepReflection(planPath, 1, 'Test reflection content');
+            expect(filename).toContain('01-reflection.md');
         });
 
         it('should write reflection file with correct naming', async () => {
-            const filepath = await writeStepReflection(
+            const filename = await writeStepReflection(
                 planPath,
                 1,
                 'Reflection for step 1'
             );
 
-            expect(filepath).toContain('01-reflection.md');
-            expect(existsSync(filepath)).toBe(true);
+            expect(filename).toContain('01-reflection.md');
+            const content = await readStepReflection(planPath, 1);
+            expect(content).toBe('Reflection for step 1');
         });
 
         it('should write reflection file with leading zeros', async () => {
             await writeStepReflection(planPath, 1, 'Step 1');
             await writeStepReflection(planPath, 10, 'Step 10');
 
-            const reflectionsDir = join(planPath, 'reflections');
-            const files = await readdir(reflectionsDir);
-
-            expect(files).toContain('01-reflection.md');
-            expect(files).toContain('10-reflection.md');
+            const r1 = await readStepReflection(planPath, 1);
+            const r10 = await readStepReflection(planPath, 10);
+            expect(r1).toBe('Step 1');
+            expect(r10).toBe('Step 10');
         });
 
         it('should write freeform prose content', async () => {
@@ -116,7 +106,7 @@ What the next step should know:
             expect(content).toBe('Test content');
         });
 
-        it('should handle missing reflections directory gracefully', async () => {
+        it('should handle missing reflections gracefully', async () => {
             const content = await readStepReflection(planPath, 1);
             expect(content).toBeNull();
         });
@@ -128,7 +118,7 @@ What the next step should know:
             expect(reflections).toEqual([]);
         });
 
-        it('should return empty array when reflections directory does not exist', async () => {
+        it('should return empty array when no reflections stored', async () => {
             const reflections = await readAllReflections(planPath);
             expect(reflections).toEqual([]);
         });
@@ -197,29 +187,22 @@ What the next step should know:
 
     describe('MCP Tool Integration', () => {
         it('should not allow reflection on non-completed step', async () => {
-            // Step 1 is pending, not completed
             const step = plan.steps.find(s => s.number === 1);
             expect(step?.status).toBe('pending');
-
-            // This would be tested via MCP tool execution
-            // For now, we verify the step status check
             expect(step?.status).not.toBe('completed');
         });
 
         it('should allow reflection after step completion', async () => {
-            // Start and complete step 1 (modifies plan in memory)
             const updatedStep = await completeStep(plan, 1);
-            
-            // Update the plan's steps array
+
             const stepIndex = plan.steps.findIndex(s => s.number === 1);
             if (stepIndex >= 0) {
                 plan.steps[stepIndex] = updatedStep;
             }
-            
+
             const step = plan.steps.find(s => s.number === 1);
             expect(step?.status).toBe('completed');
 
-            // Now reflection can be written
             await writeStepReflection(planPath, 1, 'Reflection after completion');
             const content = await readStepReflection(planPath, 1);
             expect(content).toBe('Reflection after completion');
@@ -228,68 +211,18 @@ What the next step should know:
 
     describe('SQLite reflection reads', () => {
         it('should read a single SQLite reflection by step', async () => {
-            const sqlitePath = join(testDir, 'sqlite-reflections.plan');
-            const now = new Date().toISOString();
-            const provider = createSqliteProvider(sqlitePath);
-            await provider.initialize({
-                id: 'sqlite-reflections',
-                uuid: '00000000-0000-4000-8000-000000000301',
-                name: 'SQLite Reflections',
-                stage: 'executing',
-                createdAt: now,
-                updatedAt: now,
-                schemaVersion: 1,
-            });
-            await provider.saveFile({
-                type: 'prompt',
-                filename: 'reflections/01-reflection.md',
-                content: 'SQLite reflection step 1',
-                createdAt: now,
-                updatedAt: now,
-            });
-            await provider.close();
+            await writeStepReflection(planPath, 1, 'SQLite reflection step 1');
 
-            const content = await readStepReflection(sqlitePath, 1);
+            const content = await readStepReflection(planPath, 1);
             expect(content).toBe('SQLite reflection step 1');
         });
 
         it('should read all SQLite reflections sorted by step number', async () => {
-            const sqlitePath = join(testDir, 'sqlite-reflections-all.plan');
-            const now = new Date().toISOString();
-            const provider = createSqliteProvider(sqlitePath);
-            await provider.initialize({
-                id: 'sqlite-reflections-all',
-                uuid: '00000000-0000-4000-8000-000000000302',
-                name: 'SQLite Reflections All',
-                stage: 'executing',
-                createdAt: now,
-                updatedAt: now,
-                schemaVersion: 1,
-            });
-            await provider.saveFile({
-                type: 'prompt',
-                filename: 'reflections/03-reflection.md',
-                content: 'Reflection 3',
-                createdAt: now,
-                updatedAt: now,
-            });
-            await provider.saveFile({
-                type: 'prompt',
-                filename: 'reflections/01-reflection.md',
-                content: 'Reflection 1',
-                createdAt: now,
-                updatedAt: now,
-            });
-            await provider.saveFile({
-                type: 'prompt',
-                filename: 'reflections/02-reflection.md',
-                content: 'Reflection 2',
-                createdAt: now,
-                updatedAt: now,
-            });
-            await provider.close();
+            await writeStepReflection(planPath, 3, 'Reflection 3');
+            await writeStepReflection(planPath, 1, 'Reflection 1');
+            await writeStepReflection(planPath, 2, 'Reflection 2');
 
-            const reflections = await readAllReflections(sqlitePath);
+            const reflections = await readAllReflections(planPath);
             expect(reflections).toEqual([
                 { step: 1, content: 'Reflection 1' },
                 { step: 2, content: 'Reflection 2' },

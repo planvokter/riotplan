@@ -1,115 +1,72 @@
 /**
  * Retrospective Generator
  *
- * Generates plan retrospectives by analyzing execution data and applying
- * the retrospective generation prompt.
+ * Generates plan retrospectives by analyzing execution data from SQLite .plan files.
  */
 
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { existsSync } from 'node:fs';
 import { readAllReflections } from '../reflections/reader.js';
+import { readPlanDoc } from '../artifacts/operations.js';
 import { loadPlan } from '../plan/loader.js';
 import type { Plan } from '../types.js';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
 
 export interface GenerateRetrospectiveOptions {
-    /**
-     * Provider to use for generation (anthropic, openai, etc.)
-     * Defaults to anthropic
-     */
     provider?: string;
-
-    /**
-     * Model to use for generation
-     * Should be highest-tier model available (e.g., claude-opus-4, gpt-4)
-     */
     model?: string;
-
-    /**
-     * Force generation even if plan is not completed
-     */
     force?: boolean;
 }
 
 export interface RetrospectiveContext {
-    /** The loaded plan */
     plan: Plan;
-
-    /** All step reflections */
     reflections: Array<{ step: number; content: string }>;
-
-    /** Original plan summary */
     summary?: string;
-
-    /** Execution plan */
     executionPlan?: string;
-
-    /** Current status */
     status?: string;
-
-    /** Individual step files */
     stepFiles: Array<{ number: number; title: string; content: string }>;
 }
 
 /**
- * Load all context needed for retrospective generation
+ * Load all context needed for retrospective generation from SQLite.
  */
 export async function loadRetrospectiveContext(
     planPath: string
 ): Promise<RetrospectiveContext> {
     const plan = await loadPlan(planPath);
-
-    // Load reflections
     const reflections = await readAllReflections(planPath);
 
-    // Load plan files
-    const summary = await readFileIfExists(join(planPath, 'SUMMARY.md'));
-    const executionPlan = await readFileIfExists(
-        join(planPath, 'EXECUTION_PLAN.md')
-    );
-    const status = await readFileIfExists(join(planPath, 'STATUS.md'));
+    const summaryDoc = await readPlanDoc(planPath, "summary", "SUMMARY.md");
+    const execDoc = await readPlanDoc(planPath, "execution_plan", "EXECUTION_PLAN.md");
+    const statusDoc = await readPlanDoc(planPath, "status", "STATUS.md");
 
-    // Load step files
-    const stepFiles: Array<{ number: number; title: string; content: string }> =
-        [];
-    for (const step of plan.steps) {
-        const content = await readFileIfExists(step.filePath);
-        if (content) {
-            stepFiles.push({
-                number: step.number,
-                title: step.title,
-                content,
-            });
+    const stepFiles: Array<{ number: number; title: string; content: string }> = [];
+    const provider = createSqliteProvider(planPath);
+    try {
+        const stepsResult = await provider.getSteps();
+        if (stepsResult.success && stepsResult.data) {
+            for (const s of stepsResult.data) {
+                if (s.content) {
+                    stepFiles.push({
+                        number: s.number,
+                        title: s.title,
+                        content: s.content,
+                    });
+                }
+            }
         }
+    } finally {
+        await provider.close();
     }
 
     return {
         plan,
         reflections,
-        summary,
-        executionPlan,
-        status,
+        summary: summaryDoc?.content,
+        executionPlan: execDoc?.content,
+        status: statusDoc?.content,
         stepFiles,
     };
 }
 
-/**
- * Helper to read a file if it exists
- */
-async function readFileIfExists(path: string): Promise<string | undefined> {
-    if (!existsSync(path)) {
-        return undefined;
-    }
-    try {
-        return await readFile(path, 'utf-8');
-    } catch {
-        return undefined;
-    }
-}
-
-/**
- * Format the context into a prompt for retrospective generation
- */
 export function formatRetrospectivePrompt(
     context: RetrospectiveContext
 ): string {
@@ -205,20 +162,12 @@ Write the retrospective now:
     return prompt;
 }
 
-/**
- * Generate a retrospective for a completed plan
- *
- * Note: This function prepares the context and prompt but does NOT
- * actually call an LLM. That's handled by the MCP tool layer which
- * has access to the model execution infrastructure.
- */
 export async function generateRetrospective(
     planPath: string,
     options: GenerateRetrospectiveOptions = {}
 ): Promise<{ context: RetrospectiveContext; prompt: string }> {
     const context = await loadRetrospectiveContext(planPath);
 
-    // Validate plan is completed (unless forced)
     if (!options.force) {
         const allCompleted = context.plan.steps.every(
             (s) => s.status === 'completed' || s.status === 'skipped'
@@ -230,7 +179,6 @@ export async function generateRetrospective(
         }
     }
 
-    // Warn if no reflections
     if (context.reflections.length === 0) {
         // eslint-disable-next-line no-console
         console.warn(

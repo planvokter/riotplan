@@ -7,6 +7,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Plan } from "../types.js";
+import { savePlanDoc } from "../artifacts/operations.js";
 
 // Re-export reference functions
 export {
@@ -304,9 +305,13 @@ export async function createRetrospective(
     const retro = generateRetrospective(plan, options);
     const content = generateRetrospectiveMarkdown(retro);
 
+    if (plan.metadata.path.endsWith(".plan")) {
+        await savePlanDoc(plan.metadata.path, "other", "RETROSPECTIVE.md", content);
+        return "RETROSPECTIVE.md";
+    }
+
     const retroPath = join(plan.metadata.path, "RETROSPECTIVE.md");
     await writeFile(retroPath, content, "utf-8");
-
     return retroPath;
 }
 

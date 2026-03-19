@@ -1,39 +1,41 @@
 /**
  * Reflection File Writer
  *
- * Writes step reflection files to the reflections/ directory within a plan.
+ * Writes step reflection files to SQLite .plan storage.
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+
+function reflectionFilename(stepNumber: number): string {
+    const stepNum = String(stepNumber).padStart(2, '0');
+    return `reflections/${stepNum}-reflection.md`;
+}
 
 /**
- * Write a step reflection to the reflections/ directory
- *
- * @param planPath - Path to the plan directory
- * @param stepNumber - Step number to reflect on
- * @param content - Reflection content (freeform prose)
- * @returns Path to the written reflection file
+ * Write a step reflection to the plan's SQLite database.
  */
 export async function writeStepReflection(
     planPath: string,
     stepNumber: number,
     content: string
 ): Promise<string> {
-    // Ensure reflections directory exists
-    const reflectionsDir = join(planPath, 'reflections');
-    if (!existsSync(reflectionsDir)) {
-        await mkdir(reflectionsDir, { recursive: true });
+    const filename = reflectionFilename(stepNumber);
+
+    const provider = createSqliteProvider(planPath);
+    try {
+        const now = new Date().toISOString();
+        const result = await provider.saveFile({
+            type: 'reflection',
+            filename,
+            content,
+            createdAt: now,
+            updatedAt: now,
+        });
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to save reflection');
+        }
+        return filename;
+    } finally {
+        await provider.close();
     }
-
-    // Format step number with leading zero (e.g., 01, 02, ...)
-    const stepNum = String(stepNumber).padStart(2, '0');
-    const filename = `${stepNum}-reflection.md`;
-    const filepath = join(reflectionsDir, filename);
-
-    // Write the reflection file (freeform prose, no schema)
-    await writeFile(filepath, content, 'utf-8');
-
-    return filepath;
 }

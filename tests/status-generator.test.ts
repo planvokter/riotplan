@@ -2,12 +2,23 @@
  * Tests for STATUS.md Generator
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { generateStatus, updateStatus, parseStatus } from "../src/index.js";
 import type { Plan, PlanStep, PlanPhase, PlanState, PlanMetadata, PlanFiles } from "../src/index.js";
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
+import { createTestPlan } from "./helpers/create-test-plan.js";
 
-// Helper to create a minimal plan for testing
-function createTestPlan(overrides: Partial<Plan> = {}): Plan {
+let sharedPlanPath: string;
+
+async function getTestPlanPath(): Promise<string> {
+    if (!sharedPlanPath) {
+        sharedPlanPath = await createTestPlan({ id: "status-test", name: "Status Test", steps: [] });
+    }
+    return sharedPlanPath;
+}
+
+function createTestPlanObj(overrides: Partial<Plan> = {}): Plan {
     const defaultSteps: PlanStep[] = [
         {
             number: 1,
@@ -63,7 +74,7 @@ function createTestPlan(overrides: Partial<Plan> = {}): Plan {
         name: "Test Plan",
         description: "A test plan for unit testing",
         code: "test-plan",
-        path: "/test",
+        path: sharedPlanPath || "/test.plan",
     };
 
     const defaultFiles: PlanFiles = {
@@ -90,9 +101,20 @@ function createTestPlan(overrides: Partial<Plan> = {}): Plan {
 }
 
 describe("generateStatus", () => {
+    beforeEach(async () => {
+        await getTestPlanPath();
+    });
+
+    afterEach(async () => {
+        if (sharedPlanPath) {
+            try { await rm(dirname(sharedPlanPath), { recursive: true }); } catch {}
+            sharedPlanPath = "";
+        }
+    });
+
     describe("basic generation", () => {
         it("should generate valid STATUS.md", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("# Test Plan Status");
@@ -104,7 +126,7 @@ describe("generateStatus", () => {
         });
 
         it("should include status legend", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("**Status Legend**");
@@ -114,7 +136,7 @@ describe("generateStatus", () => {
         });
 
         it("should include last updated timestamp", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("*Last updated:");
@@ -123,28 +145,28 @@ describe("generateStatus", () => {
 
     describe("current state section", () => {
         it("should display current status", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("🔄 IN PROGRESS");
         });
 
         it("should display current step", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("03 - Core Implementation");
         });
 
         it("should display last completed step", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("02 - Foundation");
         });
 
         it("should display progress percentage", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("50%");
@@ -152,7 +174,7 @@ describe("generateStatus", () => {
         });
 
         it("should handle no current step", async () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 state: {
                     status: "pending",
                     progress: 0,
@@ -168,7 +190,7 @@ describe("generateStatus", () => {
 
     describe("step progress section", () => {
         it("should list all steps", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("| 01 | Setup |");
@@ -178,19 +200,16 @@ describe("generateStatus", () => {
         });
 
         it("should show step statuses with emojis", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
-            // Completed steps
             expect(status).toMatch(/\| 01 \| Setup \| ✅/);
-            // In progress step
             expect(status).toMatch(/\| 03 \| Core Implementation \| 🔄/);
-            // Pending step
             expect(status).toMatch(/\| 04 \| Testing \| ⬜/);
         });
 
         it("should show step dates", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("2026-01-10");
@@ -198,7 +217,7 @@ describe("generateStatus", () => {
         });
 
         it("should show step notes", async () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 steps: [
                     {
                         number: 1,
@@ -220,19 +239,11 @@ describe("generateStatus", () => {
     describe("phase progress section", () => {
         it("should include phase progress when phases defined", async () => {
             const phases: PlanPhase[] = [
-                {
-                    name: "Phase 1: Foundation",
-                    steps: [1, 2],
-                    status: "completed",
-                },
-                {
-                    name: "Phase 2: Implementation",
-                    steps: [3, 4],
-                    status: "in_progress",
-                },
+                { name: "Phase 1: Foundation", steps: [1, 2], status: "completed" },
+                { name: "Phase 2: Implementation", steps: [3, 4], status: "in_progress" },
             ];
 
-            const plan = createTestPlan({ phases });
+            const plan = createTestPlanObj({ phases });
             const status = await generateStatus(plan);
 
             expect(status).toContain("## Phase Progress");
@@ -242,21 +253,17 @@ describe("generateStatus", () => {
 
         it("should show phase step ranges", async () => {
             const phases: PlanPhase[] = [
-                {
-                    name: "Phase 1",
-                    steps: [1, 2],
-                    status: "completed",
-                },
+                { name: "Phase 1", steps: [1, 2], status: "completed" },
             ];
 
-            const plan = createTestPlan({ phases });
+            const plan = createTestPlanObj({ phases });
             const status = await generateStatus(plan);
 
             expect(status).toContain("01-02");
         });
 
         it("should not include phases when none defined", async () => {
-            const plan = createTestPlan({ phases: undefined });
+            const plan = createTestPlanObj({ phases: undefined });
             const status = await generateStatus(plan);
 
             expect(status).not.toContain("## Phase Progress");
@@ -267,7 +274,7 @@ describe("generateStatus", () => {
                 { name: "Phase 1", steps: [1, 2], status: "completed" },
             ];
 
-            const plan = createTestPlan({ phases });
+            const plan = createTestPlanObj({ phases });
             const status = await generateStatus(plan, { includePhases: false });
 
             expect(status).not.toContain("## Phase Progress");
@@ -276,7 +283,7 @@ describe("generateStatus", () => {
 
     describe("blockers section", () => {
         it("should show 'None currently' when no blockers", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("## Blockers");
@@ -284,7 +291,7 @@ describe("generateStatus", () => {
         });
 
         it("should list blockers", async () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 state: {
                     status: "blocked",
                     progress: 50,
@@ -309,7 +316,7 @@ describe("generateStatus", () => {
 
     describe("issues section", () => {
         it("should show 'None currently' when no issues", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toContain("## Issues");
@@ -317,7 +324,7 @@ describe("generateStatus", () => {
         });
 
         it("should list issues", async () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 state: {
                     status: "in_progress",
                     progress: 50,
@@ -342,7 +349,7 @@ describe("generateStatus", () => {
 
     describe("notes preservation", () => {
         it("should preserve existing notes", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const existingContent = `# Old Status
 
 ## Notes
@@ -362,7 +369,7 @@ describe("generateStatus", () => {
         });
 
         it("should not preserve notes when disabled", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const existingContent = `# Old Status
 
 ## Notes
@@ -382,21 +389,21 @@ describe("generateStatus", () => {
 
     describe("date formatting", () => {
         it("should use short format by default", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan);
 
             expect(status).toMatch(/\d{4}-\d{2}-\d{2}/);
         });
 
         it("should support iso format", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan, { dateFormat: "iso" });
 
             expect(status).toMatch(/\d{4}-\d{2}-\d{2}/);
         });
 
         it("should support long format", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const status = await generateStatus(plan, { dateFormat: "long" });
 
             expect(status).toMatch(/January|February|March|April|May|June|July|August|September|October|November|December/);
@@ -405,7 +412,7 @@ describe("generateStatus", () => {
 
     describe("progress calculation", () => {
         it("should calculate 0% for no completed steps", async () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 steps: [
                     { number: 1, code: "a", filename: "01-a.md", title: "A", status: "pending", filePath: "" },
                     { number: 2, code: "b", filename: "02-b.md", title: "B", status: "pending", filePath: "" },
@@ -418,7 +425,7 @@ describe("generateStatus", () => {
         });
 
         it("should calculate 100% for all completed steps", async () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 steps: [
                     { number: 1, code: "a", filename: "01-a.md", title: "A", status: "completed", filePath: "" },
                     { number: 2, code: "b", filename: "02-b.md", title: "B", status: "completed", filePath: "" },
@@ -431,7 +438,7 @@ describe("generateStatus", () => {
         });
 
         it("should handle empty steps array", async () => {
-            const plan = createTestPlan({ steps: [] });
+            const plan = createTestPlanObj({ steps: [] });
             const status = await generateStatus(plan);
 
             expect(status).toContain("0%");
@@ -441,7 +448,7 @@ describe("generateStatus", () => {
 
     describe("roundtrip consistency", () => {
         it("should produce parseable output", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const generated = await generateStatus(plan);
             const parsed = parseStatus(generated);
 
@@ -450,7 +457,7 @@ describe("generateStatus", () => {
         });
 
         it("should preserve step statuses through roundtrip", async () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const generated = await generateStatus(plan);
             const parsed = parseStatus(generated);
 
@@ -464,117 +471,78 @@ describe("generateStatus", () => {
 describe("updateStatus", () => {
     describe("step status updates", () => {
         it("should update step status to in_progress", () => {
-            const plan = createTestPlan();
-            const updated = updateStatus(plan, {
-                step: 4,
-                stepStatus: "in_progress",
-            });
+            const plan = createTestPlanObj();
+            const updated = updateStatus(plan, { step: 4, stepStatus: "in_progress" });
 
             expect(updated.steps[3].status).toBe("in_progress");
             expect(updated.steps[3].startedAt).toBeDefined();
         });
 
         it("should update step status to completed", () => {
-            const plan = createTestPlan();
-            const updated = updateStatus(plan, {
-                step: 3,
-                stepStatus: "completed",
-            });
+            const plan = createTestPlanObj();
+            const updated = updateStatus(plan, { step: 3, stepStatus: "completed" });
 
             expect(updated.steps[2].status).toBe("completed");
             expect(updated.steps[2].completedAt).toBeDefined();
         });
 
         it("should update current step when starting", () => {
-            const plan = createTestPlan();
-            const updated = updateStatus(plan, {
-                step: 4,
-                stepStatus: "in_progress",
-            });
+            const plan = createTestPlanObj();
+            const updated = updateStatus(plan, { step: 4, stepStatus: "in_progress" });
 
             expect(updated.state.currentStep).toBe(4);
         });
 
         it("should update last completed step", () => {
-            const plan = createTestPlan();
-            const updated = updateStatus(plan, {
-                step: 3,
-                stepStatus: "completed",
-            });
+            const plan = createTestPlanObj();
+            const updated = updateStatus(plan, { step: 3, stepStatus: "completed" });
 
             expect(updated.state.lastCompletedStep).toBe(3);
         });
 
         it("should start plan when first step starts", () => {
-            const plan = createTestPlan({
-                state: {
-                    status: "pending",
-                    progress: 0,
-                    blockers: [],
-                    issues: [],
-                },
+            const plan = createTestPlanObj({
+                state: { status: "pending", progress: 0, blockers: [], issues: [] },
             });
-            const updated = updateStatus(plan, {
-                step: 1,
-                stepStatus: "in_progress",
-            });
+            const updated = updateStatus(plan, { step: 1, stepStatus: "in_progress" });
 
             expect(updated.state.status).toBe("in_progress");
             expect(updated.state.startedAt).toBeDefined();
         });
 
         it("should complete plan when all steps complete", () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 steps: [
                     { number: 1, code: "a", filename: "01-a.md", title: "A", status: "completed", filePath: "" },
                     { number: 2, code: "b", filename: "02-b.md", title: "B", status: "in_progress", filePath: "" },
                 ],
-                state: {
-                    status: "in_progress",
-                    progress: 50,
-                    blockers: [],
-                    issues: [],
-                },
+                state: { status: "in_progress", progress: 50, blockers: [], issues: [] },
             });
-            const updated = updateStatus(plan, {
-                step: 2,
-                stepStatus: "completed",
-            });
+            const updated = updateStatus(plan, { step: 2, stepStatus: "completed" });
 
             expect(updated.state.status).toBe("completed");
             expect(updated.state.completedAt).toBeDefined();
         });
 
         it("should handle skipped steps in completion check", () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 steps: [
                     { number: 1, code: "a", filename: "01-a.md", title: "A", status: "completed", filePath: "" },
                     { number: 2, code: "b", filename: "02-b.md", title: "B", status: "skipped", filePath: "" },
                     { number: 3, code: "c", filename: "03-c.md", title: "C", status: "in_progress", filePath: "" },
                 ],
-                state: {
-                    status: "in_progress",
-                    progress: 33,
-                    blockers: [],
-                    issues: [],
-                },
+                state: { status: "in_progress", progress: 33, blockers: [], issues: [] },
             });
-            const updated = updateStatus(plan, {
-                step: 3,
-                stepStatus: "completed",
-            });
+            const updated = updateStatus(plan, { step: 3, stepStatus: "completed" });
 
             expect(updated.state.status).toBe("completed");
         });
 
         it("should not modify original plan", () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const originalStatus = plan.steps[3].status;
 
-            updateStatus(plan, {
-                step: 4,
-                stepStatus: "in_progress",
-            });
+            updateStatus(plan, { step: 4, stepStatus: "in_progress" });
 
             expect(plan.steps[3].status).toBe(originalStatus);
         });
@@ -582,59 +550,41 @@ describe("updateStatus", () => {
 
     describe("blocker management", () => {
         it("should add blocker", () => {
-            const plan = createTestPlan();
-            const updated = updateStatus(plan, {
-                addBlocker: "Waiting on external dependency",
-            });
+            const plan = createTestPlanObj();
+            const updated = updateStatus(plan, { addBlocker: "Waiting on external dependency" });
 
             expect(updated.state.blockers.length).toBe(1);
             expect(updated.state.blockers[0].description).toBe("Waiting on external dependency");
         });
 
         it("should remove blocker by description match", () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 state: {
                     status: "blocked",
                     progress: 50,
                     blockers: [
-                        {
-                            id: "blocker-1",
-                            description: "Waiting on API",
-                            severity: "high",
-                            affectedSteps: [],
-                            createdAt: new Date(),
-                        },
+                        { id: "blocker-1", description: "Waiting on API", severity: "high", affectedSteps: [], createdAt: new Date() },
                     ],
                     issues: [],
                 },
             });
-            const updated = updateStatus(plan, {
-                removeBlocker: "API",
-            });
+            const updated = updateStatus(plan, { removeBlocker: "API" });
 
             expect(updated.state.blockers.length).toBe(0);
         });
 
         it("should not remove non-matching blockers", () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 state: {
                     status: "blocked",
                     progress: 50,
                     blockers: [
-                        {
-                            id: "blocker-1",
-                            description: "Waiting on API",
-                            severity: "high",
-                            affectedSteps: [],
-                            createdAt: new Date(),
-                        },
+                        { id: "blocker-1", description: "Waiting on API", severity: "high", affectedSteps: [], createdAt: new Date() },
                     ],
                     issues: [],
                 },
             });
-            const updated = updateStatus(plan, {
-                removeBlocker: "database",
-            });
+            const updated = updateStatus(plan, { removeBlocker: "database" });
 
             expect(updated.state.blockers.length).toBe(1);
         });
@@ -642,12 +592,9 @@ describe("updateStatus", () => {
 
     describe("issue management", () => {
         it("should add issue", () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const updated = updateStatus(plan, {
-                addIssue: {
-                    title: "Performance",
-                    description: "Tests are slow",
-                },
+                addIssue: { title: "Performance", description: "Tests are slow" },
             });
 
             expect(updated.state.issues.length).toBe(1);
@@ -658,24 +605,16 @@ describe("updateStatus", () => {
 
     describe("progress calculation", () => {
         it("should recalculate progress after update", () => {
-            const plan = createTestPlan({
+            const plan = createTestPlanObj({
                 steps: [
                     { number: 1, code: "a", filename: "01-a.md", title: "A", status: "completed", filePath: "" },
                     { number: 2, code: "b", filename: "02-b.md", title: "B", status: "pending", filePath: "" },
                     { number: 3, code: "c", filename: "03-c.md", title: "C", status: "pending", filePath: "" },
                     { number: 4, code: "d", filename: "04-d.md", title: "D", status: "pending", filePath: "" },
                 ],
-                state: {
-                    status: "in_progress",
-                    progress: 25,
-                    blockers: [],
-                    issues: [],
-                },
+                state: { status: "in_progress", progress: 25, blockers: [], issues: [] },
             });
-            const updated = updateStatus(plan, {
-                step: 2,
-                stepStatus: "completed",
-            });
+            const updated = updateStatus(plan, { step: 2, stepStatus: "completed" });
 
             expect(updated.state.progress).toBe(50);
         });
@@ -683,13 +622,10 @@ describe("updateStatus", () => {
 
     describe("timestamp updates", () => {
         it("should update lastUpdatedAt", () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const before = new Date();
 
-            const updated = updateStatus(plan, {
-                step: 4,
-                stepStatus: "in_progress",
-            });
+            const updated = updateStatus(plan, { step: 4, stepStatus: "in_progress" });
 
             expect(updated.state.lastUpdatedAt).toBeDefined();
             expect(updated.state.lastUpdatedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
@@ -698,23 +634,17 @@ describe("updateStatus", () => {
 
     describe("edge cases", () => {
         it("should handle non-existent step", () => {
-            const plan = createTestPlan();
-            const updated = updateStatus(plan, {
-                step: 99,
-                stepStatus: "completed",
-            });
+            const plan = createTestPlanObj();
+            const updated = updateStatus(plan, { step: 99, stepStatus: "completed" });
 
-            // Should not throw, just not update anything
             expect(updated.steps.length).toBe(plan.steps.length);
         });
 
         it("should handle empty updates", () => {
-            const plan = createTestPlan();
+            const plan = createTestPlanObj();
             const updated = updateStatus(plan, {});
 
-            // Should still update timestamp
             expect(updated.state.lastUpdatedAt).toBeDefined();
         });
     });
 });
-
