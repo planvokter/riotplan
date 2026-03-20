@@ -55,22 +55,11 @@ jobs:
       - run: npm install --verbose --foreground-scripts
         if: steps.npm-tag.outputs.should_publish == 'true'
         timeout-minutes: 10
-      - name: Set up Python for sampling tests
+      # Legacy FastMCP/Python tests lived under tests/sampling; that harness was removed
+      # from this repo (core is Vitest-only). HTTP MCP + sampling belong in riotplan-mcp-http CI.
+      - name: Lint and test
         if: steps.npm-tag.outputs.should_publish == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install Python test dependencies
-        if: steps.npm-tag.outputs.should_publish == 'true'
-        run: |
-          cd tests/sampling
-          pip install -r requirements.txt
-      - name: Run sampling tests
-        if: steps.npm-tag.outputs.should_publish == 'true'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: npm run test:sampling
+        run: npm run lint && npm run test
       - name: Update package.json version for pre-release
         if: steps.npm-tag.outputs.should_publish == 'true' && steps.npm-tag.outputs.tag == 'dev'
         run: |
