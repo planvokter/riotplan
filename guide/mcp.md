@@ -14,8 +14,10 @@ The MCP server exposes riotplan's functionality through:
 ### Global Installation
 
 ```bash
-npm install -g @kjerneverk/riotplan
+npm install -g @kjerneverk/riotplan-mcp-http
 ```
+
+(`@kjerneverk/riotplan` is installed automatically as a dependency of the HTTP package.)
 
 ### Cursor Configuration
 
@@ -26,7 +28,7 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
   "mcpServers": {
     "riotplan": {
       "command": "npx",
-      "args": ["-y", "@kjerneverk/riotplan", "riotplan-mcp-http", "--plans-dir", "/path/to/plans"]
+      "args": ["-y", "@kjerneverk/riotplan-mcp-http", "riotplan-mcp-http", "--plans-dir", "/path/to/plans"]
     }
   }
 }

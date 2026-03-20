@@ -44,6 +44,25 @@ export { PLAN_CONVENTIONS } from "./types.js";
 // Plan Operations
 export { loadPlan, type LoadPlanOptions } from "./plan/loader.js";
 
+// Configuration (package root; avoids broken npm subpath typings for ./config)
+export type { RiotPlanConfig } from "./config/index.js";
+export { RiotPlanConfigSchema } from "./config/index.js";
+export {
+    loadConfig,
+    clearConfigCache,
+    checkConfigWithCardiganTime,
+    findPlansDirectory,
+    clearWalkUpCache,
+    resolvePlanDirectory,
+    resolvePlanDirectorySync,
+    clearResolverCache,
+    loadConfiguredCatalysts,
+    clearCatalystCache,
+    getCatalystEnvOverrides,
+} from "./config/index.js";
+
+export { getPlanCategory, type PlanCategory } from "./plan/category.js";
+
 // Analysis Operations
 export {
     createAnalysisDirectory,
