@@ -191,7 +191,9 @@ function parseStatusDocument(content, steps) {
             }
         }
     }
-    const completedSteps = steps.filter((s) => s.status === "completed").length;
+    const completedSteps = steps.filter(
+        (s) => s.status === "completed" || s.status === "skipped"
+    ).length;
     state.progress =
         steps.length > 0 ? Math.round((completedSteps / steps.length) * 100) : 0;
     const currentStep = steps.find((s) => s.status === "in_progress");
@@ -199,10 +201,17 @@ function parseStatusDocument(content, steps) {
         state.currentStep = currentStep.number;
     }
     const completedStepNumbers = steps
-        .filter((s) => s.status === "completed")
+        .filter((s) => s.status === "completed" || s.status === "skipped")
         .map((s) => s.number);
     if (completedStepNumbers.length > 0) {
         state.lastCompletedStep = Math.max(...completedStepNumbers);
+    }
+    // Header row may be plain text (e.g. SQLite-generated STATUS) with no emoji; step rows
+    // from SQLite still carry authoritative task status.
+    if (completedSteps === steps.length && steps.length > 0) {
+        state.status = "completed";
+    } else if (currentStep || completedSteps > 0) {
+        state.status = "in_progress";
     }
     return state;
 }
