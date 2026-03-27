@@ -12,3 +12,5 @@ input/
 !/package-lock.json
 output/
 .kodrdriv*package-lock.json
+.kodrdriv*
+package-lock.json
