@@ -43,6 +43,7 @@ export { PLAN_CONVENTIONS } from "./types.js";
 
 // Plan Operations
 export { loadPlan, type LoadPlanOptions } from "./plan/loader.js";
+export { createPlan, type CreatePlanConfig } from "./plan/creator.js";
 
 // Configuration (package root; avoids broken npm subpath typings for ./config)
 export type { RiotPlanConfig } from "./config/index.js";
@@ -264,25 +265,6 @@ export {
     type JsonRenderOptions,
     type HtmlRenderOptions,
 } from "@kjerneverk/riotplan-render";
-
-// Template Operations (re-exported from @kjerneverk/riotplan-templates)
-export {
-    listTemplates,
-    getTemplate,
-    registerTemplate,
-    applyTemplate,
-    listTemplatesByCategory,
-    searchTemplatesByTag,
-    BasicTemplate,
-    FeatureTemplate,
-    RefactoringTemplate,
-    MigrationTemplate,
-    SprintTemplate,
-    type PlanTemplate,
-    type TemplateStep,
-    type ApplyTemplateResult,
-    type ApplyTemplateOptions,
-} from "@kjerneverk/riotplan-templates";
 
 // Verification (re-exported from @kjerneverk/riotplan-verify)
 export type {
