@@ -265,25 +265,6 @@ export {
     type HtmlRenderOptions,
 } from "@kjerneverk/riotplan-render";
 
-// Template Operations (re-exported from @kjerneverk/riotplan-templates)
-export {
-    listTemplates,
-    getTemplate,
-    registerTemplate,
-    applyTemplate,
-    listTemplatesByCategory,
-    searchTemplatesByTag,
-    BasicTemplate,
-    FeatureTemplate,
-    RefactoringTemplate,
-    MigrationTemplate,
-    SprintTemplate,
-    type PlanTemplate,
-    type TemplateStep,
-    type ApplyTemplateResult,
-    type ApplyTemplateOptions,
-} from "@kjerneverk/riotplan-templates";
-
 // Verification (re-exported from @kjerneverk/riotplan-verify)
 export type {
     CriteriaPriority,
