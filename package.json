@@ -1,6 +1,6 @@
 {
   "name": "@kjerneverk/riotplan",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "description": "Framework for long-lived, stateful AI workflows (plans)",
   "type": "module",
   "main": "./dist/index.js",
@@ -63,11 +63,11 @@
   },
   "dependencies": {
     "@fjell/logging": "^4.4.69",
-    "@kjerneverk/riotplan-catalyst": "^1.0.11",
-    "@kjerneverk/riotplan-core": "^1.0.30",
-    "@kjerneverk/riotplan-format": "^1.0.7",
-    "@kjerneverk/riotplan-render": "^1.0.3",
-    "@kjerneverk/riotplan-verify": "^1.0.3",
+    "@kjerneverk/riotplan-catalyst": "^1.0.12",
+    "@kjerneverk/riotplan-core": "^1.0.31",
+    "@kjerneverk/riotplan-format": "^1.0.8",
+    "@kjerneverk/riotplan-render": "^1.0.4",
+    "@kjerneverk/riotplan-verify": "^1.0.4",
     "@redaksjon/context": "^0.0.11",
     "@utilarium/cardigantime": "^0.0.25",
     "@utilarium/overcontext": "^0.0.8",
@@ -77,7 +77,7 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@kjerneverk/riotprompt": "^1.0.20"
+    "@kjerneverk/riotprompt": "^1.0.21"
   },
   "peerDependenciesMeta": {
     "@kjerneverk/riotprompt": {
