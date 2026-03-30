@@ -43,6 +43,7 @@ export { PLAN_CONVENTIONS } from "./types.js";
 
 // Plan Operations
 export { loadPlan, type LoadPlanOptions } from "./plan/loader.js";
+export { createPlan, type CreatePlanConfig } from "./plan/creator.js";
 
 // Configuration (package root; avoids broken npm subpath typings for ./config)
 export type { RiotPlanConfig } from "./config/index.js";
