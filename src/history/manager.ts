@@ -5,7 +5,7 @@
  */
 
 import type { PlanHistory } from "../types.js";
-import { createSqliteProvider } from "@kjerneverk/riotplan-format";
+import { createSqliteProvider } from "@planvokter/riotplan-format";
 
 const HISTORY_FILE = ".history/HISTORY.json";
 

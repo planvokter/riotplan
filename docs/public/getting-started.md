@@ -17,13 +17,13 @@ RiotPlan helps you manage complex, multi-step AI-assisted tasks that:
 ### Basic Installation
 
 ```bash
-npm install -g @kjerneverk/riotplan
+npm install -g @planvokter/riotplan
 ```
 
 Or as a development dependency:
 
 ```bash
-npm install --save-dev @kjerneverk/riotplan
+npm install --save-dev @planvokter/riotplan
 ```
 
 ### AI-Powered Generation (Optional)
@@ -162,7 +162,7 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
   "mcpServers": {
     "riotplan": {
       "command": "npx",
-      "args": ["-y", "@kjerneverk/riotplan", "riotplan-mcp"]
+      "args": ["-y", "@planvokter/riotplan", "riotplan-mcp"]
     }
   }
 }

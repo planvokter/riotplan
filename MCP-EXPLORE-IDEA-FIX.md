@@ -89,7 +89,7 @@ AI: "Great! Let's explore this. What's driving the need?"
 
 ## Files Changed
 
-- `/Users/tobrien/gitw/kjerneverk/riotplan/src/mcp/prompts/explore_idea.md`
+- `/Users/tobrien/gitw/planvokter/riotplan/src/mcp/prompts/explore_idea.md`
   - Updated workflow section with smart extraction logic
   - Added detailed examples showing extraction patterns
   - Added anti-pattern: "Don't ask for information the user already provided"

@@ -16,9 +16,9 @@
  * 5. Stop at filesystem root if no match found
  *
  * Example:
- * Running from `/Users/tobrien/gitw/kjerneverk/riotplan/src/analysis`
- * will find `/Users/tobrien/gitw/kjerneverk/plans` and return
- * `/Users/tobrien/gitw/kjerneverk` (the parent directory).
+ * Running from `/Users/tobrien/gitw/planvokter/riotplan/src/analysis`
+ * will find `/Users/tobrien/gitw/planvokter/plans` and return
+ * `/Users/tobrien/gitw/planvokter` (the parent directory).
  */
 import { existsSync, statSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';

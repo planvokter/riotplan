@@ -252,7 +252,7 @@ export {
     type RollbackResult,
 } from "./history/milestones.js";
 
-// Renderer Operations (re-exported from @kjerneverk/riotplan-render)
+// Renderer Operations
 export {
     renderPlan,
     renderToMarkdown,
@@ -264,9 +264,9 @@ export {
     type MarkdownRenderOptions,
     type JsonRenderOptions,
     type HtmlRenderOptions,
-} from "@kjerneverk/riotplan-render";
+} from "./renderer/index.js";
 
-// Verification (re-exported from @kjerneverk/riotplan-verify)
+// Verification (re-exported from @planvokter/riotplan-verify)
 export type {
     CriteriaPriority,
     CriteriaStatus,
@@ -280,7 +280,7 @@ export type {
     VerificationReport,
     ParsedCriteria,
     CoverageOptions,
-} from "@kjerneverk/riotplan-verify";
+} from "@planvokter/riotplan-verify";
 
 export {
     PRIORITY_WEIGHTS,
@@ -291,7 +291,7 @@ export {
     getCriteriaSummary,
     checkCoverage,
     checkCompletion,
-} from "@kjerneverk/riotplan-verify";
+} from "@planvokter/riotplan-verify";
 
 // Version
 export const VERSION = "0.0.1";

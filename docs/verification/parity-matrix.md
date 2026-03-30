@@ -1,7 +1,7 @@
 # RiotPlan Split Parity Matrix
 
 This matrix tracks parity checks for the core/mcp-http split while preserving
-`@kjerneverk/riotplan` compatibility.
+`@planvokter/riotplan` compatibility.
 
 ## Matrix
 

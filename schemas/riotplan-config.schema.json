@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/kjerneverk/riotplan/main/schemas/riotplan-config.schema.json",
+  "$id": "https://raw.githubusercontent.com/planvokter/riotplan/main/schemas/riotplan-config.schema.json",
   "title": "RiotPlan Configuration",
   "description": "Configuration file for RiotPlan - a framework for long-lived, stateful AI workflows",
   "type": "object",

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { parse as parseYaml } from 'yaml';
-import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+import { createSqliteProvider } from '@planvokter/riotplan-format';
 
 const PlanManifestMetadataSchema = z
     .object({

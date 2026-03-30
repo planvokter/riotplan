@@ -92,7 +92,7 @@ No changes needed - manifests are created automatically.
 The manifest creation is implemented in the MCP tool layer, not in the core `createPlan()` function. This is intentional:
 
 1. **Separation of concerns:** Core library handles plan structure, MCP tools handle metadata
-2. **Optional dependency:** Manifest requires `@kjerneverk/riotplan-catalyst` which is optional
+2. **Optional dependency:** Manifest requires `@planvokter/riotplan-catalyst` which is optional
 3. **MCP-specific feature:** Manifests are primarily used by MCP tools for catalyst tracking
 
 ### Manifest Auto-Creation Strategy
@@ -159,5 +159,5 @@ To test the changes:
 ## Related
 
 - Original implementation: `plans/done/global-riotplan-rules/plan/05-define-plan-manifest-planyaml-schema-and-readwrite.md`
-- Manifest schema: `@kjerneverk/riotplan-catalyst/src/schema/schemas.ts`
-- Manifest I/O: `@kjerneverk/riotplan-catalyst/src/loader/plan-manifest.ts`
+- Manifest schema: `@planvokter/riotplan-catalyst/src/schema/schemas.ts`
+- Manifest I/O: `@planvokter/riotplan-catalyst/src/loader/plan-manifest.ts`

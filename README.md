@@ -729,7 +729,7 @@ remains the single published package and source of truth. The sibling packages
 contain real extracted code with proper package imports, but don't have
 standalone builds or test suites yet.
 
-### What's in `@kjerneverk/riotplan` (this package)
+### What's in `@planvokter/riotplan` (this package)
 
 Everything. This is still the monolith. Here's why each module exists here:
 
@@ -737,7 +737,7 @@ Everything. This is still the monolith. Here's why each module exists here:
 |---|---|---|
 | `src/mcp/` | HTTP MCP server, tools, resources, prompts, session, RBAC | Copied to `riotplan-mcp-http`. Both copies exist; this one is tested. |
 | `src/core/` | Domain contracts, services, adapters, composition root | Copied to `riotplan-core`. Both copies exist; this one is tested. |
-| `src/ai/` | Artifact loading, plan generation prompts, provider loading | Stays here. MCP-HTTP imports via `@kjerneverk/riotplan/ai/*`. |
+| `src/ai/` | Artifact loading, plan generation prompts, provider loading | Stays here. MCP-HTTP imports via `@planvokter/riotplan/ai/*`. |
 | `src/plan/` | Plan loader, creator, validator, category | Stays here. Core library functionality. |
 | `src/cli/` | CLI commands, agent tools, explore command | Stays here. CLI is not being extracted. |
 | `src/cloud/` | GCS cloud sync runtime | Stays here. Server infrastructure. |
@@ -765,9 +765,9 @@ Everything. This is still the monolith. Here's why each module exists here:
 
 | Package | What it owns | Dependencies |
 |---|---|---|
-| [`@kjerneverk/riotplan-core`](../riotplan-core/) | Domain contracts, services, adapters, composition | `@kjerneverk/riotplan` (types + plan ops), `@kjerneverk/riotplan-format` |
-| [`@kjerneverk/riotplan-mcp-http`](../riotplan-mcp-http/) | HTTP server, MCP tools/resources/prompts, RBAC, sessions | `@kjerneverk/riotplan` (ai, config, plan, types), `@kjerneverk/riotplan-core`, `@kjerneverk/riotplan-format` |
-| `@kjerneverk/riotplan-format` | SQLite schema, provider, plan file format | (independent) |
+| [`@planvokter/riotplan-core`](../riotplan-core/) | Domain contracts, services, adapters, composition | `@planvokter/riotplan` (types + plan ops), `@planvokter/riotplan-format` |
+| [`@planvokter/riotplan-mcp-http`](../riotplan-mcp-http/) | HTTP server, MCP tools/resources/prompts, RBAC, sessions | `@planvokter/riotplan` (ai, config, plan, types), `@planvokter/riotplan-core`, `@planvokter/riotplan-format` |
+| `@planvokter/riotplan-format` | SQLite schema, provider, plan file format | (independent) |
 
 ### Why duplicated code?
 
@@ -775,7 +775,7 @@ Everything. This is still the monolith. Here's why each module exists here:
 
 1. All tests run here against the original source
 2. The build produces a single bundle from this tree
-3. The npm-published `@kjerneverk/riotplan` package ships from here
+3. The npm-published `@planvokter/riotplan` package ships from here
 4. The sibling packages aren't published yet
 
 Once `riotplan-core` and `riotplan-mcp-http` have their own builds, test

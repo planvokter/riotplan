@@ -5,10 +5,10 @@ Use this checklist before publishing split package releases.
 ## Version Coordination
 
 - Confirm aligned version bump strategy for:
-  - `@kjerneverk/riotplan`
-  - `@kjerneverk/riotplan-core`
-  - `@kjerneverk/riotplan-mcp-http`
-  - `@kjerneverk/riotplan-format`
+  - `@planvokter/riotplan`
+  - `@planvokter/riotplan-core`
+  - `@planvokter/riotplan-mcp-http`
+  - `@planvokter/riotplan-format`
 - Verify peer dependency ranges remain compatible.
 
 ## Compatibility Gates
@@ -28,7 +28,7 @@ Use this checklist before publishing split package releases.
 
 ## Rollback Strategy
 
-- Keep compatibility exports active in `@kjerneverk/riotplan` until post-release
+- Keep compatibility exports active in `@planvokter/riotplan` until post-release
   parity checks pass.
 - If regressions are detected, rollback by republishing compatibility package
   with previous forwarding behavior while preserving SQLite schema continuity.

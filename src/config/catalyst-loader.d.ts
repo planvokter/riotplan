@@ -3,16 +3,16 @@
  *
  * This module handles loading and merging catalysts declared in the RiotPlan
  * configuration. It resolves catalyst identifiers (paths or NPM package names)
- * and uses the @kjerneverk/riotplan-catalyst package to load and merge them.
+ * and uses the @planvokter/riotplan-catalyst package to load and merge them.
  */
-import { type MergedCatalyst } from '@kjerneverk/riotplan-catalyst';
+import { type MergedCatalyst } from '@planvokter/riotplan-catalyst';
 import type { RiotPlanConfig } from './schema.js';
 /**
  * Load and merge catalysts declared in the configuration
  *
  * This function:
  * 1. Resolves catalyst identifiers to absolute paths
- * 2. Loads each catalyst using @kjerneverk/riotplan-catalyst
+ * 2. Loads each catalyst using @planvokter/riotplan-catalyst
  * 3. Merges catalysts in the order specified
  * 4. Caches the result to avoid re-reading
  *

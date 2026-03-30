@@ -383,7 +383,7 @@ riotplan create my-feature
 ## Programmatic Creation
 
 ```typescript
-import { createPlan } from '@kjerneverk/riotplan';
+import { createPlan } from '@planvokter/riotplan';
 
 const plan = await createPlan({
   code: 'user-auth',

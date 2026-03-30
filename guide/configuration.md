@@ -63,7 +63,7 @@ Create a configuration file in your project to specify the plan directory and ot
 
 ```yaml
 # RiotPlan Configuration
-# See https://github.com/kjerneverk/riotplan for documentation
+# See https://github.com/planvokter/riotplan for documentation
 
 # Directory where plans are stored (relative or absolute)
 # Relative paths are resolved from this config file's location
@@ -85,7 +85,7 @@ templateDirectory: ./.riotplan/templates
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/kjerneverk/riotplan/main/schemas/riotplan-config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/planvokter/riotplan/main/schemas/riotplan-config.schema.json",
   "planDirectory": "./plans",
   "defaultProvider": "anthropic",
   "defaultModel": "claude-3-5-sonnet-20241022"

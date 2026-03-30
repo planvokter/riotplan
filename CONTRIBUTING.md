@@ -14,7 +14,7 @@ Thank you for your interest in contributing to RiotPlan!
 ### Clone and Install
 
 ```bash
-git clone https://github.com/kjerneverk/riotplan.git
+git clone https://github.com/planvokter/riotplan.git
 cd riotplan
 npm install
 ```
@@ -279,8 +279,8 @@ Releases are automated via GitHub Actions:
 
 ## Getting Help
 
-- **Issues**: https://github.com/kjerneverk/riotplan/issues
-- **Discussions**: https://github.com/kjerneverk/riotplan/discussions
+- **Issues**: https://github.com/planvokter/riotplan/issues
+- **Discussions**: https://github.com/planvokter/riotplan/discussions
 - **Email**: tobrien@discursive.com
 
 ## Code of Conduct

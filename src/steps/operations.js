@@ -8,10 +8,10 @@
  * All operations use SQLite .plan files via riotplan-format.
  */
 import { join } from "node:path";
-import { VerificationEngine, VerificationError } from "@kjerneverk/riotplan-verify";
+import { VerificationEngine, VerificationError } from "@planvokter/riotplan-verify";
 import { loadConfig } from "../config/loader.js";
 import { generateRetrospective } from "../retrospective/generator.js";
-import { createSqliteProvider } from "@kjerneverk/riotplan-format";
+import { createSqliteProvider } from "@planvokter/riotplan-format";
 // ===== HELPER FUNCTIONS =====
 function generateStepFilename(number, code) {
     return `${String(number).padStart(2, "0")}-${code}.md`;

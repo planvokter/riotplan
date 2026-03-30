@@ -8,7 +8,7 @@ import { readAllReflections } from '../reflections/reader.js';
 import { readPlanDoc } from '../artifacts/operations.js';
 import { loadPlan } from '../plan/loader.js';
 import type { Plan } from '../types.js';
-import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+import { createSqliteProvider } from '@planvokter/riotplan-format';
 
 export interface GenerateRetrospectiveOptions {
     provider?: string;

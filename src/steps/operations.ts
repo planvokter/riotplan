@@ -10,11 +10,11 @@
 
 import { join } from "node:path";
 import type { Plan, PlanStep, TaskStatus } from "../types.js";
-import { VerificationEngine, VerificationError } from "@kjerneverk/riotplan-verify";
+import { VerificationEngine, VerificationError } from "@planvokter/riotplan-verify";
 import { loadConfig } from "../config/loader.js";
 import { generateRetrospective } from "../retrospective/generator.js";
-import { createSqliteProvider } from "@kjerneverk/riotplan-format";
-import type { PlanStep as FormatStep } from "@kjerneverk/riotplan-format";
+import { createSqliteProvider } from "@planvokter/riotplan-format";
+import type { PlanStep as FormatStep } from "@planvokter/riotplan-format";
 
 // ===== TYPES =====
 

@@ -4,29 +4,29 @@
 
 Define clear boundaries for a staged split into:
 
-1. `@kjerneverk/riotplan-core`
-2. `@kjerneverk/riotplan-mcp-http`
-3. `@kjerneverk/riotplan-format`
+1. `@planvokter/riotplan-core`
+2. `@planvokter/riotplan-mcp-http`
+3. `@planvokter/riotplan-format`
 
 This is a contract-first architecture record used to guide extraction.
 
 ## Boundary Definition
 
-### Core (`@kjerneverk/riotplan-core`)
+### Core (`@planvokter/riotplan-core`)
 
 - Owns plan domain services (lifecycle, steps, status, shaping orchestration)
 - Defines service contracts and persistence interfaces
 - Must not depend on MCP transport/runtime modules
 - Uses a persistence adapter interface implemented by format package bindings
 
-### MCP HTTP (`@kjerneverk/riotplan-mcp-http`)
+### MCP HTTP (`@planvokter/riotplan-mcp-http`)
 
 - Owns HTTP transport, MCP tool/resource/prompt registration, auth/session routing
 - Delegates domain mutations and reads to core services
 - Must not define domain behavior that belongs to core
 - HTTP-only transport (no stdio reintroduction)
 
-### Format (`@kjerneverk/riotplan-format`)
+### Format (`@planvokter/riotplan-format`)
 
 - Owns SQLite schema, provider lifecycle, and schema evolution
 - Implements persistence responsibilities consumed through core interfaces
@@ -46,7 +46,7 @@ Disallowed directions:
 
 ## Compatibility Strategy
 
-The current `@kjerneverk/riotplan` package remains as a compatibility layer during migration:
+The current `@planvokter/riotplan` package remains as a compatibility layer during migration:
 
 - preserve existing bin names (`riotplan`, `riotplan-mcp-http`)
 - preserve major top-level exports while gradually forwarding to new package barrels

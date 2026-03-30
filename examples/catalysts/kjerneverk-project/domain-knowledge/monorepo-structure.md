@@ -4,7 +4,7 @@ The Kjerneverk project uses a monorepo structure with independently versioned pa
 
 ## Package Organization
 
-- **@kjerneverk/riotplan**: Framework for long-lived, stateful AI workflows
+- **@planvokter/riotplan**: Framework for long-lived, stateful AI workflows
 - **@kjerneverk/riotdoc**: Documentation generation system
 - **@kjerneverk/riotprompt**: Prompt management and versioning
 - **@kjerneverk/execution**: Core execution engine for AI providers

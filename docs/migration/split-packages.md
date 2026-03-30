@@ -1,24 +1,24 @@
 # RiotPlan Split Migration Guide
 
-This migration keeps `@kjerneverk/riotplan` compatible while introducing split
+This migration keeps `@planvokter/riotplan` compatible while introducing split
 package boundaries:
 
-- `@kjerneverk/riotplan-core`
-- `@kjerneverk/riotplan-mcp-http`
-- `@kjerneverk/riotplan-format`
+- `@planvokter/riotplan-core`
+- `@planvokter/riotplan-mcp-http`
+- `@planvokter/riotplan-format`
 
 Current extraction stage uses sibling projects:
 
-- `~/gitw/kjerneverk/riotplan-core`
-- `~/gitw/kjerneverk/riotplan-mcp-http`
+- `~/gitw/planvokter/riotplan-core`
+- `~/gitw/planvokter/riotplan-mcp-http`
 
 ## Import Mapping
 
 | Previous usage | Current compatible usage | Target split usage |
 |---|---|---|
-| `import {...} from "@kjerneverk/riotplan"` | unchanged | same until extraction complete |
-| `import {...} from "@kjerneverk/riotplan/core"` | supported | move to `@kjerneverk/riotplan-core` when published |
-| `import {...} from "@kjerneverk/riotplan/mcp-http"` | supported | move to `@kjerneverk/riotplan-mcp-http` when published |
+| `import {...} from "@planvokter/riotplan"` | unchanged | same until extraction complete |
+| `import {...} from "@planvokter/riotplan/core"` | supported | move to `@planvokter/riotplan-core` when published |
+| `import {...} from "@planvokter/riotplan/mcp-http"` | supported | move to `@planvokter/riotplan-mcp-http` when published |
 
 ## Binary Mapping
 
@@ -29,7 +29,7 @@ Current extraction stage uses sibling projects:
 
 ## Compatibility Guarantees
 
-- Existing top-level `@kjerneverk/riotplan` imports remain supported during
+- Existing top-level `@planvokter/riotplan` imports remain supported during
   split rollout.
 - Existing binary command names are preserved.
 - SQLite remains the only supported persistence backend in this migration.

@@ -3,7 +3,7 @@
  *
  * Reads step reflection files from SQLite .plan storage.
  */
-import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+import { createSqliteProvider } from '@planvokter/riotplan-format';
 /**
  * Read a single step reflection from the plan's SQLite database.
  */

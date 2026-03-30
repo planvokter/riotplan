@@ -6,7 +6,7 @@
 import { readAllReflections } from '../reflections/reader.js';
 import { readPlanDoc } from '../artifacts/operations.js';
 import { loadPlan } from '../plan/loader.js';
-import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+import { createSqliteProvider } from '@planvokter/riotplan-format';
 /**
  * Load all context needed for retrospective generation from SQLite.
  */

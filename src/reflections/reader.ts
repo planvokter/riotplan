@@ -4,7 +4,7 @@
  * Reads step reflection files from SQLite .plan storage.
  */
 
-import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+import { createSqliteProvider } from '@planvokter/riotplan-format';
 
 export interface StepReflection {
     step: number;
