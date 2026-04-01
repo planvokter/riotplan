@@ -6,7 +6,7 @@
 import { join, resolve } from "node:path";
 import { PLAN_CONVENTIONS } from "../types.js";
 import { parseDependenciesFromContent } from "../dependencies/index.js";
-import { createSqliteProvider } from "@kjerneverk/riotplan-format";
+import { createSqliteProvider } from "@planvokter/riotplan-format";
 /**
  * Load a plan from a .plan SQLite file
  *

@@ -1,6 +1,6 @@
 {
-  "name": "@kjerneverk/riotplan",
-  "version": "1.0.33",
+  "name": "@planvokter/riotplan",
+  "version": "1.0.34",
   "description": "Framework for long-lived, stateful AI workflows (plans)",
   "type": "module",
   "main": "./dist/index.js",
@@ -59,15 +59,14 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kjerneverk/riotplan"
+    "url": "https://github.com/planvokter/riotplan"
   },
   "dependencies": {
     "@fjell/logging": "^4.4.69",
-    "@kjerneverk/riotplan-catalyst": "^1.0.13",
-    "@kjerneverk/riotplan-core": "^1.0.32",
-    "@kjerneverk/riotplan-format": "^1.0.9",
-    "@kjerneverk/riotplan-render": "^1.0.5",
-    "@kjerneverk/riotplan-verify": "^1.0.5",
+    "@planvokter/riotplan-catalyst": "^1.0.17",
+    "@planvokter/riotplan-core": "^1.0.35",
+    "@planvokter/riotplan-format": "^1.0.14",
+    "@planvokter/riotplan-verify": "^1.0.14",
     "@redaksjon/context": "^0.0.11",
     "@utilarium/cardigantime": "^0.0.25",
     "@utilarium/overcontext": "^0.0.8",
@@ -102,6 +101,7 @@
     "vitest": "^4.0.17"
   },
   "publishConfig": {
+    "access": "public",
     "tag": "dev"
   }
 }

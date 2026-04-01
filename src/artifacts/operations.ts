@@ -1,1 +1,1 @@
-export * from '@kjerneverk/riotplan-core/artifacts';
+export * from '@planvokter/riotplan-core/artifacts';

@@ -2,13 +2,13 @@
 
 ## Decision
 
-`@kjerneverk/riotplan-format` is the authoritative owner of:
+`@planvokter/riotplan-format` is the authoritative owner of:
 
 - SQLite schema shape and migrations
 - provider lifecycle (`createSqliteProvider`)
 - persisted plan file and step serialization rules
 
-`@kjerneverk/riotplan-core` consumes this through `PlanStore` contracts and `SqlitePlanStore`.
+`@planvokter/riotplan-core` consumes this through `PlanStore` contracts and `SqlitePlanStore`.
 
 ## Non-Goals
 

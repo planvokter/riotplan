@@ -421,10 +421,10 @@ riotplan create test-plan --catalysts ./my-catalyst
 
 ### Automated Testing
 
-Use the `@kjerneverk/riotplan-catalyst` package to test catalyst loading:
+Use the `@planvokter/riotplan-catalyst` package to test catalyst loading:
 
 ```typescript
-import { loadCatalyst } from '@kjerneverk/riotplan-catalyst';
+import { loadCatalyst } from '@planvokter/riotplan-catalyst';
 
 const result = await loadCatalyst('./my-catalyst');
 if (!result.success) {
@@ -488,6 +488,6 @@ See the `examples/catalysts/` directory in the RiotPlan repository for complete 
 ## Getting Help
 
 - See the main RiotPlan README for catalyst usage
-- Check `@kjerneverk/riotplan-catalyst` package documentation for API details
+- Check `@planvokter/riotplan-catalyst` package documentation for API details
 - Review example catalysts in `examples/catalysts/`
 - Open an issue on GitHub for questions or feedback

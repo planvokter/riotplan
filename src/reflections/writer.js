@@ -3,7 +3,7 @@
  *
  * Writes step reflection files to SQLite .plan storage.
  */
-import { createSqliteProvider } from '@kjerneverk/riotplan-format';
+import { createSqliteProvider } from '@planvokter/riotplan-format';
 function reflectionFilename(stepNumber) {
     const stepNum = String(stepNumber).padStart(2, '0');
     return `reflections/${stepNum}-reflection.md`;

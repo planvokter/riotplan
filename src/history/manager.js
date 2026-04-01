@@ -3,7 +3,7 @@
  *
  * Manage plan history storage via SQLite .plan files.
  */
-import { createSqliteProvider } from "@kjerneverk/riotplan-format";
+import { createSqliteProvider } from "@planvokter/riotplan-format";
 const HISTORY_FILE = ".history/HISTORY.json";
 export function initHistory(initialVersion = "0.1") {
     return {

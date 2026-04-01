@@ -2,8 +2,8 @@
 
 ## Sibling Projects
 
-- `../riotplan-core`: sibling project shell for `@kjerneverk/riotplan-core`
-- `../riotplan-mcp-http`: sibling project shell for `@kjerneverk/riotplan-mcp-http`
+- `../riotplan-core`: sibling project shell for `@planvokter/riotplan-core`
+- `../riotplan-mcp-http`: sibling project shell for `@planvokter/riotplan-mcp-http`
 
 Both projects currently define package boundaries while we
 finish extraction.
@@ -14,18 +14,18 @@ finish extraction.
   - `dist/core.js` + `dist/core.d.ts`
   - `dist/mcp-http.js` + `dist/mcp-http.d.ts`
 - root `package.json` exports include:
-  - `@kjerneverk/riotplan/core`
-  - `@kjerneverk/riotplan/mcp-http`
+  - `@planvokter/riotplan/core`
+  - `@planvokter/riotplan/mcp-http`
 - root package now models split packages as peer relationships:
-  - `@kjerneverk/riotplan-core`
-  - `@kjerneverk/riotplan-mcp-http`
+  - `@planvokter/riotplan-core`
+  - `@planvokter/riotplan-mcp-http`
 
 ## Dependency Direction
 
 Expected direction is represented in package manifests:
 
-- `@kjerneverk/riotplan-mcp-http` -> `@kjerneverk/riotplan-core`
-- `@kjerneverk/riotplan-core` -> `@kjerneverk/riotplan-format`
+- `@planvokter/riotplan-mcp-http` -> `@planvokter/riotplan-core`
+- `@planvokter/riotplan-core` -> `@planvokter/riotplan-format`
 
 No reverse dependency is declared.
 
@@ -36,5 +36,5 @@ Legacy binaries remain unchanged:
 - `riotplan`
 - `riotplan-mcp-http`
 
-The compatibility package (`@kjerneverk/riotplan`) remains the published entry
+The compatibility package (`@planvokter/riotplan`) remains the published entry
 point until extraction is complete.

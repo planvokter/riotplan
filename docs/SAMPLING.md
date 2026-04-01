@@ -134,7 +134,7 @@ To use RiotPlan's AI generation features, either:
 3. Create plan steps manually:
    - Use riotplan_step with action=add to add steps without AI
 
-For more information: https://github.com/kjerneverk/riotplan#ai-providers
+For more information: https://github.com/planvokter/riotplan#ai-providers
 ```
 
 ## Architecture

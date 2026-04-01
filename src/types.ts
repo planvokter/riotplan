@@ -1,7 +1,7 @@
 /**
  * RiotPlan Type Definitions
  *
- * Re-exported from @kjerneverk/riotplan-core for backward compatibility.
+ * Re-exported from @planvokter/riotplan-core for backward compatibility.
  * The canonical type definitions live in riotplan-core.
  */
 
@@ -55,6 +55,6 @@ export type {
     // Serialization types
     StatusDocument,
     ExecutionPlanDocument,
-} from "@kjerneverk/riotplan-core";
+} from "@planvokter/riotplan-core";
 
-export { PLAN_CONVENTIONS } from "@kjerneverk/riotplan-core";
+export { PLAN_CONVENTIONS } from "@planvokter/riotplan-core";

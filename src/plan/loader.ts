@@ -14,12 +14,12 @@ import type {
 } from "../types.js";
 import { PLAN_CONVENTIONS } from "../types.js";
 import { parseDependenciesFromContent } from "../dependencies/index.js";
-import { createSqliteProvider } from "@kjerneverk/riotplan-format";
+import { createSqliteProvider } from "@planvokter/riotplan-format";
 import type {
     PlanStep as FormatStep,
     PlanFile as FormatFile,
     PlanMetadata as FormatMetadata,
-} from "@kjerneverk/riotplan-format";
+} from "@planvokter/riotplan-format";
 
 /**
  * Options for loading a plan

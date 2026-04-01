@@ -79,4 +79,4 @@ Coverage    ~93% overall
 
 ## Questions?
 
-Open an issue at: https://github.com/kjerneverk/riotplan/issues
+Open an issue at: https://github.com/planvokter/riotplan/issues

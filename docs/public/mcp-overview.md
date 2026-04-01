@@ -15,7 +15,7 @@ The Model Context Protocol (MCP) is a standard for connecting AI assistants to e
 ### Global Installation
 
 ```bash
-npm install -g @kjerneverk/riotplan
+npm install -g @planvokter/riotplan
 ```
 
 ### Cursor Configuration
@@ -27,7 +27,7 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
   "mcpServers": {
     "riotplan": {
       "command": "npx",
-      "args": ["-y", "@kjerneverk/riotplan", "riotplan-mcp"]
+      "args": ["-y", "@planvokter/riotplan", "riotplan-mcp"]
     }
   }
 }
@@ -209,7 +209,7 @@ Check installation:
 ```bash
 which riotplan-mcp
 # or
-npx @kjerneverk/riotplan riotplan-mcp --help
+npx @planvokter/riotplan riotplan-mcp --help
 ```
 
 ### Tools Not Available

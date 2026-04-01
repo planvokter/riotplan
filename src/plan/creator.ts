@@ -7,11 +7,11 @@
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { createSqliteProvider } from "@kjerneverk/riotplan-format";
+import { createSqliteProvider } from "@planvokter/riotplan-format";
 import type {
     PlanMetadata as FormatMetadata,
     PlanStep as FormatStep,
-} from "@kjerneverk/riotplan-format";
+} from "@planvokter/riotplan-format";
 
 export interface CreatePlanConfig {
     /** Plan code (directory name) */

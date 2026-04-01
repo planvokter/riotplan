@@ -19,7 +19,7 @@ import type { Plan } from "../src/index.js";
 import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createTestPlan } from "./helpers/create-test-plan.js";
-import { createSqliteProvider } from "@kjerneverk/riotplan-format";
+import { createSqliteProvider } from "@planvokter/riotplan-format";
 
 async function getStepContents(planPath: string): Promise<Map<number, string>> {
     const provider = createSqliteProvider(planPath);
