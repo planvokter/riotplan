@@ -1,10 +1,13 @@
 {
   "name": "@planvokter/riotplan-catalyst",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Catalyst system for RiotPlan - composable, layerable guidance packages for plan creation",
   "type": "module",
   "main": "./dist/riotplan-catalyst.js",
   "types": "./dist/riotplan-catalyst.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/riotplan-catalyst.d.ts",
