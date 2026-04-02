@@ -1,0 +1,64 @@
+{
+  "name": "@planvokter/riotplan-catalyst",
+  "version": "1.1.2-dev.0",
+  "description": "Catalyst system for RiotPlan - composable, layerable guidance packages for plan creation",
+  "type": "module",
+  "main": "./dist/riotplan-catalyst.js",
+  "types": "./dist/riotplan-catalyst.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/riotplan-catalyst.d.ts",
+      "import": "./dist/riotplan-catalyst.js"
+    }
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "npm run lint && vite build",
+    "test": "npm run test:coverage",
+    "test:coverage": "vitest run --coverage",
+    "test:debug": "vitest --run --coverage --reporter verbose",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "clean": "rm -rf dist",
+    "precommit": "npm run build && npm run lint && npm run test",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "dependencies": {
+    "yaml": "^2.4.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.28.0",
+    "@types/node": "^25.2.2",
+    "@typescript-eslint/eslint-plugin": "^8.34.0",
+    "@typescript-eslint/parser": "^8.34.0",
+    "@vitest/coverage-v8": "^1.1.0",
+    "eslint": "^9.28.0",
+    "eslint-plugin-import": "^2.31.0",
+    "globals": "^17.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.1.0",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^1.1.0"
+  },
+  "keywords": [
+    "riotplan",
+    "catalyst",
+    "planning",
+    "guidance",
+    "ai"
+  ],
+  "author": "Kjerneverk",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/planvokter/riotplan",
+    "directory": "packages/riotplan-catalyst"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

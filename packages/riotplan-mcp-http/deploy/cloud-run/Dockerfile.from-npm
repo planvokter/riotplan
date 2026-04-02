@@ -1,0 +1,26 @@
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Native toolchain helps if optional native deps need rebuild.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 \
+        make \
+        g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG RIOTPLAN_MCP_HTTP_VERSION=latest
+
+# Install riotplan-mcp-http from npm.
+RUN if [ "$RIOTPLAN_MCP_HTTP_VERSION" = "latest" ]; then \
+        npm install -g @planvokter/riotplan-mcp-http@latest; \
+    else \
+        npm install -g "@planvokter/riotplan-mcp-http@${RIOTPLAN_MCP_HTTP_VERSION}"; \
+    fi
+
+EXPOSE 8080
+
+# Cloud Run provides PORT; riotplan-mcp-http reads PORT and MCP_PORT.
+CMD ["riotplan-mcp-http"]

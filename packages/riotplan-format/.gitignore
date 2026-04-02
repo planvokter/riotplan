@@ -1,0 +1,15 @@
+*~
+.env 
+dist
+node_modules
+*.log
+.vscode
+coverage/
+test/
+output/
+input/
+**/.DS_Store
+output/
+package-lock.json
+.kodrdriv/*
+!.kodrdriv/config.yaml

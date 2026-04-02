@@ -1,0 +1,15 @@
+coverage/
+node_modules/
+tests/
+src/
+*.log
+.env
+README.md
+guide/
+.nvmrc
+eslint.config.mjs
+vite.config.ts
+vitest.config.ts
+.github/
+.gitignore
+tsconfig.json

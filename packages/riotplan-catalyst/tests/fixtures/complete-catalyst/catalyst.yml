@@ -1,0 +1,11 @@
+id: "@test/complete-catalyst"
+name: Complete Test Catalyst
+description: A test catalyst with all facets for testing purposes
+version: "1.0.0"
+facets:
+  questions: true
+  constraints: true
+  outputTemplates: true
+  domainKnowledge: true
+  processGuidance: true
+  validationRules: true

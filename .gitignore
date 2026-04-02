@@ -1,15 +1,26 @@
 *~
-.env 
-dist
-node_modules
+.env
+.env.*
 *.log
-.vscode
+.vscode/
+**/.DS_Store
+
+# Root + hoisted install
+node_modules/
+
+# Per-package build artifacts
+dist/
+packages/*/dist/
+packages/*/coverage/
+packages/*/output/
+packages/*/input/
+
+# kodrdriv local state
+.kodrdriv*
+!.kodrdriv/config.yaml
+
+# Legacy single-package paths (root no longer has src; safe to keep)
 coverage/
 test/
 output/
 input/
-**/.DS_Store
-output/
-package-lock.json
-.kodrdriv/*
-!.kodrdriv/config.yaml

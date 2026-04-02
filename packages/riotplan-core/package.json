@@ -1,0 +1,53 @@
+{
+  "name": "@planvokter/riotplan-core",
+  "version": "1.1.2-dev.0",
+  "description": "Core domain services for RiotPlan",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./artifacts": {
+      "types": "./dist/artifacts/operations.d.ts",
+      "import": "./dist/artifacts/operations.js"
+    }
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc",
+    "test": "echo \"No standalone tests yet\"",
+    "test:coverage": "npm run test",
+    "lint": "echo \"No standalone lint yet\"",
+    "precommit": "npm run build && npm run lint && npm run test",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "riotplan",
+    "plan",
+    "workflow",
+    "core"
+  ],
+  "author": "Tim O'Brien <tobrien@discursive.com>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/planvokter/riotplan",
+    "directory": "packages/riotplan-core"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@planvokter/riotplan-format": "^1.1.2-dev.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  }
+}

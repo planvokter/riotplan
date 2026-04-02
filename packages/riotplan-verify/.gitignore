@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.tgz
+package-lock.json
+.env
+output/
+.kodrdriv/*
+!.kodrdriv/config.yaml
