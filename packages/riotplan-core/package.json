@@ -1,6 +1,6 @@
 {
   "name": "@planvokter/riotplan-core",
-  "version": "1.1.2-dev.2",
+  "version": "1.1.2",
   "description": "Core domain services for RiotPlan",
   "type": "module",
   "main": "./dist/index.js",
@@ -44,7 +44,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@planvokter/riotplan-format": "^1.1.2-dev.2"
+    "@planvokter/riotplan-format": "^1.1.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

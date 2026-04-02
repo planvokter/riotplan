@@ -1,6 +1,6 @@
 {
   "name": "@planvokter/riotplan-cloud",
-  "version": "1.1.2-dev.2",
+  "version": "1.1.2",
   "description": "Cloud runtime and GCS sync for RiotPlan",
   "type": "module",
   "main": "./dist/index.js",
