@@ -19,6 +19,26 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Verify tag matches workspace versions (stable release only)
+        run: |
+          set -euo pipefail
+          TAG_VER="${GITHUB_REF#refs/tags/v}"
+          ROOT_VER=$(node -p "require('./package.json').version")
+          if [ "$TAG_VER" != "$ROOT_VER" ]; then
+            echo "::error::Git tag v$TAG_VER must equal root package.json version ($ROOT_VER). The tag name is what npm will publish — fix versions or retag."
+            exit 1
+          fi
+          if [[ ! "$ROOT_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::This workflow only publishes stable semver (X.Y.Z). Root is '$ROOT_VER' (prerelease). Use release versions on the tagged commit, or add a separate prerelease workflow with npm --tag."
+            exit 1
+          fi
+          for f in packages/*/package.json; do
+            v=$(node -p "require('./$f').version")
+            if [ "$v" != "$ROOT_VER" ]; then
+              echo "::error::$f version $v != root $ROOT_VER"
+              exit 1
+            fi
+          done
       - uses: actions/setup-node@v4
         with:
           node-version: 24
