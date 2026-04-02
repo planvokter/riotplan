@@ -5,6 +5,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": ["dist"],
   "bin": {
     "riotplan-mcp-http": "./dist/bin-http.js"
   },

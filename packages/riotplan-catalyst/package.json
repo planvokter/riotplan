@@ -5,6 +5,7 @@
   "type": "module",
   "main": "./dist/riotplan-catalyst.js",
   "types": "./dist/riotplan-catalyst.d.ts",
+  "files": ["dist"],
   "exports": {
     ".": {
       "types": "./dist/riotplan-catalyst.d.ts",
