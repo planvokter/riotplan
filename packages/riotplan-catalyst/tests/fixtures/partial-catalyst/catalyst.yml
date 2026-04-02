@@ -1,0 +1,7 @@
+id: "@test/partial-catalyst"
+name: Partial Test Catalyst
+description: A test catalyst with only constraints and questions
+version: "1.0.0-dev.0"
+facets:
+  questions: true
+  constraints: true

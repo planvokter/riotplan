@@ -1,0 +1,14 @@
+keys:
+  - key_id: key-reader
+    # Use scrypt format: scrypt$N$r$p$<salt_base64>$<derived_key_base64>
+    secret_hash: "scrypt$16384$8$1$REPLACE_WITH_BASE64_SALT$REPLACE_WITH_BASE64_HASH"
+    user_id: user-reader
+    enabled: true
+    created_at: "2026-03-03T00:00:00Z"
+    expires_at: null
+  - key_id: key-admin
+    secret_hash: "scrypt$16384$8$1$REPLACE_WITH_BASE64_SALT$REPLACE_WITH_BASE64_HASH"
+    user_id: user-admin
+    enabled: true
+    created_at: "2026-03-03T00:00:00Z"
+    expires_at: null

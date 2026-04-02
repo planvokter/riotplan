@@ -1,107 +1,24 @@
 {
-  "name": "@planvokter/riotplan",
-  "version": "1.0.35-dev.0",
-  "description": "Framework for long-lived, stateful AI workflows (plans)",
+  "name": "planvokter-monorepo",
+  "version": "1.1.0",
+  "private": true,
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./config": {
-      "types": "./src/config/index.d.ts",
-      "import": "./src/config/index.js"
-    },
-    "./plan/category": {
-      "types": "./src/plan/category.d.ts",
-      "import": "./src/plan/category.js"
-    },
-    "./plan/loader": {
-      "types": "./src/plan/loader.d.ts",
-      "import": "./src/plan/loader.js"
-    },
-    "./status/generator": {
-      "types": "./src/status/generator.d.ts",
-      "import": "./src/status/generator.js"
-    }
-  },
+  "description": "npm workspaces root for @planvokter riotplan packages",
   "engines": {
     "node": ">=24.0.0"
   },
-  "scripts": {
-    "clean": "rm -rf dist",
-    "build": "vite build",
-    "test": "vitest run --coverage",
-    "test:coverage": "vitest run --coverage",
-    "lint": "eslint src",
-    "precommit": "npm run build && npm run lint && npm run test",
-    "prepublishOnly": "npm run clean && npm run build",
-    "docs:dev": "cd docs && cp ../README.md public/ && npm install && npm run dev",
-    "docs:build": "cd docs && cp ../README.md public/ && npm install && npm run build",
-    "docs:preview": "cd docs && npm run preview",
-    "docs:test": "cd docs && npm run test",
-    "docs:coverage": "cd docs && npm run coverage",
-    "bench:http-sync": "node ./scripts/benchmark-http-sync.mjs",
-    "bench:http-sync:compare": "node ./scripts/benchmark-http-sync-compare.mjs"
-  },
-  "keywords": [
-    "plan",
-    "workflow",
-    "ai",
-    "stateful",
-    "llm",
-    "prompts",
-    "execution"
+  "workspaces": [
+    "packages/*"
   ],
-  "author": "Tim O'Brien <tobrien@discursive.com>",
-  "license": "Apache-2.0",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/planvokter/riotplan"
-  },
-  "dependencies": {
-    "@fjell/logging": "^4.4.69",
-    "@planvokter/riotplan-catalyst": "^1.0.17",
-    "@planvokter/riotplan-core": "^1.0.35",
-    "@planvokter/riotplan-format": "^1.0.14",
-    "@planvokter/riotplan-verify": "^1.0.14",
-    "@redaksjon/context": "^0.0.11",
-    "@utilarium/cardigantime": "^0.0.25",
-    "@utilarium/overcontext": "^0.0.8",
-    "better-sqlite3": "^12.6.2",
-    "js-yaml": "^4.1.1",
-    "yaml": "^2.7.1",
-    "zod": "^4.3.6"
-  },
-  "peerDependencies": {
-    "@kjerneverk/riotprompt": "^1.0.22"
-  },
-  "peerDependenciesMeta": {
-    "@kjerneverk/riotprompt": {
-      "optional": true
-    }
-  },
-  "devDependencies": {
-    "@eslint/eslintrc": "^3.3.1",
-    "@eslint/js": "^9.28.0",
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^24.10.9",
-    "@typescript-eslint/eslint-plugin": "^8.34.0",
-    "@typescript-eslint/parser": "^8.34.0",
-    "@vitest/coverage-v8": "^4.0.17",
-    "ajv": "^8.17.1",
-    "eslint": "^9.28.0",
-    "eslint-plugin-import": "^2.31.0",
-    "globals": "^17.0.0",
-    "typescript": "^5.8.3",
-    "vite": "^7.0.4",
-    "vite-plugin-dts": "^4.5.4",
-    "vitest": "^4.0.17"
-  },
-  "publishConfig": {
-    "access": "public",
-    "tag": "dev"
+  "scripts": {
+    "build": "npm run build:leaves && npm run build:mid && npm run build:upper && npm run build:top",
+    "build:leaves": "npm run build -w packages/riotplan-verify -w packages/riotplan-format -w packages/riotplan-catalyst -w packages/riotplan-cloud -w packages/riotplan-templates",
+    "build:mid": "npm run build -w packages/riotplan-core -w packages/riotplan-ai",
+    "build:upper": "npm run build -w packages/riotplan",
+    "build:top": "npm run build -w packages/riotplan-mcp-http",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present",
+    "precommit": "npm run build && npm run lint && npm run test"
   }
 }

@@ -1,0 +1,73 @@
+{
+  "name": "@planvokter/riotplan-mcp-http",
+  "version": "1.1.0",
+  "description": "HTTP MCP server package for RiotPlan",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "riotplan-mcp-http": "./dist/bin-http.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.json",
+    "test": "echo \"No standalone tests yet\"",
+    "test:coverage": "npm run test",
+    "lint": "echo \"No standalone lint yet\"",
+    "precommit": "npm run build && npm run lint && npm run test",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "riotplan",
+    "mcp",
+    "http",
+    "server"
+  ],
+  "author": "Tim O'Brien <tobrien@discursive.com>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/planvokter/riotplan",
+    "directory": "packages/riotplan-mcp-http"
+  },
+  "dependencies": {
+    "@kjerneverk/agentic": "^1.0.9",
+    "@kjerneverk/execution": "^1.0.8",
+    "@fjell/logging": "^4.4.72",
+    "@hono/mcp": "^0.2.4",
+    "@hono/node-server": "^1.19.11",
+    "@redaksjon/context": "^0.0.11",
+    "@planvokter/riotplan": "^1.1.0",
+    "@planvokter/riotplan-ai": "^1.1.0",
+    "@planvokter/riotplan-catalyst": "^1.1.0",
+    "@planvokter/riotplan-cloud": "^1.1.0",
+    "@planvokter/riotplan-core": "^1.1.0",
+    "@planvokter/riotplan-format": "^1.1.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@utilarium/cardigantime": "^0.0.27",
+    "better-sqlite3": "^12.6.2",
+    "commander": "^14.0.3",
+    "hono": "^4.12.8",
+    "js-yaml": "^4.1.1",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.10.9",
+    "typescript": "^5.8.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,17 @@
+rules:
+  "GET /health":
+    public: true
+  "GET /auth/whoami":
+    any_roles: ["*"]
+  "GET /admin/ping":
+    any_roles: [admin]
+  "GET /plan/:planId":
+    any_roles: ["*"]
+  "POST /plan/upload":
+    any_roles: [admin]
+  "POST /mcp":
+    any_roles: ["*"]
+  "GET /mcp":
+    any_roles: ["*"]
+  "DELETE /mcp":
+    any_roles: ["*"]

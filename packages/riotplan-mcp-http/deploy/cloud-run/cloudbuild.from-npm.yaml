@@ -1,0 +1,61 @@
+substitutions:
+  _REGION: us-central1
+  _SERVICE_NAME: riotplan-mcp
+  _AR_REPO: riotplan
+  _IMAGE_NAME: riotplan-mcp
+  _SERVICE_ACCOUNT: riotplan-runtime@${PROJECT_ID}.iam.gserviceaccount.com
+  _ENV_VARS_FILE: env.prod.yaml
+  _OPENAI_SECRET: riotplan-openai-api-key
+  _RIOTPLAN_MCP_HTTP_VERSION: latest
+  _REQUEST_TIMEOUT: "3600"
+  _MIN_INSTANCES: "1"
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build-image
+    args:
+      - build
+      - -f
+      - Dockerfile.from-npm
+      - --build-arg
+      - RIOTPLAN_MCP_HTTP_VERSION=${_RIOTPLAN_MCP_HTTP_VERSION}
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:${BUILD_ID}
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-sha
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:${BUILD_ID}
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-latest
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:latest
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: deploy-cloud-run
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:${BUILD_ID}
+      - --service-account=${_SERVICE_ACCOUNT}
+      - --env-vars-file=${_ENV_VARS_FILE}
+      - --update-secrets=OPENAI_API_KEY=${_OPENAI_SECRET}:latest
+      - --timeout=${_REQUEST_TIMEOUT}
+      - --min-instances=${_MIN_INSTANCES}
+      - --no-cpu-throttling
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:latest

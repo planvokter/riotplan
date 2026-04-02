@@ -1,0 +1,46 @@
+name: Publish packages
+
+# Publishes all workspace packages when a version tag is pushed.
+# Configure each @planvokter/* package on npmjs.com to trust this GitHub repo (OIDC).
+# No NPM_TOKEN required when trusted publishing is enabled.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test
+      - name: Publish all workspaces (provenance)
+        run: |
+          set -e
+          for w in \
+            packages/riotplan-verify \
+            packages/riotplan-format \
+            packages/riotplan-catalyst \
+            packages/riotplan-cloud \
+            packages/riotplan-templates \
+            packages/riotplan-core \
+            packages/riotplan-ai \
+            packages/riotplan \
+            packages/riotplan-mcp-http
+          do
+            echo "Publishing $w ..."
+            npm publish -w "$w" --access public --provenance
+          done
