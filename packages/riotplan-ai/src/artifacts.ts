@@ -9,6 +9,15 @@ import { join } from 'node:path';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { createSqliteProvider, type PlanFileType } from '@planvokter/riotplan-format';
 
+function extractMarkdownSection(content: string, heading: string): string | null {
+    const marker = `## ${heading}\n\n`;
+    const start = content.indexOf(marker);
+    if (start === -1) return null;
+    const bodyStart = start + marker.length;
+    const nextHeading = content.indexOf('\n## ', bodyStart);
+    return nextHeading === -1 ? content.slice(bodyStart) : content.slice(bodyStart, nextHeading);
+}
+
 export interface ArtifactBundle {
     ideaContent: string | null;
     shapingContent: string | null;
@@ -106,9 +115,9 @@ function getMostRecentArtifactContent(
  */
 export function extractConstraints(ideaContent: string): string[] {
     const constraints: string[] = [];
-    const constraintsMatch = ideaContent.match(/## Constraints\n\n([\s\S]*?)(?=\n## |$)/);
+    const constraintsMatch = extractMarkdownSection(ideaContent, 'Constraints');
     if (constraintsMatch) {
-        const lines = constraintsMatch[1].split('\n');
+        const lines = constraintsMatch.split('\n');
         for (const line of lines) {
             const trimmed = line.trim();
             if (trimmed.startsWith('- ') && !trimmed.includes('_Add constraints')) {
@@ -124,9 +133,9 @@ export function extractConstraints(ideaContent: string): string[] {
  */
 export function extractQuestions(ideaContent: string): string[] {
     const questions: string[] = [];
-    const questionsMatch = ideaContent.match(/## Questions\n\n([\s\S]*?)(?=\n## |$)/);
+    const questionsMatch = extractMarkdownSection(ideaContent, 'Questions');
     if (questionsMatch) {
-        const lines = questionsMatch[1].split('\n');
+        const lines = questionsMatch.split('\n');
         for (const line of lines) {
             const trimmed = line.trim();
             if (trimmed.startsWith('- ') && !trimmed.includes('_Add questions')) {

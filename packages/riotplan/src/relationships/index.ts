@@ -210,7 +210,7 @@ export function parseRelationshipsFromContent(content: string): ParsedRelationsh
 
             // Parse: [name](path) - description (type)
             const linkMatch = itemContent.match(
-                /\[([^\]]+)\]\(([^)]+)\)(?:\s*-\s*(.+))?/
+                /\[([^\]]+)\]\(([^)]+)\)(?:\s*-\s*([^\n]+))?/
             );
             if (linkMatch) {
                 const [, , path, desc] = linkMatch;
@@ -244,7 +244,7 @@ export function parseRelationshipsFromContent(content: string): ParsedRelationsh
 
             // Parse: path (type) - reason
             const simpleMatch = itemContent.match(
-                /([^\s(]+)\s*(?:\((\w+(?:-\w+)?)\))?(?:\s*-\s*(.+))?/
+                /([^\s(]+)\s*(?:\((\w+(?:-\w+)?)\))?(?:\s*-\s*([^\n]+))?/
             );
             if (simpleMatch) {
                 const [, path, typeStr, reason] = simpleMatch;

@@ -205,7 +205,11 @@ function normalizePrefix(prefix?: string): string {
     if (!prefix) {
         return '';
     }
-    return prefix.replace(/^\/+/, '').replace(/\/+$/, '');
+    let start = 0;
+    let end = prefix.length;
+    while (start < end && prefix[start] === '/') start++;
+    while (end > start && prefix[end - 1] === '/') end--;
+    return prefix.slice(start, end);
 }
 
 function toObjectName(prefix: string, relativePath: string): string {

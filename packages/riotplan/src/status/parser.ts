@@ -63,7 +63,7 @@ export function parseStatus(
     const warnings: string[] = [];
 
     // Extract title
-    const titleMatch = content.match(/^#\s+(.+)$/m);
+    const titleMatch = content.match(/^#\s+([^\n]+)$/m);
     const title = titleMatch ? titleMatch[1].trim() : "Unknown Plan";
 
     // Parse sections
@@ -367,7 +367,7 @@ function parseBlockers(content: string): string[] {
     }
 
     // Parse as list items
-    const listItems = section.match(/^[-*]\s+(.+)$/gm);
+    const listItems = section.match(/^[-*]\s+([^\n]+)$/gm);
     if (listItems) {
         for (const item of listItems) {
             const text = item.replace(/^[-*]\s+/, "").trim();
@@ -395,7 +395,7 @@ function parseIssues(content: string): string[] {
     }
 
     // Parse as list items
-    const listItems = section.match(/^[-*]\s+(.+)$/gm);
+    const listItems = section.match(/^[-*]\s+([^\n]+)$/gm);
     if (listItems) {
         for (const item of listItems) {
             const text = item.replace(/^[-*]\s+/, "").trim();

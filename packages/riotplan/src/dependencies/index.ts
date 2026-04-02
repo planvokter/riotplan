@@ -201,7 +201,7 @@ export function parseDependenciesFromContent(content: string): number[] {
 
     // Parse "Requires: Step X" format - capture all step references on the line
     const requiresMatches = content.matchAll(
-        /Requires:\s*(.+?)(?:\n|$)/gi
+        /Requires:\s*([^\n]+)/gi
     );
     for (const match of requiresMatches) {
         const lineContent = match[1];
