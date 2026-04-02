@@ -13,6 +13,57 @@ import type { Plan, PlanRelationship, RelationshipType } from "../types.js";
 import { loadPlan } from "../plan/loader.js";
 import { readPlanDoc, savePlanDoc } from "../artifacts/operations.js";
 
+function parseMarkdownLink(s: string): [string, string, string, string | undefined] | null {
+    const open = s.indexOf('[');
+    if (open === -1) return null;
+    const close = s.indexOf(']', open);
+    if (close === -1) return null;
+    if (s[close + 1] !== '(') return null;
+    const pClose = s.indexOf(')', close + 2);
+    if (pClose === -1) return null;
+    const name = s.slice(open + 1, close);
+    const path = s.slice(close + 2, pClose);
+    let desc: string | undefined;
+    const rest = s.slice(pClose + 1).trim();
+    if (rest.startsWith('-')) desc = rest.slice(1).trim();
+    return ['', name, path, desc];
+}
+
+function parseSimpleRelation(s: string): [string, string, string | undefined, string | undefined] | null {
+    const trimmed = s.trim();
+    if (!trimmed) return null;
+    const spaceIdx = trimmed.indexOf(' ');
+    const parenIdx = trimmed.indexOf('(');
+    let path: string;
+    let typeStr: string | undefined;
+    let reason: string | undefined;
+    if (parenIdx !== -1 && (spaceIdx === -1 || parenIdx < spaceIdx)) {
+        path = trimmed.slice(0, parenIdx).trim();
+        const closeP = trimmed.indexOf(')', parenIdx);
+        if (closeP !== -1) {
+            typeStr = trimmed.slice(parenIdx + 1, closeP);
+            const rest = trimmed.slice(closeP + 1).trim();
+            if (rest.startsWith('-')) reason = rest.slice(1).trim();
+        }
+    } else if (spaceIdx !== -1) {
+        path = trimmed.slice(0, spaceIdx);
+        const rest = trimmed.slice(spaceIdx).trim();
+        if (rest.startsWith('(')) {
+            const closeP = rest.indexOf(')');
+            if (closeP !== -1) {
+                typeStr = rest.slice(1, closeP);
+                const after = rest.slice(closeP + 1).trim();
+                if (after.startsWith('-')) reason = after.slice(1).trim();
+            }
+        } else if (rest.startsWith('-')) {
+            reason = rest.slice(1).trim();
+        }
+    } else {
+        path = trimmed;
+    }
+    return ['', path, typeStr, reason];
+}
+
 // ===== TYPES =====
 
 /**
@@ -209,9 +260,7 @@ export function parseRelationshipsFromContent(content: string): ParsedRelationsh
             }
 
             // Parse: [name](path) - description (type)
-            const linkMatch = itemContent.match(
-                /\[([^\]]+)\]\(([^)]+)\)(?:\s*-\s*([^\n]+))?/
-            );
+            const linkMatch = parseMarkdownLink(itemContent);
             if (linkMatch) {
                 const [, , path, desc] = linkMatch;
                 let type: RelationshipType = "related";
@@ -243,9 +292,7 @@ export function parseRelationshipsFromContent(content: string): ParsedRelationsh
             }
 
             // Parse: path (type) - reason
-            const simpleMatch = itemContent.match(
-                /([^\s(]+)\s*(?:\((\w+(?:-\w+)?)\))?(?:\s*-\s*([^\n]+))?/
-            );
+            const simpleMatch = parseSimpleRelation(itemContent);
             if (simpleMatch) {
                 const [, path, typeStr, reason] = simpleMatch;
                 const type = typeStr

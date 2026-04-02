@@ -115,9 +115,19 @@ export async function createPlan(
  * Convert a string to a URL-safe slug
  */
 function slugify(text: string): string {
-    return text
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+/, "").replace(/-+$/, "")
-        .slice(0, 50);
+    const lower = text.toLowerCase();
+    let result = '';
+    let lastWasDash = true;
+    for (let i = 0; i < lower.length && result.length < 50; i++) {
+        const c = lower[i];
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+            result += c;
+            lastWasDash = false;
+        } else if (!lastWasDash) {
+            result += '-';
+            lastWasDash = true;
+        }
+    }
+    if (result.endsWith('-')) result = result.slice(0, -1);
+    return result;
 }

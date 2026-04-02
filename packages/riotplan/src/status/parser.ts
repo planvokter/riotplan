@@ -62,9 +62,14 @@ export function parseStatus(
 ): ParseStatusResult {
     const warnings: string[] = [];
 
-    // Extract title
-    const titleMatch = content.match(/^#\s+([^\n]+)$/m);
-    const title = titleMatch ? titleMatch[1].trim() : "Unknown Plan";
+    // Extract title (line-by-line to avoid ReDoS)
+    let title = "Unknown Plan";
+    for (const line of content.split('\n')) {
+        if (line.startsWith('# ')) {
+            title = line.slice(2).trim();
+            break;
+        }
+    }
 
     // Parse sections
     const currentState = parseCurrentState(content);
@@ -366,11 +371,11 @@ function parseBlockers(content: string): string[] {
         return blockers;
     }
 
-    // Parse as list items
-    const listItems = section.match(/^[-*]\s+([^\n]+)$/gm);
-    if (listItems) {
-        for (const item of listItems) {
-            const text = item.replace(/^[-*]\s+/, "").trim();
+    // Parse as list items (line-by-line to avoid ReDoS)
+    for (const line of section.split('\n')) {
+        const trimmed = line.trimStart();
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+            const text = trimmed.slice(2).trim();
             if (text && !text.toLowerCase().includes("none")) {
                 blockers.push(text);
             }
@@ -394,11 +399,11 @@ function parseIssues(content: string): string[] {
         return issues;
     }
 
-    // Parse as list items
-    const listItems = section.match(/^[-*]\s+([^\n]+)$/gm);
-    if (listItems) {
-        for (const item of listItems) {
-            const text = item.replace(/^[-*]\s+/, "").trim();
+    // Parse as list items (line-by-line to avoid ReDoS)
+    for (const line of section.split('\n')) {
+        const trimmed = line.trimStart();
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+            const text = trimmed.slice(2).trim();
             if (text && !text.toLowerCase().includes("none")) {
                 issues.push(text);
             }
