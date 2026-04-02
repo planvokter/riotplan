@@ -1,6 +1,6 @@
 {
   "name": "planvokter-monorepo",
-  "version": "1.1.0",
+  "version": "1.1.1-dev.0",
   "private": true,
   "type": "module",
   "description": "npm workspaces root for @planvokter riotplan packages",
@@ -19,6 +19,8 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present",
-    "precommit": "npm run build && npm run lint && npm run test"
+    "precommit": "npm run build && npm run lint && npm run test",
+    "sync-internal-deps": "node scripts/sync-internal-deps.mjs",
+    "kodrdriv:post-version-bump": "node scripts/sync-internal-deps.mjs && npm install"
   }
 }
