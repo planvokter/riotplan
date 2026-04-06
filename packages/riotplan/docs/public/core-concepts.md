@@ -147,9 +147,9 @@ The **STATUS.md** file is the heart of plan tracking. It contains:
 ### Automatic Updates
 
 STATUS.md is automatically updated when you:
-- Start a step (`riotplan step start`)
-- Complete a step (`riotplan step complete`)
-- Add a step (`riotplan step add`)
+- Start a step (via `riotplan_step` MCP tool)
+- Complete a step (via `riotplan_step` MCP tool)
+- Add a step (via `riotplan_step` MCP tool)
 - Report a blocker or issue
 
 ## Execution Plan

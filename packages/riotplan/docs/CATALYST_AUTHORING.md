@@ -470,7 +470,7 @@ catalysts:
 
 See the `examples/catalysts/` directory in the RiotPlan repository for complete working examples:
 
-- **kjerneverk-project**: Demonstrates all six facets with realistic content
+- **project-standards**: Demonstrates all six facets with realistic content
 - Shows proper directory structure and manifest format
 - Includes well-written content for each facet type
 

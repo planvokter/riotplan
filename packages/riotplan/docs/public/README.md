@@ -4,8 +4,6 @@
 
 RiotPlan treats plans as **constructs**—full lifecycles from idea exploration through execution. Think before you execute. Support complex, multi-session workflows. Make your plans truly yours.
 
-Part of [Kjerneverk](https://kjerneverk.github.io) - structured formats for working with generative AI.
-
 **Now available as an MCP server!** Integrate with Cursor and other AI assistants - see [MCP Integration](#mcp-integration) below.
 
 **✨ MCP Sampling Support** - No duplicate API keys needed when using RiotPlan via MCP! [Learn more →](docs/SAMPLING.md)
@@ -358,10 +356,10 @@ my-catalyst/
 **Example `catalyst.yml`:**
 
 ```yaml
-id: '@kjerneverk/catalyst-project'
-name: Kjerneverk Project Standards
+id: '@planvokter/catalyst-project'
+name: Project Standards
 version: 1.0.0
-description: Standard constraints and guidance for all Kjerneverk projects
+description: Standard constraints and guidance for all projects
 facets:
   questions: true
   constraints: true
@@ -376,7 +374,7 @@ facets:
 ```yaml
 planDirectory: ./plans
 catalysts:
-  - ./catalysts/kjerneverk-project
+  - ./catalysts/project-standards
   - ./catalysts/nodejs
 catalystDirectory: ./catalysts
 ```
@@ -394,13 +392,13 @@ riotplan create my-feature --catalysts ./catalysts/nodejs,./catalysts/testing
 riotplan_catalyst({ action: 'list' })
 
 // Show catalyst details
-riotplan_catalyst({ action: 'show', catalyst: '@kjerneverk/catalyst-project' })
+riotplan_catalyst({ action: 'show', catalyst: '@planvokter/catalyst-project' })
 
 // Associate catalysts with a plan
 riotplan_catalyst({
   path: './my-plan',
   action: 'add',
-  catalysts: ['@kjerneverk/catalyst-project']
+  catalysts: ['@planvokter/catalyst-project']
 })
 ```
 
@@ -427,19 +425,19 @@ When catalysts are used, plans record which catalysts influenced their creation:
 
 ### Example Catalyst
 
-See `examples/catalysts/kjerneverk-project/` for a complete working example demonstrating all facets.
+See `examples/catalysts/project-standards/` for a complete working example demonstrating all facets.
 
 ### Future: NPM Distribution
 
 In a future release, catalysts will be distributable as NPM packages, allowing you to:
 
 ```bash
-npm install @kjerneverk/catalyst-nodejs
+npm install @planvokter/catalyst-nodejs
 ```
 
 ```yaml
 catalysts:
-  - '@kjerneverk/catalyst-nodejs'  # Resolves from node_modules
+  - '@planvokter/catalyst-nodejs'  # Resolves from node_modules
 ```
 
 For now, catalysts are loaded from local directories.

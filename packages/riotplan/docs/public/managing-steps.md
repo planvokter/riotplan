@@ -1,6 +1,6 @@
 # Managing Steps
 
-Learn how to work with plan steps - listing, starting, completing, and adding steps to your plans.
+Learn how to work with plan steps — listing, starting, completing, and adding steps — all via MCP tools.
 
 ## Overview
 
@@ -10,54 +10,23 @@ Steps are the fundamental units of work in a plan. Each step:
 - Tracks its own status independently
 - Can depend on other steps
 
+All step management is done through the `riotplan_step` MCP tool. Ask your AI assistant to perform step operations for you.
+
 ## Listing Steps
 
 ### Show All Steps
 
-```bash
-riotplan step list
-```
+> "List all steps in the user-auth plan."
 
-Example output:
-
-```
-✅ 01 analysis
-✅ 02 design
-✅ 03 architecture
-✅ 04 implementation-core
-🔄 05 implementation-api
-⬜ 06 testing
-⬜ 07 documentation
-⬜ 08 release
-```
+This calls `riotplan_step` and returns the full step list with statuses.
 
 ### Show Only Pending Steps
 
-```bash
-riotplan step list --pending
-```
-
-Output:
-
-```
-⬜ 06 testing
-⬜ 07 documentation
-⬜ 08 release
-```
-
-### Show All Steps (Including Completed)
-
-```bash
-riotplan step list --all
-```
+> "Show only pending steps in the user-auth plan."
 
 ### JSON Output
 
-```bash
-riotplan step list --json
-```
-
-Output:
+The MCP tool returns structured data:
 
 ```json
 {
@@ -86,17 +55,13 @@ Output:
 
 ### Start Next Pending Step
 
-```bash
-riotplan step start
-```
+> "Start the next pending step in the user-auth plan."
 
 This finds the first pending step and marks it as in-progress.
 
 ### Start Specific Step
 
-```bash
-riotplan step start 05
-```
+> "Start step 5 in the user-auth plan."
 
 ### What Happens
 
@@ -116,15 +81,11 @@ When you start a step:
 
 ### Complete Current Step
 
-```bash
-riotplan step complete
-```
+> "Mark the current step as complete in the user-auth plan."
 
 ### Complete Specific Step
 
-```bash
-riotplan step complete 05
-```
+> "Mark step 5 as complete in the user-auth plan."
 
 ### What Happens
 
@@ -145,17 +106,13 @@ When you complete a step:
 
 ### Add Step at End
 
-```bash
-riotplan step add "Integration Testing"
-```
+> "Add a step called 'Integration Testing' to the user-auth plan."
 
 Creates `plan/09-integration-testing.md` (assuming 8 steps exist).
 
 ### Add Step at Specific Position
 
-```bash
-riotplan step add "Security Audit" --number 07
-```
+> "Add a step called 'Security Audit' at position 7 in the user-auth plan."
 
 Creates `plan/07-security-audit.md` and renumbers subsequent steps:
 - Old `07-documentation.md` → `08-documentation.md`
@@ -163,9 +120,7 @@ Creates `plan/07-security-audit.md` and renumbers subsequent steps:
 
 ### Add Step After Another
 
-```bash
-riotplan step add "Code Review" --after 05
-```
+> "Add a step called 'Code Review' after step 5 in the user-auth plan."
 
 Creates `plan/06-code-review.md` and renumbers subsequent steps.
 
@@ -190,9 +145,7 @@ When you add a step:
 
 ## Marking Steps as Failed
 
-```bash
-riotplan step fail 05 "Database migration error"
-```
+> "Mark step 5 as failed with reason 'Database migration error' in the user-auth plan."
 
 Updates STATUS.md:
 
@@ -202,9 +155,7 @@ Updates STATUS.md:
 
 ## Marking Steps as Blocked
 
-```bash
-riotplan step block 06 "Waiting for API key from DevOps"
-```
+> "Mark step 6 as blocked with reason 'Waiting for API key from DevOps' in the user-auth plan."
 
 Updates STATUS.md:
 
@@ -222,9 +173,7 @@ And adds to Blockers section:
 
 ## Skipping Steps
 
-```bash
-riotplan step skip 07 "Documentation will be done separately"
-```
+> "Skip step 7 with reason 'Documentation will be done separately' in the user-auth plan."
 
 Updates STATUS.md:
 
@@ -234,21 +183,17 @@ Updates STATUS.md:
 
 ## Viewing Step Details
 
-### Read Step File
+### Read Step Content
 
-```bash
-riotplan step show 05
-```
+> "Show me the content of step 5 in the user-auth plan."
 
-Displays the full content of `plan/05-implementation-api.md`.
+This uses the `riotplan://step/{path}?number={n}` MCP resource to retrieve the full step file.
 
 ### Show Step Status
 
-```bash
-riotplan step status 05
-```
+> "What's the status of step 5 in the user-auth plan?"
 
-Output:
+Returns:
 
 ```
 Step 05: Implementation API
@@ -268,11 +213,9 @@ Tasks:
 
 ### Viewing Dependencies
 
-```bash
-riotplan step deps 05
-```
+> "Show dependencies for step 5 in the user-auth plan."
 
-Output:
+Returns:
 
 ```
 Step 05: Implementation API
@@ -289,20 +232,7 @@ Blocks:
 
 ### Dependency Validation
 
-RiotPlan validates dependencies:
-
-```bash
-riotplan step start 06
-```
-
-If step 05 is not complete:
-
-```
-Error: Cannot start step 06 (Testing)
-Reason: Prerequisite step 05 (Implementation API) is not completed
-
-Current status of step 05: In Progress
-```
+RiotPlan validates dependencies automatically. If you try to start a step whose prerequisites aren't complete, the tool will return an error explaining which steps need to be finished first.
 
 ## Programmatic Usage
 
@@ -391,9 +321,7 @@ const updatedPlan = await addStep(plan, {
 
 Add notes when completing steps:
 
-```bash
-riotplan step complete 05 --notes "Implemented all CRUD endpoints. Added validation. Rate limiting pending."
-```
+> "Mark step 5 as complete with notes: 'Implemented all CRUD endpoints. Added validation. Rate limiting pending.'"
 
 This helps when resuming work later.
 
@@ -401,16 +329,8 @@ This helps when resuming work later.
 
 When a step fails:
 
-1. **Mark as failed** with reason:
-   ```bash
-   riotplan step fail 05 "Database migration error"
-   ```
-
-2. **Document in Issues**:
-   ```bash
-   riotplan issue add "Step 05 failed: Missing foreign key constraint"
-   ```
-
+1. **Mark as failed** with reason
+2. **Document the issue** in the plan
 3. **Decide action**:
    - Fix and retry
    - Skip with justification
@@ -429,37 +349,9 @@ Document dependencies in step files:
 
 RiotPlan validates these automatically.
 
-## Troubleshooting
-
-### Step numbering is wrong
-
-```bash
-riotplan plan validate --fix
-```
-
-This renumbers steps to fix gaps or duplicates.
-
-### Can't start a step
-
-Check dependencies:
-
-```bash
-riotplan step deps 06
-```
-
-Ensure all prerequisites are completed.
-
-### STATUS.md out of sync
-
-Regenerate STATUS.md:
-
-```bash
-riotplan status --regenerate
-```
-
 ## Next Steps
 
-- Learn about [CLI Usage](cli-usage) - Complete command reference
-- Explore [STATUS.md Format](status-format) - Understanding status tracking
-- Read [Programmatic Usage](programmatic-usage) - Using the API
-- Understand [Plan Structure](plan-structure) - Plan anatomy
+- Explore [MCP Tools](mcp-tools) — All available MCP tools
+- Read [STATUS.md Format](status-format) — Understanding status tracking
+- Understand [Programmatic Usage](programmatic-usage) — Using the API
+- Learn about [Plan Structure](plan-structure) — Plan anatomy

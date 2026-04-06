@@ -369,13 +369,7 @@ feedback/
 
 ## Validation
 
-RiotPlan validates plan structure:
-
-```bash
-riotplan plan validate
-```
-
-Checks:
+RiotPlan validates plan structure automatically. The `riotplan_validate` MCP tool checks:
 - Required files exist (STATUS.md, EXECUTION_PLAN.md, etc.)
 - STATUS.md is parseable
 - Step files have valid numbering (01-*, 02-*, etc.)
@@ -414,4 +408,4 @@ Checks:
 - Learn about [Creating Plans](creating-plans) - How to create plans
 - Explore [Managing Steps](managing-steps) - Working with steps
 - Understand [STATUS.md Format](status-format) - Complete format reference
-- Read [CLI Usage](cli-usage) - Command reference
+- Read [MCP Tools](mcp-tools) - All available MCP tools

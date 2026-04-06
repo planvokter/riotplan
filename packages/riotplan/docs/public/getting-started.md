@@ -1,117 +1,105 @@
 # Getting Started
 
-Welcome to **RiotPlan** - a framework for managing long-lived, stateful AI workflows.
+Welcome to **RiotPlan** — a tool for developing and executing plans through AI assistants via MCP (Model Context Protocol).
 
 ## What is RiotPlan?
 
 RiotPlan helps you manage complex, multi-step AI-assisted tasks that:
 
-- **Span multiple sessions** - Work on a task over days or weeks
-- **Have persistent state** - Track progress in STATUS.md
-- **Are organized into steps** - Numbered files (01-STEP.md, 02-STEP.md)
-- **Can be interrupted and resumed** - Pick up where you left off
-- **Support collaboration** - Human reviews, feedback loops
+- **Span multiple sessions** — Work on a task over days or weeks
+- **Have persistent state** — Track progress in STATUS.md
+- **Are organized into steps** — Numbered files (01-STEP.md, 02-STEP.md)
+- **Can be interrupted and resumed** — Pick up where you left off
+- **Support collaboration** — Human reviews, feedback loops
 
-## Installation
+RiotPlan is used **exclusively via MCP** — there is no CLI. You interact with it through AI assistants like Cursor, Claude Desktop, or any other MCP-compatible client.
 
-### Basic Installation
+## MCP Integration
 
-```bash
-npm install -g @planvokter/riotplan
+RiotPlan works as an MCP server that your AI assistant connects to. Add it to your MCP configuration:
+
+### Cursor
+
+Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "riotplan": {
+      "command": "npx",
+      "args": ["-y", "@planvokter/riotplan", "riotplan-mcp"]
+    }
+  }
+}
 ```
 
-Or as a development dependency:
+### Claude Desktop
 
-```bash
-npm install --save-dev @planvokter/riotplan
+Add to your Claude Desktop config (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "riotplan": {
+      "command": "npx",
+      "args": ["-y", "@planvokter/riotplan", "riotplan-mcp"]
+    }
+  }
+}
 ```
 
-### AI-Powered Generation (Optional)
+### HTTP MCP Server
 
-RiotPlan can use AI to generate detailed, actionable plans from your descriptions. Install an execution provider:
+If you're using `@planvokter/riotplan-mcp-http` for a remote deployment:
 
-```bash
-# For Anthropic Claude (recommended)
-npm install @kjerneverk/execution-anthropic
-
-# For OpenAI GPT
-npm install @kjerneverk/execution-openai
-
-# For Google Gemini
-npm install @kjerneverk/execution-gemini
+```json
+{
+  "mcpServers": {
+    "riotplan-http": {
+      "url": "https://your-host.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <raw_key_secret>"
+      }
+    }
+  }
+}
 ```
 
-Set your API key:
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-export OPENAI_API_KEY="sk-..."
-export GOOGLE_API_KEY="..."
-```
-
-Without an AI provider, RiotPlan falls back to template-based generation.
+After adding the configuration, restart your AI assistant to activate the MCP server.
 
 ## Quick Start
 
-### Create Your First Plan
+Once the MCP server is connected, you can use RiotPlan entirely through your AI assistant. Here's a typical workflow:
 
-```bash
-riotplan create my-feature
-```
+### 1. Create a Plan
 
-This will:
-1. Prompt for your plan description (opens editor)
-2. Ask if you want analysis first or direct generation
-3. Use AI to generate detailed plan content
-4. Create all plan files with actionable steps
+Ask your assistant to create a plan:
 
-### Check Plan Status
+> "Create a plan called `user-auth` for implementing JWT-based authentication with 6 steps."
 
-```bash
-riotplan status
-```
+This calls the `riotplan_plan` MCP tool, which generates a structured plan directory with all the necessary files.
 
-Example output:
+### 2. Check Status
 
-```
-Plan: my-feature
-Status: 🔄 in_progress
-Progress: 45% (5/11 steps)
-Current Step: 06-testing
-Last Updated: 2026-01-10
+> "Show me the status of the user-auth plan."
 
-Blockers: None
-Issues: 1 (low priority)
-```
+This calls `riotplan_status` and returns current progress, completed steps, and any blockers.
 
-### List Steps
+### 3. Start a Step
 
-```bash
-riotplan step list
-```
+> "Start step 1 of the user-auth plan."
 
-Example output:
+This calls `riotplan_step` with `action: "start"`, updating STATUS.md and marking the step as in-progress.
 
-```
-✅ 01 analysis
-✅ 02 design
-✅ 03 architecture
-✅ 04 implementation-core
-🔄 05 implementation-api
-⬜ 06 testing
-⬜ 07 documentation
-⬜ 08 release
-```
+### 4. Complete a Step
 
-### Execute Steps
+> "I've finished the work for step 1. Mark it complete."
 
-```bash
-# Start a step
-riotplan step start 05
+This calls `riotplan_step` with `action: "complete"`, recording the completion and advancing to the next step.
 
-# Complete a step
-riotplan step complete 05
-```
+### 5. Repeat
+
+Continue working through steps, checking status as needed. Your assistant handles all the bookkeeping.
 
 ## Plan Structure
 
@@ -144,35 +132,28 @@ Tracks current progress, completed steps, blockers, and issues. Updated automati
 ### Execution Plan
 Defines the sequence of steps, dependencies, and quality gates.
 
-## Next Steps
+## AI Provider Configuration
 
-- Learn about [Core Concepts](core-concepts) - Understanding Plans, Steps, and STATUS.md
-- Explore [Plan Structure](plan-structure) - Anatomy of a plan directory
-- Read [Creating Plans](creating-plans) - How to create and initialize plans
-- Understand [Managing Steps](managing-steps) - Working with plan steps
+For AI-powered plan generation, set your API key in your environment:
 
-## MCP Integration
-
-RiotPlan is available as an MCP (Model Context Protocol) server for AI assistants like Cursor.
-
-Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "riotplan": {
-      "command": "npx",
-      "args": ["-y", "@planvokter/riotplan", "riotplan-mcp"]
-    }
-  }
-}
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+# or
+export OPENAI_API_KEY="sk-..."
+# or
+export GOOGLE_API_KEY="..."
 ```
 
-This allows AI assistants to:
-- Create and manage plans
-- Track progress
-- Execute steps
-- Update status
+The MCP server uses these keys to generate detailed, actionable plan content. Without an AI provider, RiotPlan falls back to template-based generation.
+
+## Next Steps
+
+- Read the [MCP Overview](mcp-overview) for full MCP setup details and capabilities
+- Explore [MCP Tools](mcp-tools) for all available tools
+- Learn about [Core Concepts](core-concepts) — Understanding Plans, Steps, and STATUS.md
+- Explore [Plan Structure](plan-structure) — Anatomy of a plan directory
+- Read [Creating Plans](creating-plans) — How to create plans via MCP
+- Understand [Managing Steps](managing-steps) — Working with plan steps via MCP
 
 ## Philosophy
 
