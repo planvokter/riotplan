@@ -30,8 +30,6 @@ const Layout = ({ docSections }: LayoutProps) => {
             <nav id="nav">
                 <div className="nav-container">
                     <div className="nav-title">
-                        <a href="https://kjerneverk.github.io" className="kjerneverk-link">Kjerneverk</a>
-                        <span className="nav-separator">/</span>
                         <Link to="/">RiotPlan</Link>
                     </div>
                     <ul className="nav-links">
@@ -47,18 +45,7 @@ const Layout = ({ docSections }: LayoutProps) => {
                            </ul>
                         </li>
 
-                        {/* Command Dropdown/Group */}
-                         <li className={docSections.find(s => s.id === activeSection)?.category === 'command' ? 'current' : ''}>
-                            <Link to={getFirstPageForCategory('command')} className="nav-group-label">Command</Link>
-                            <ul className="sub-menu">
-                                 {docSections.filter(s => s.category === 'command').map(section => (
-                                     <li key={section.id} className={activeSection === section.id ? 'current-sub' : ''}>
-                                         <Link to={`/${section.id}`}>{section.title}</Link>
-                                     </li>
-                                 ))}
-                            </ul>
-                         </li>
-                        
+
                         {/* API Dropdown/Group */}
                         <li className={docSections.find(s => s.id === activeSection)?.category === 'api' ? 'current' : ''}>
                             <Link to={getFirstPageForCategory('api')} className="nav-group-label">API</Link>
@@ -122,19 +109,7 @@ const Layout = ({ docSections }: LayoutProps) => {
                                 </Link>
                             ))}
                         </div>
-                        <div className="mobile-menu-section">
-                            <h3>Command</h3>
-                            {docSections.filter(s => s.category === 'command').map(section => (
-                                <Link 
-                                    key={section.id}
-                                    to={`/${section.id}`}
-                                    className={activeSection === section.id ? 'active' : ''}
-                                    onClick={() => setMobileMenuOpen(false)}
-                                >
-                                    {section.title}
-                                </Link>
-                            ))}
-                        </div>
+
                         <div className="mobile-menu-section">
                             <h3>API</h3>
                             {docSections.filter(s => s.category === 'api').map(section => (
@@ -171,13 +146,13 @@ const Layout = ({ docSections }: LayoutProps) => {
                     {isHomePage ? (
                         <div className="header-inner">
                             <h1>RiotPlan</h1>
-                            <p>Framework for Long-Lived AI Workflows</p>
+                            <p>Develop and Execute Plans with AI</p>
                             <div className="header-actions">
-                                <Link to="/cli-usage" className="button">
-                                    Install
+                                <Link to="/mcp-overview" className="button">
+                                    Set Up MCP
                                 </Link>
-                                <Link to="/api-reference" className="button alt">
-                                    Integrate
+                                <Link to="/mcp-tools" className="button alt">
+                                    MCP Tools
                                 </Link>
                             </div>
                         </div>

@@ -43,7 +43,7 @@
     "directory": "packages/riotplan-cloud"
   },
   "dependencies": {
-    "@google-cloud/storage": "^7.19.0"
+    "@google-cloud/storage": "^5.18.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
@@ -56,9 +56,9 @@
     "eslint-plugin-import": "^2.31.0",
     "globals": "^17.0.0",
     "typescript": "^5.8.3",
-    "vite": "^7.0.4",
+    "vite": "8.0.3",
     "vite-plugin-dts": "^4.5.4",
-    "vitest": "^4.0.17"
+    "vitest": "4.1.2"
   },
   "publishConfig": {
     "access": "public"

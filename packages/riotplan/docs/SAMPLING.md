@@ -235,7 +235,7 @@ pip install -r requirements.txt
 - **MCP Specification**: https://modelcontextprotocol.io/specification/2025-11-25/server/sampling
 - **FastMCP**: https://github.com/jlowin/fastmcp
 - **RiotPlan Tests**: `tests/sampling/`
-- **execution-sampling Package**: https://github.com/kjerneverk/execution-sampling
+- **execution-sampling Package**: https://github.com/planvokter/execution-sampling
 
 ## Advocacy
 

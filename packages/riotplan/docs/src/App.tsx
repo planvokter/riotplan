@@ -40,41 +40,6 @@ const DOC_SECTIONS = [
         category: 'guide'
     },
     {
-        id: 'cli-usage',
-        title: 'CLI Overview',
-        file: 'cli-usage.md',
-        description: 'Command Line Interface overview',
-        category: 'command'
-    },
-    {
-        id: 'cli-plan',
-        title: 'plan',
-        file: 'cli-plan.md',
-        description: 'Initialize and manage plans',
-        category: 'command'
-    },
-    {
-        id: 'cli-status',
-        title: 'status',
-        file: 'cli-status.md',
-        description: 'Check plan status and progress',
-        category: 'command'
-    },
-    {
-        id: 'cli-step',
-        title: 'step',
-        file: 'cli-step.md',
-        description: 'Manage plan steps',
-        category: 'command'
-    },
-    {
-        id: 'cli-feedback',
-        title: 'feedback',
-        file: 'cli-feedback.md',
-        description: 'Create and manage feedback records',
-        category: 'command'
-    },
-    {
         id: 'api-reference',
         title: 'API Reference',
         file: 'api-reference.md',
