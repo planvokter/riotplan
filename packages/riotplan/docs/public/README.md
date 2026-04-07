@@ -1,12 +1,17 @@
 # RiotPlan
 
-**A plan is bigger than a list of tasks.**
+**An MCP server for developing and executing plans with AI.**
 
-RiotPlan treats plans as **constructs**—full lifecycles from idea exploration through execution. Think before you execute. Support complex, multi-session workflows. Make your plans truly yours.
+AI coding assistants can generate plans in seconds. Cursor has a plan mode. Claude Code has a plan mode. But those plans are ephemeral — they vanish when the conversation ends.
 
-**Now available as an MCP server!** Integrate with Cursor and other AI assistants - see [MCP Integration](#mcp-integration) below.
+RiotPlan is different. It's an **MCP server** that stores your plans as persistent artifacts. Plans live on disk, not in a chat window. They survive session resets, support multi-day thinking time, and keep a full timeline of how your thinking evolved.
 
-**✨ MCP Sampling Support** - No duplicate API keys needed when using RiotPlan via MCP! [Learn more →](docs/SAMPLING.md)
+**Run the server:**
+```bash
+npx @planvokter/riotplan-mcp-http --plans-dir ~/plans
+```
+
+Then connect your AI assistant via MCP. See [Getting Started](getting-started) for full setup instructions.
 
 > **Storage model:** RiotPlan now uses SQLite-backed `.plan` files as the only supported runtime format. Legacy directory-based plan workflows are deprecated and should be migrated.
 
