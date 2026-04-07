@@ -74,18 +74,23 @@ Then restart your assistant.
 
 Ask your assistant:
 
-> "Create a plan called `user-auth` for implementing JWT authentication."
+> "Create a plan called `user-auth` for implementing JWT authentication. Use RiotPlan MCP tools to build out the full plan."
+
+**Tip:** Many AI assistants have built-in "plan" modes that generate ephemeral plans. If your assistant doesn't respond with RiotPlan tools, try adding "Use RiotPlan MCP tools" to your request. This reminds it to use the right tools.
 
 The assistant uses RiotPlan's MCP tools to create a structured plan with steps, status tracking, and a full lifecycle.
 
 ### 4. Work Through It
 
-> "Show me the status of user-auth."
-> "Start step 1."
-> "I'm done with step 1. Mark it complete."
-> "Add a note to step 2 about the edge case I found."
+> "Is user-auth ready to execute?"
 
-Your assistant handles all the bookkeeping. The plan files live on disk — you can inspect them anytime.
+> "Execute user-auth Steps 1 through 3 using RiotPlan MCP and then show me the plan status."
+
+> "Explain the current progress, and have you identified any complications for Step 4?"
+
+> "Go ahead and finish executing the plan using RiotPlan MCP."
+
+Your assistant handles all the bookkeeping — executing steps, updating status, logging notes. The plan files live on disk — you can inspect them anytime.
 
 ### 5. Pause for Human Feedback
 
