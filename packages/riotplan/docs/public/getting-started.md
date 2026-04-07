@@ -12,7 +12,8 @@ RiotPlan is different. It's an **MCP server** that stores your plans as persiste
 - **Thinking time** — Good plans sometimes need hours or days. RiotPlan's lifecycle (idea → shaping → built → executing → completed) supports that. Explore an idea on Monday, shape approaches on Tuesday, start executing on Wednesday.
 - **Multiple versions** — Create several plans for the same problem. Compare approaches before committing. Kill the ones that don't work.
 - **A record** — Every plan has a timeline. You can see what changed, when, and why. This is invaluable when you're reviewing past work or onboarding someone new.
-- **Human-in-the-loop** — Plans aren't just for AI. You can review steps, add feedback, adjust scope, and redirect before execution starts.
+- **Human-in-the-loop** — Plans aren't just for AI. You can review steps, add feedback, adjust scope, and redirect before execution starts. For example: an AI generates a plan, stops before step 4 to ask "which illustration style do you prefer?", waits for your input, then continues.
+- **Multi-agent execution** — Different AI agents can work on different steps of the same plan. A specialized coding agent handles the implementation steps. A写作 agent handles the documentation. A researcher agent explores the architecture. Each agent connects to the same RiotPlan server and sees the full plan context.
 
 ## What RiotPlan Is
 
@@ -85,6 +86,14 @@ The assistant uses RiotPlan's MCP tools to create a structured plan with steps, 
 > "Add a note to step 2 about the edge case I found."
 
 Your assistant handles all the bookkeeping. The plan files live on disk — you can inspect them anytime.
+
+### 5. Pause for Human Feedback
+
+Plans can stop at any point to ask for input. Your assistant can:
+
+> "I've drafted the image generation plan. Before I proceed, which illustration style do you prefer — vector or photorealistic?"
+
+The plan waits. You review the output so far, provide feedback, and your assistant continues with that context baked in.
 
 ## Next Steps
 

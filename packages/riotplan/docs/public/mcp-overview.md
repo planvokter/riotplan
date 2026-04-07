@@ -10,6 +10,8 @@ npx @planvokter/riotplan-mcp-http --plans-dir ~/plans
 
 That's it. The server starts on `http://localhost:3000` and stores plans in `~/plans`.
 
+> **Production note:** The quick start above has no authentication. For production use, enable API key authentication. See [Authentication](#authentication) below.
+
 ## Configuration
 
 ### Command Line Options
