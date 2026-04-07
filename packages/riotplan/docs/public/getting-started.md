@@ -13,7 +13,7 @@ RiotPlan is different. It's an **MCP server** that stores your plans as persiste
 - **Multiple versions** — Create several plans for the same problem. Compare approaches before committing. Kill the ones that don't work.
 - **A record** — Every plan has a timeline. You can see what changed, when, and why. This is invaluable when you're reviewing past work or onboarding someone new.
 - **Human-in-the-loop** — Plans aren't just for AI. You can review steps, add feedback, adjust scope, and redirect before execution starts. For example: an AI generates a plan, stops before step 4 to ask "which illustration style do you prefer?", waits for your input, then continues.
-- **Multi-agent execution** — Different AI agents can work on different steps of the same plan. A specialized coding agent handles the implementation steps. A写作 agent handles the documentation. A researcher agent explores the architecture. Each agent connects to the same RiotPlan server and sees the full plan context.
+- **Multi-agent execution** — Different AI agents can work on different steps of the same plan. A specialized coding agent handles the implementation steps. A writing agent handles the documentation. A researcher agent explores the architecture. Each agent connects to the same RiotPlan server and sees the full plan context.
 
 ## What RiotPlan Is
 
