@@ -1,169 +1,94 @@
 # Getting Started
 
-Welcome to **RiotPlan** — a tool for developing and executing plans through AI assistants via MCP (Model Context Protocol).
+## Why RiotPlan?
 
-## What is RiotPlan?
+AI coding assistants can generate plans in seconds. Cursor has a plan mode. Claude Code has a plan mode. But those plans are ephemeral — they vanish when the conversation ends. There's no record of what you considered, what you rejected, or why you chose a particular approach.
 
-RiotPlan helps you manage complex, multi-step AI-assisted tasks that:
+RiotPlan is different. It's an **MCP server** that stores your plans as persistent artifacts. When you look back at your work weeks later, you can see not just what was built, but *how you planned it*.
 
-- **Span multiple sessions** — Work on a task over days or weeks
-- **Have persistent state** — Track progress in STATUS.md
-- **Are organized into steps** — Numbered files (01-STEP.md, 02-STEP.md)
-- **Can be interrupted and resumed** — Pick up where you left off
-- **Support collaboration** — Human reviews, feedback loops
+### What RiotPlan gives you that built-in plan modes don't:
 
-RiotPlan is used **exclusively via MCP** — there is no CLI. You interact with it through AI assistants like Cursor, Claude Desktop, or any other MCP-compatible client.
+- **Persistence** — Plans live on disk, not in a chat window. They survive session resets, context window limits, and tool crashes.
+- **Thinking time** — Good plans sometimes need hours or days. RiotPlan's lifecycle (idea → shaping → built → executing → completed) supports that. Explore an idea on Monday, shape approaches on Tuesday, start executing on Wednesday.
+- **Multiple versions** — Create several plans for the same problem. Compare approaches before committing. Kill the ones that don't work.
+- **A record** — Every plan has a timeline. You can see what changed, when, and why. This is invaluable when you're reviewing past work or onboarding someone new.
+- **Human-in-the-loop** — Plans aren't just for AI. You can review steps, add feedback, adjust scope, and redirect before execution starts.
 
-## MCP Integration
+## What RiotPlan Is
 
-RiotPlan works as an MCP server that your AI assistant connects to. Add it to your MCP configuration:
+RiotPlan is an **MCP server** (`@planvokter/riotplan-mcp-http`) that you run and connect your AI assistant to. It stores plans on disk (or in GCS for cloud setups) and exposes tools for creating, managing, and executing them.
 
-### Cursor
-
-Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "riotplan": {
-      "command": "npx",
-      "args": ["-y", "@planvokter/riotplan", "riotplan-mcp"]
-    }
-  }
-}
-```
-
-### Claude Desktop
-
-Add to your Claude Desktop config (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "riotplan": {
-      "command": "npx",
-      "args": ["-y", "@planvokter/riotplan", "riotplan-mcp"]
-    }
-  }
-}
-```
-
-### HTTP MCP Server
-
-If you're using `@planvokter/riotplan-mcp-http` for a remote deployment:
-
-```json
-{
-  "mcpServers": {
-    "riotplan-http": {
-      "url": "https://your-host.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer <raw_key_secret>"
-      }
-    }
-  }
-}
-```
-
-After adding the configuration, restart your AI assistant to activate the MCP server.
+There is no CLI. There is no standalone app. You interact with RiotPlan entirely through your AI assistant via MCP.
 
 ## Quick Start
 
-Once the MCP server is connected, you can use RiotPlan entirely through your AI assistant. Here's a typical workflow:
-
-### 1. Create a Plan
-
-Ask your assistant to create a plan:
-
-> "Create a plan called `user-auth` for implementing JWT-based authentication with 6 steps."
-
-This calls the `riotplan_plan` MCP tool, which generates a structured plan directory with all the necessary files.
-
-### 2. Check Status
-
-> "Show me the status of the user-auth plan."
-
-This calls `riotplan_status` and returns current progress, completed steps, and any blockers.
-
-### 3. Start a Step
-
-> "Start step 1 of the user-auth plan."
-
-This calls `riotplan_step` with `action: "start"`, updating STATUS.md and marking the step as in-progress.
-
-### 4. Complete a Step
-
-> "I've finished the work for step 1. Mark it complete."
-
-This calls `riotplan_step` with `action: "complete"`, recording the completion and advancing to the next step.
-
-### 5. Repeat
-
-Continue working through steps, checking status as needed. Your assistant handles all the bookkeeping.
-
-## Plan Structure
-
-A plan is a directory with this structure:
-
-```
-my-plan/
-├── my-plan-prompt.md     # Meta-prompt (prompt-of-prompts)
-├── SUMMARY.md            # Overview of the approach
-├── EXECUTION_PLAN.md     # Step-by-step strategy
-├── STATUS.md             # Current state (auto-updated)
-├── plan/                 # Step files
-│   ├── 01-first-step.md
-│   ├── 02-second-step.md
-│   └── ...
-└── analysis/             # Analysis output (optional)
-```
-
-## Key Concepts
-
-### Plans
-A plan is a structured directory containing a prompt, summary, execution plan, status tracker, and numbered step files.
-
-### Steps
-Individual units of work, represented as numbered markdown files (01-analysis.md, 02-design.md, etc.).
-
-### STATUS.md
-Tracks current progress, completed steps, blockers, and issues. Updated automatically as you work.
-
-### Execution Plan
-Defines the sequence of steps, dependencies, and quality gates.
-
-## AI Provider Configuration
-
-For AI-powered plan generation, set your API key in your environment:
+### 1. Run the Server
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-# or
-export OPENAI_API_KEY="sk-..."
-# or
-export GOOGLE_API_KEY="..."
+npx @planvokter/riotplan-mcp-http --plans-dir ~/plans
 ```
 
-The MCP server uses these keys to generate detailed, actionable plan content. Without an AI provider, RiotPlan falls back to template-based generation.
+This starts the MCP server on `http://localhost:3000`. Plans are stored in `~/plans`.
+
+### 2. Connect Your AI Assistant
+
+Add the server to your assistant's MCP configuration:
+
+**Cursor** (`~/.cursor/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "riotplan": {
+      "url": "http://localhost:3000/mcp"
+    }
+  }
+}
+```
+
+**Claude Code** (`~/.claude/settings.json`):
+```json
+{
+  "mcpServers": {
+    "riotplan": {
+      "url": "http://localhost:3000/mcp"
+    }
+  }
+}
+```
+
+**Nanobot** (in your MCP config):
+```json
+{
+  "mcpServers": {
+    "riotplan": {
+      "url": "http://localhost:3000/mcp"
+    }
+  }
+}
+```
+
+Then restart your assistant.
+
+### 3. Create a Plan
+
+Ask your assistant:
+
+> "Create a plan called `user-auth` for implementing JWT authentication."
+
+The assistant uses RiotPlan's MCP tools to create a structured plan with steps, status tracking, and a full lifecycle.
+
+### 4. Work Through It
+
+> "Show me the status of user-auth."
+> "Start step 1."
+> "I'm done with step 1. Mark it complete."
+> "Add a note to step 2 about the edge case I found."
+
+Your assistant handles all the bookkeeping. The plan files live on disk — you can inspect them anytime.
 
 ## Next Steps
 
-- Read the [MCP Overview](mcp-overview) for full MCP setup details and capabilities
-- Explore [MCP Tools](mcp-tools) for all available tools
-- Learn about [Core Concepts](core-concepts) — Understanding Plans, Steps, and STATUS.md
-- Explore [Plan Structure](plan-structure) — Anatomy of a plan directory
-- Read [Creating Plans](creating-plans) — How to create plans via MCP
-- Understand [Managing Steps](managing-steps) — Working with plan steps via MCP
-
-## Philosophy
-
-Plans bridge the gap between:
-- **Prompts** (single interactions)
-- **Agentic conversations** (multi-turn sessions)
-- **Long-running workflows** (days/weeks of work)
-
-A plan provides structure for complex, iterative AI-assisted work where:
-- The work can't be done in one session
-- Progress needs to be tracked
-- Humans need to review and provide feedback
-- The approach may evolve based on findings
+- [Running the Server](mcp-overview) — Server configuration, ports, cloud mode, and authentication
+- [MCP Tools](mcp-tools) — All available tools your assistant can use
+- [Core Concepts](core-concepts) — Plans, steps, lifecycle, and STATUS.md
+- [Plan Structure](plan-structure) — What's inside a plan directory
