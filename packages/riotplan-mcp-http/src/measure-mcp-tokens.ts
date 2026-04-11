@@ -5,10 +5,18 @@
  * as they appear in the wire format sent to clients. This is the authoritative
  * metric for tracking RiotPlan's MCP footprint over time.
  *
+ * This script is compiled to dist/ by tsc and run as a post-build step.
+ * The report is written to dist/mcp-token-report.json so it ships as a
+ * build artifact alongside the compiled server code.
+ *
  * Usage:
- *   npx tsx src/measure-mcp-tokens.ts          # Print report to stdout
- *   npx tsx src/measure-mcp-tokens.ts --json    # Output JSON for CI
- *   npx tsx src/measure-mcp-tokens.ts --ci      # Output JSON + write to mcp-token-report.json
+ *   node dist/measure-mcp-tokens.ts          # Print report to stdout
+ *   node dist/measure-mcp-tokens.ts --json    # Output JSON for CI
+ *   node dist/measure-mcp-tokens.ts --ci      # Output JSON + write to dist/mcp-token-report.json
+ *
+ * From package scripts:
+ *   npm run measure-tokens       # Human-readable report
+ *   npm run measure-tokens:ci    # JSON report to dist/mcp-token-report.json
  */
 
 import { z } from 'zod';
@@ -297,7 +305,7 @@ if (isJson || isCi) {
   console.log(json);
 
   if (isCi) {
-    const outPath = resolve(__dirname, '..', 'mcp-token-report.json');
+    const outPath = resolve(__dirname, 'mcp-token-report.json');
     writeFileSync(outPath, json);
     console.error(`\nReport written to ${outPath}`);
   }

@@ -22,11 +22,11 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run measure-tokens:ci",
     "test": "echo \"No standalone tests yet\"",
     "test:coverage": "npm run test",
-    "measure-tokens": "npx tsx src/measure-mcp-tokens.ts",
-    "measure-tokens:ci": "npx tsx src/measure-mcp-tokens.ts --ci",
+    "measure-tokens": "node dist/measure-mcp-tokens.js",
+    "measure-tokens:ci": "node dist/measure-mcp-tokens.js --ci",
     "lint": "echo \"No standalone lint yet\"",
     "precommit": "npm run build && npm run lint && npm run test",
     "prepublishOnly": "npm run clean && npm run build"
