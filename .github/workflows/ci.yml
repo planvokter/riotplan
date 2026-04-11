@@ -34,3 +34,37 @@ jobs:
       - run: npm run build
       - run: npm run lint
       - run: npm run test
+
+  measure-mcp-tokens:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - run: npm run build
+      - name: Measure MCP token costs
+        run: npm run measure-tokens:ci -w packages/riotplan-mcp-http
+      - name: Upload token report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-token-report
+          path: packages/riotplan-mcp-http/mcp-token-report.json
+          retention-days: 90
+      - name: Print summary
+        run: |
+          REPORT=packages/riotplan-mcp-http/mcp-token-report.json
+          TOTAL=$(node -p "JSON.parse(require('fs').readFileSync('$REPORT')).summary.totalTokens")
+          DEFS=$(node -p "JSON.parse(require('fs').readFileSync('$REPORT')).summary.totalDefinitions")
+          PCT=$(node -p "((JSON.parse(require('fs').readFileSync('$REPORT')).summary.totalTokens / 128000) * 100).toFixed(1)")
+          echo "## MCP Token Footprint" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total definitions | ${DEFS} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Estimated tokens | ${TOTAL} |" >> $GITHUB_STEP_SUMMARY
+          echo "| % of 128K context | ${PCT}% |" >> $GITHUB_STEP_SUMMARY
