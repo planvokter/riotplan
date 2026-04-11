@@ -47,13 +47,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run test
-      - name: Measure MCP token costs
-        run: npm run measure-tokens:ci -w packages/riotplan-mcp-http
       - name: Upload token report
         uses: actions/upload-artifact@v4
         with:
           name: mcp-token-report-${{ github.ref_name }}
-          path: packages/riotplan-mcp-http/mcp-token-report.json
+          path: packages/riotplan-mcp-http/dist/mcp-token-report.json
           retention-days: 365
       - name: Publish all workspaces (provenance)
         run: |
