@@ -78,7 +78,7 @@ export function detectPlanFormat(planPath: string): StorageFormat | 'unknown' {
  */
 export function hasSqliteHeader(filePath: string): boolean {
     try {
-        const fd = readFileSync(filePath, { flag: 'r' });
+        const fd = readFileSync(filePath);
         if (fd.length < SQLITE_HEADER.length) {
             return false;
         }

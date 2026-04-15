@@ -16,6 +16,7 @@ export interface CreatePlanConfig {
     basePath: string;
     description?: string;
     steps?: Array<{ title: string; description: string }>;
+    tags?: string[];
 }
 
 export interface CreatePlanResult {
@@ -80,7 +81,7 @@ export interface ApplyTemplateResult {
 export async function applyTemplate(
     options: ApplyTemplateOptions,
 ): Promise<ApplyTemplateResult> {
-    const { templateId, code, name, basePath, description, variables, createPlan } = options;
+    const { templateId, code, name, basePath, description, variables, tags, createPlan } = options;
 
     const template = getTemplate(templateId);
     if (!template) {
@@ -96,11 +97,14 @@ export async function applyTemplate(
             name,
             basePath,
             description:
-        description || substituteVariables(template.description, variables),
+        description ?? substituteVariables(template.description, variables),
             steps: template.steps.map((step) => ({
                 title: substituteVariables(step.title, variables),
                 description: substituteVariables(step.description, variables),
             })),
+            tags: tags
+                ? [...new Set([...template.tags, ...tags])]
+                : template.tags,
         };
 
         const result = await createPlan(config);
@@ -122,6 +126,13 @@ export async function applyTemplate(
 }
 
 /**
+ * Escape special regex characters in a string
+ */
+function escapeRegExp(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * Substitute variables in a string
  */
 function substituteVariables(
@@ -132,7 +143,14 @@ function substituteVariables(
 
     let result = text;
     for (const [key, value] of Object.entries(variables)) {
-        result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+        // Use a function replacement to avoid special replacement patterns ($&, $1, $`, $', $$)
+        // being interpreted by String.prototype.replace() when the first arg is a RegExp.
+        // Without this, a value like "Price: $50" would be corrupted because $5 is
+        // interpreted as a backreference (replaced with empty string).
+        result = result.replace(
+            new RegExp(`\\{\\{${escapeRegExp(key)}\\}\\}`, "g"),
+            () => value,
+        );
     }
     return result;
 }

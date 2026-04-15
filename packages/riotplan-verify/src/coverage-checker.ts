@@ -61,10 +61,10 @@ async function loadStepFiles(planPath: string): Promise<Map<number, string>> {
     
     try {
         const files = await readdir(planDir);
-        const stepFiles = files.filter(f => /^\d{2}-/.test(f) && f.endsWith(".md"));
+        const stepFiles = files.filter(f => /^\d+-/.test(f) && f.endsWith(".md"));
         
         for (const file of stepFiles) {
-            const stepNum = parseInt(file.slice(0, 2));
+            const stepNum = parseInt(file.match(/^(\d+)-/)![1], 10);
             const content = await readFile(join(planDir, file), "utf-8");
             steps.set(stepNum, content);
         }

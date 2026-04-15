@@ -122,6 +122,13 @@ export function rollbackToMilestone(
         };
     }
 
+    if (currentIndex === -1) {
+        return {
+            success: false,
+            error: `Current version ${history.currentVersion} not found in revisions`,
+        };
+    }
+
     const revisionsRolledBack = currentIndex - targetIndex;
 
     // Update current version

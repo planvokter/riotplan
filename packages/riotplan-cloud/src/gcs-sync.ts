@@ -567,9 +567,11 @@ export async function writeSyncManifest(localDirectory: string, objects: Record<
     const manifestPath = join(localDirectory, SYNC_MANIFEST_FILE);
     const tempManifestPath = `${manifestPath}.tmp`;
     const now = new Date().toISOString();
+    const existing = await loadSyncManifest(localDirectory);
+    const createdAt = existing.manifest?.createdAt ?? now;
     const payload: SyncManifest = {
         version: SYNC_MANIFEST_VERSION,
-        createdAt: now,
+        createdAt,
         updatedAt: now,
         objects,
     };

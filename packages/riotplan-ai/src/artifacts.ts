@@ -10,12 +10,16 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { createSqliteProvider, type PlanFileType } from '@planvokter/riotplan-format';
 
 function extractMarkdownSection(content: string, heading: string): string | null {
+    // Normalize CRLF to LF so that section markers work regardless of line endings.
+    // Files checked out on Windows or produced by certain editors may use \r\n,
+    // which would cause the literal \n\n marker to never match.
+    const normalized = content.replace(/\r\n/g, '\n');
     const marker = `## ${heading}\n\n`;
-    const start = content.indexOf(marker);
+    const start = normalized.indexOf(marker);
     if (start === -1) return null;
     const bodyStart = start + marker.length;
-    const nextHeading = content.indexOf('\n## ', bodyStart);
-    return nextHeading === -1 ? content.slice(bodyStart) : content.slice(bodyStart, nextHeading);
+    const nextHeading = normalized.indexOf('\n## ', bodyStart);
+    return nextHeading === -1 ? normalized.slice(bodyStart) : normalized.slice(bodyStart, nextHeading);
 }
 
 export interface ArtifactBundle {
@@ -160,16 +164,23 @@ export function extractSelectedApproach(shapingContent: string): {
     
     const approachName = nameMatch[1].trim();
     
-    // Find the approach section
-    const approachPattern = new RegExp(`### Approach: ${approachName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+\\*\\*Description\\*\\*: ([\\s\\S]*?)(?:\\*\\*Tradeoffs\\*\\*:|### Approach:|## |$)`);
-    const approachMatch = shapingContent.match(approachPattern);
+    // Find the entire approach section (from heading to next approach heading, h2, or end)
+    const approachSectionPattern = new RegExp(
+        `### Approach: ${approachName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+([\\s\\S]*?)(?=### Approach:|## |$)`
+    );
+    const sectionMatch = shapingContent.match(approachSectionPattern);
+    const approachSection = sectionMatch ? sectionMatch[1] : '';
     
-    // Extract reasoning
-    const reasoningMatch = shapingContent.match(/\*\*Reasoning\*\*: ([^\n]+)/);
+    // Extract description from the approach section
+    const descriptionMatch = approachSection.match(/\*\*Description\*\*: ([\s\S]*?)(?=\*\*Tradeoffs\*\*:|\*\*Reasoning\*\*:|### |$)/);
+    
+    // Extract reasoning from the approach section (not the entire document,
+    // to avoid matching reasoning from a different approach)
+    const reasoningMatch = approachSection.match(/\*\*Reasoning\*\*: ([^\n]+)/);
     
     return {
         name: approachName,
-        description: approachMatch ? approachMatch[1].trim() : '',
+        description: descriptionMatch ? descriptionMatch[1].trim() : '',
         reasoning: reasoningMatch ? reasoningMatch[1].trim() : '',
     };
 }
@@ -282,6 +293,7 @@ function summarizeEvent(event: any): string {
         case 'evidence_added':
             return `Evidence: ${truncate(data.description, 60)}`;
         case 'narrative_chunk':
+        case 'narrative_added':
             return `Narrative: ${truncate(data.content, 60)}`;
         case 'approach_added':
             return `Approach: ${data.name || 'unnamed'}`;
@@ -292,6 +304,7 @@ function summarizeEvent(event: any): string {
         case 'checkpoint_created':
             return `Checkpoint: ${data.name || 'unnamed'}`;
         case 'step_reflected':
+        case 'reflection_added':
             return `Step ${data.step || '?'} reflection: ${truncate(data.reflection, 60)}`;
         default:
             return type;

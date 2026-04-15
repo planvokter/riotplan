@@ -1635,9 +1635,10 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
     });
 
     const sessionTimeout = config.sessionTimeout || DEFAULT_SESSION_TIMEOUT;
-    setInterval(() => {
+    const cleanupTimer = setInterval(() => {
         cleanupSessions(sessionTimeout);
     }, sessionTimeout / 2);
+    cleanupTimer.unref?.();
 
     function createRbacEngine(localConfig: ServerConfig): RbacEngine | null {
         if (localConfig.security?.secured !== true) {

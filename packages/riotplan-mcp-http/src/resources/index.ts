@@ -165,8 +165,8 @@ export async function readResource(uri: string, plansDir?: string): Promise<any>
         case 'steps':
             return await readStepsResource(planPath);
         case 'step': {
-            const stepNumber = parsed.query?.number ? parseInt(parsed.query.number) : undefined;
-            if (!stepNumber) {
+            const stepNumber = parsed.query?.number ? parseInt(parsed.query.number, 10) : undefined;
+            if (stepNumber === undefined || Number.isNaN(stepNumber)) {
                 throw new Error('Step number is required for step resource');
             }
             return await readStepResource(planPath, stepNumber);

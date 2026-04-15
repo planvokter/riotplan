@@ -124,6 +124,7 @@ export async function runCoalescedOperation<T>(
     }
 
     const timeoutMs = options?.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : 0;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const entry: InFlightOperation<T> = {
         waiterCount: 0,
         promise: (async () => {
@@ -134,12 +135,13 @@ export async function runCoalescedOperation<T>(
                 return await Promise.race([
                     operation(),
                     new Promise<T>((_, reject) => {
-                        setTimeout(() => {
+                        timeoutId = setTimeout(() => {
                             reject(new Error(`Coalesced operation timed out after ${timeoutMs}ms`));
                         }, timeoutMs);
                     }),
                 ]);
             } finally {
+                if (timeoutId) clearTimeout(timeoutId);
                 inFlightOperations.delete(key);
             }
         })(),
@@ -172,6 +174,7 @@ export async function runDebouncedCoalescedOperation<T>(
     const debounceMs = options?.debounceMs && options.debounceMs > 0 ? options.debounceMs : 0;
     const timeoutMs = options?.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const promise = new Promise<T>((resolve, reject) => {
         const execute = async () => {
             const run = async () => operation();
@@ -179,7 +182,7 @@ export async function runDebouncedCoalescedOperation<T>(
                 ? Promise.race([
                     run(),
                     new Promise<T>((_, timeoutReject) => {
-                        setTimeout(() => {
+                        timeoutId = setTimeout(() => {
                             timeoutReject(new Error(`Debounced operation timed out after ${timeoutMs}ms`));
                         }, timeoutMs);
                     }),
@@ -190,6 +193,7 @@ export async function runDebouncedCoalescedOperation<T>(
             } catch (error) {
                 reject(error);
             } finally {
+                if (timeoutId) clearTimeout(timeoutId);
                 debouncedOperations.delete(key);
             }
         };
@@ -268,8 +272,11 @@ export async function createCloudRuntime(
     );
 
     if (!planBucket || !contextBucket) {
+        const missing: string[] = [];
+        if (!planBucket) missing.push('planBucket (cloud.planBucket or RIOTPLAN_PLAN_BUCKET)');
+        if (!contextBucket) missing.push('contextBucket (cloud.contextBucket or RIOTPLAN_CONTEXT_BUCKET)');
         throw new Error(
-            'Cloud mode enabled but missing bucket config. Set cloud.planBucket + cloud.contextBucket or RIOTPLAN_PLAN_BUCKET + RIOTPLAN_CONTEXT_BUCKET.'
+            `Cloud mode enabled but missing bucket config: ${missing.join(', ')}.`
         );
     }
 

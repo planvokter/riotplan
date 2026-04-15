@@ -168,8 +168,10 @@ async function renderStatus(provider: StorageProvider, metadata: PlanMetadata): 
 
     for (const step of steps) {
         const statusIcon = getStepStatusIcon(step.status);
+        // Escape pipe characters in title to avoid breaking the markdown table
+        const safeTitle = step.title.replace(/\|/g, '\\|');
         lines.push(
-            `| ${String(step.number).padStart(2, '0')} | ${step.title} | ${statusIcon} | ${step.startedAt?.split('T')[0] || '-'} | ${step.completedAt?.split('T')[0] || '-'} |`
+            `| ${String(step.number).padStart(2, '0')} | ${safeTitle} | ${statusIcon} | ${step.startedAt?.split('T')[0] || '-'} | ${step.completedAt?.split('T')[0] || '-'} |`
         );
     }
 
@@ -188,23 +190,37 @@ function formatStepFilename(step: PlanStep): string {
 }
 
 /**
+ * Quote a YAML scalar value if it contains characters that would
+ * be misinterpreted in unquoted YAML flow context (colons, hashes,
+ * brackets, braces, leading special chars, etc.).
+ */
+function yamlQuote(value: string): string {
+    // If the value contains any character that makes unquoted YAML ambiguous
+    // or invalid, wrap it in double-quotes and escape internal double-quotes.
+    if (/[":{}[\]#&*!|>'%@`]|: |^[-?,\s]|[\s]$/.test(value) || value === '') {
+        return '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"';
+    }
+    return value;
+}
+
+/**
  * Render evidence record to markdown
  */
 function renderEvidence(evidence: EvidenceRecord): string {
     const lines: string[] = [
         '---',
-        `id: ${evidence.id}`,
-        `date: ${evidence.createdAt}`,
+        `id: ${yamlQuote(evidence.id)}`,
+        `date: ${yamlQuote(evidence.createdAt)}`,
     ];
 
     if (evidence.source) {
-        lines.push(`source: ${evidence.source}`);
+        lines.push(`source: ${yamlQuote(evidence.source)}`);
     }
     if (evidence.sourceUrl) {
-        lines.push(`url: ${evidence.sourceUrl}`);
+        lines.push(`url: ${yamlQuote(evidence.sourceUrl)}`);
     }
     if (evidence.gatheringMethod) {
-        lines.push(`gathering_method: ${evidence.gatheringMethod}`);
+        lines.push(`gathering_method: ${yamlQuote(evidence.gatheringMethod)}`);
     }
 
     lines.push('---', '', `# ${evidence.description}`, '');
@@ -222,18 +238,18 @@ function renderEvidence(evidence: EvidenceRecord): string {
 function renderFeedback(feedback: FeedbackRecord): string {
     const lines: string[] = [
         '---',
-        `id: ${feedback.id}`,
-        `date: ${feedback.createdAt}`,
+        `id: ${yamlQuote(feedback.id)}`,
+        `date: ${yamlQuote(feedback.createdAt)}`,
     ];
 
     if (feedback.title) {
-        lines.push(`title: ${feedback.title}`);
+        lines.push(`title: ${yamlQuote(feedback.title)}`);
     }
     if (feedback.platform) {
-        lines.push(`platform: ${feedback.platform}`);
+        lines.push(`platform: ${yamlQuote(feedback.platform)}`);
     }
     if (feedback.participants && feedback.participants.length > 0) {
-        lines.push(`participants: [${feedback.participants.join(', ')}]`);
+        lines.push(`participants: [${feedback.participants.map(p => yamlQuote(p)).join(', ')}]`);
     }
 
     lines.push('---', '');

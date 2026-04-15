@@ -142,9 +142,9 @@ export class VerificationEngine {
             const content = await readFile(step.filePath, 'utf-8');
             const criteria: AcceptanceCriterion[] = [];
 
-            // Find the Acceptance Criteria section
+            // Find the Acceptance Criteria section (match ## h2 only, not ### h3+)
             const sectionMatch = content.match(
-                /##\s+Acceptance Criteria\s*\n([\s\S]*?)(?=\n##|$)/i
+                /##\s+Acceptance Criteria\s*\n([\s\S]*?)(?=\n##(?!#)|$)/i
             );
 
             if (!sectionMatch) {
@@ -185,9 +185,9 @@ export class VerificationEngine {
             const content = await readFile(step.filePath, 'utf-8');
             const missing: string[] = [];
 
-            // Find the "Files Changed" section
+            // Find the "Files Changed" section (match ## h2 only, not ### h3+)
             const sectionMatch = content.match(
-                /##\s+Files Changed\s*\n([\s\S]*?)(?=\n##|$)/i
+                /##\s+Files Changed\s*\n([\s\S]*?)(?=\n##(?!#)|$)/i
             );
 
             if (!sectionMatch) {

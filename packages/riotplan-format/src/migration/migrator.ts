@@ -235,11 +235,15 @@ export class PlanMigrator {
             return 0;
         }
 
+        let converted = 0;
         for (const step of result.data) {
-            await target.addStep(step);
+            const addResult = await target.addStep(step);
+            if (addResult.success) {
+                converted++;
+            }
         }
 
-        return result.data.length;
+        return converted;
     }
 
     private async migrateFiles(
@@ -251,11 +255,15 @@ export class PlanMigrator {
             return 0;
         }
 
+        let converted = 0;
         for (const file of result.data) {
-            await target.saveFile(file);
+            const saveResult = await target.saveFile(file);
+            if (saveResult.success) {
+                converted++;
+            }
         }
 
-        return result.data.length;
+        return converted;
     }
 
     private async migrateTimeline(
@@ -267,11 +275,15 @@ export class PlanMigrator {
             return 0;
         }
 
+        let converted = 0;
         for (const event of result.data) {
-            await target.addTimelineEvent(event);
+            const addResult = await target.addTimelineEvent(event);
+            if (addResult.success) {
+                converted++;
+            }
         }
 
-        return result.data.length;
+        return converted;
     }
 
     private async migrateEvidence(
@@ -283,11 +295,15 @@ export class PlanMigrator {
             return 0;
         }
 
+        let converted = 0;
         for (const evidence of result.data) {
-            await target.addEvidence(evidence);
+            const addResult = await target.addEvidence(evidence);
+            if (addResult.success) {
+                converted++;
+            }
         }
 
-        return result.data.length;
+        return converted;
     }
 
     private async migrateFeedback(
@@ -299,11 +315,15 @@ export class PlanMigrator {
             return 0;
         }
 
+        let converted = 0;
         for (const feedback of result.data) {
-            await target.addFeedback(feedback);
+            const addResult = await target.addFeedback(feedback);
+            if (addResult.success) {
+                converted++;
+            }
         }
 
-        return result.data.length;
+        return converted;
     }
 
     private async migrateCheckpoints(
@@ -315,11 +335,15 @@ export class PlanMigrator {
             return 0;
         }
 
+        let converted = 0;
         for (const checkpoint of result.data) {
-            await target.createCheckpoint(checkpoint);
+            const createResult = await target.createCheckpoint(checkpoint);
+            if (createResult.success) {
+                converted++;
+            }
         }
 
-        return result.data.length;
+        return converted;
     }
 
     private async deleteSource(sourcePath: string, format: StorageFormat): Promise<void> {

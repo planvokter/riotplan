@@ -136,7 +136,7 @@ export function getLatestRevision(
     return {
         ...revision,
         index,
-        isCurrent: true,
+        isCurrent: revision.version === history.currentVersion,
     };
 }
 

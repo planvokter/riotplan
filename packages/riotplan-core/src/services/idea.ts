@@ -2,14 +2,24 @@ import { randomUUID } from "node:crypto";
 import { createSqliteProvider } from "@planvokter/riotplan-format";
 
 function appendBulletToSection(content: string, sectionHeading: string, bullet: string): string {
-    const sectionIndex = content.indexOf(sectionHeading);
-    if (sectionIndex === -1) {
+    // Match the heading at a line boundary to avoid substring matches
+    // (e.g., "## Questions" must not match inside "## Questions and Answers")
+    const headingPattern = new RegExp(`^${escapeRegExp(sectionHeading)}[\\s]*$`, "m");
+    const match = content.match(headingPattern);
+    if (!match || match.index === undefined) {
         return `${content.trim()}\n\n${sectionHeading}\n\n- ${bullet}\n`;
     }
 
+    const sectionIndex = match.index;
     const nextSectionIndex = content.indexOf("\n## ", sectionIndex + sectionHeading.length);
     const insertPoint = nextSectionIndex === -1 ? content.length : nextSectionIndex;
-    return `${content.slice(0, insertPoint)}- ${bullet}\n${content.slice(insertPoint)}`;
+    const prefix = content.slice(0, insertPoint);
+    const needsNewline = prefix.length > 0 && !prefix.endsWith("\n");
+    return `${prefix}${needsNewline ? "\n" : ""}- ${bullet}\n${content.slice(insertPoint)}`;
+}
+
+function escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function defaultIdeaContent(code: string): string {

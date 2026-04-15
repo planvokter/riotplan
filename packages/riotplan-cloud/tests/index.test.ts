@@ -341,7 +341,7 @@ describe('createCloudRuntime', () => {
                 '/tmp/plans'
             )
         ).rejects.toThrow(
-            'Cloud mode enabled but missing bucket config. Set cloud.planBucket + cloud.contextBucket or RIOTPLAN_PLAN_BUCKET + RIOTPLAN_CONTEXT_BUCKET.'
+            'Cloud mode enabled but missing bucket config: planBucket (cloud.planBucket or RIOTPLAN_PLAN_BUCKET), contextBucket (cloud.contextBucket or RIOTPLAN_CONTEXT_BUCKET).'
         );
     });
 
@@ -358,7 +358,7 @@ describe('createCloudRuntime', () => {
                 '/tmp/plans'
             )
         ).rejects.toThrow(
-            'Cloud mode enabled but missing bucket config. Set cloud.planBucket + cloud.contextBucket or RIOTPLAN_PLAN_BUCKET + RIOTPLAN_CONTEXT_BUCKET.'
+            'Cloud mode enabled but missing bucket config: contextBucket (cloud.contextBucket or RIOTPLAN_CONTEXT_BUCKET).'
         );
     });
 
@@ -368,7 +368,7 @@ describe('createCloudRuntime', () => {
         await expect(
             createCloudRuntime(undefined, '/tmp/plans')
         ).rejects.toThrow(
-            'Cloud mode enabled but missing bucket config. Set cloud.planBucket + cloud.contextBucket or RIOTPLAN_PLAN_BUCKET + RIOTPLAN_CONTEXT_BUCKET.'
+            'Cloud mode enabled but missing bucket config: planBucket (cloud.planBucket or RIOTPLAN_PLAN_BUCKET), contextBucket (cloud.contextBucket or RIOTPLAN_CONTEXT_BUCKET).'
         );
     });
 
