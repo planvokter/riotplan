@@ -197,7 +197,7 @@ function formatStepFilename(step: PlanStep): string {
 function yamlQuote(value: string): string {
     // If the value contains any character that makes unquoted YAML ambiguous
     // or invalid, wrap it in double-quotes and escape internal double-quotes.
-    if (/[":\{\}\[\]#&*!|>'%@`]|: |^[-?,\s]|[\s]$/.test(value) || value === '') {
+    if (/[":{}[\]#&*!|>'%@`]|: |^[-?,\s]|[\s]$/.test(value) || value === '') {
         return '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"';
     }
     return value;

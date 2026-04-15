@@ -144,7 +144,7 @@ export class VerificationEngine {
 
             // Find the Acceptance Criteria section (match ## h2 only, not ### h3+)
             const sectionMatch = content.match(
-                /##\s+Acceptance Criteria\s*\n([\s\S]*?)(?=\n##(?!\#)|$)/i
+                /##\s+Acceptance Criteria\s*\n([\s\S]*?)(?=\n##(?!#)|$)/i
             );
 
             if (!sectionMatch) {
@@ -187,7 +187,7 @@ export class VerificationEngine {
 
             // Find the "Files Changed" section (match ## h2 only, not ### h3+)
             const sectionMatch = content.match(
-                /##\s+Files Changed\s*\n([\s\S]*?)(?=\n##(?!\#)|$)/i
+                /##\s+Files Changed\s*\n([\s\S]*?)(?=\n##(?!#)|$)/i
             );
 
             if (!sectionMatch) {
