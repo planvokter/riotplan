@@ -831,9 +831,18 @@ export class SqliteStorageProvider implements StorageProvider {
 
     async search(query: string): Promise<StorageResult<SearchResult[]>> {
         try {
+            // Empty query would match everything and cause an infinite loop
+            // in calculateScore, so return early with no results.
+            if (!query) {
+                return { success: true, data: [] };
+            }
+
             const results: SearchResult[] = [];
             const planId = this.getPlanId();
-            const searchPattern = `%${query}%`;
+            // Escape SQL LIKE special characters (% and _) to prevent them
+            // from being interpreted as wildcards in the search pattern
+            const escapedQuery = query.replace(/%/g, '\\%').replace(/_/g, '\\_');
+            const searchPattern = `%${escapedQuery}%`;
 
             // Search steps
             const stepRows = this.db.prepare(`
@@ -926,7 +935,14 @@ export class SqliteStorageProvider implements StorageProvider {
     private calculateScore(content: string, query: string): number {
         const lowerContent = content.toLowerCase();
         const lowerQuery = query.toLowerCase();
-        
+
+        // Guard against empty query which would cause an infinite loop
+        // because "".indexOf("", pos) always returns pos and pos += 0
+        // never advances.
+        if (lowerQuery.length === 0) {
+            return 0;
+        }
+
         // Count occurrences
         let count = 0;
         let pos = 0;

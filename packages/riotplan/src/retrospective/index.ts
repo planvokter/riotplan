@@ -229,7 +229,7 @@ export function generateRetrospectiveMarkdown(retro: Retrospective): string {
     lines.push(`| Completed | ${retro.completedSteps} |`);
     lines.push(`| Skipped | ${retro.skippedSteps} |`);
     lines.push(
-        `| Completion Rate | ${((retro.completedSteps / retro.totalSteps) * 100).toFixed(0)}% |`
+        `| Completion Rate | ${retro.totalSteps > 0 ? ((retro.completedSteps / retro.totalSteps) * 100).toFixed(0) : 0}% |`
     );
     lines.push("");
 

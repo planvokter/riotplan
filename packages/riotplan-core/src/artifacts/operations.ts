@@ -28,7 +28,7 @@ export async function readPlanDoc(
             return null;
         }
         const match = filesResult.data.find(
-            (f) => f.filename === filename || (f.type === fileType && fileType !== 'other')
+            (f) => f.filename === filename && (f.type === fileType || (fileType === 'other' && f.type === 'other'))
         );
         return match ? { content: match.content, filename: match.filename } : null;
     } finally {
@@ -82,7 +82,9 @@ async function readPlanDocFromProvider(
 ): Promise<{ createdAt: string } | null> {
     const result = await provider.getFiles();
     if (!result.success || !result.data) return null;
-    const match = result.data.find((f) => f.type === fileType || f.filename === filename);
+    const match = result.data.find(
+        (f) => f.filename === filename && (f.type === fileType || (fileType === 'other' && f.type === 'other'))
+    );
     return match ? { createdAt: match.createdAt } : null;
 }
 

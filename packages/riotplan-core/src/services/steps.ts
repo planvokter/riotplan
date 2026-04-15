@@ -69,9 +69,22 @@ export async function completeDirectoryStep(
     plan.state.lastUpdatedAt = new Date();
 
     const nextPending = plan.steps.find((s) => s.status === "pending");
+    const hasFailed = plan.steps.some((s) => s.status === "failed");
+    const hasBlocked = plan.steps.some((s) => s.status === "blocked");
+    const hasInProgress = plan.steps.some((s) => s.status === "in_progress");
     if (nextPending) {
         plan.state.currentStep = nextPending.number;
         plan.state.status = "in_progress";
+    } else if (hasInProgress) {
+        const inProgressStep = plan.steps.find((s) => s.status === "in_progress")!;
+        plan.state.currentStep = inProgressStep.number;
+        plan.state.status = "in_progress";
+    } else if (hasFailed) {
+        plan.state.status = "failed";
+        plan.state.currentStep = undefined;
+    } else if (hasBlocked) {
+        plan.state.status = "blocked";
+        plan.state.currentStep = undefined;
     } else {
         plan.state.status = "completed";
         plan.state.currentStep = undefined;

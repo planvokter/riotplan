@@ -44,8 +44,8 @@ async function loadStatusMap(planPath: string): Promise<Map<number, string>> {
                 continue;
             }
             
-            // Stop at section headers or double newlines
-            if (inTable && (/^##/.test(line) || line.trim() === '')) {
+            // Stop at section headers (but not blank lines — markdown tables can have blank rows)
+            if (inTable && /^##/.test(line)) {
                 break;
             }
             
@@ -78,10 +78,10 @@ async function loadStepResults(
     
     try {
         const files = await readdir(planDir);
-        const stepFiles = files.filter(f => /^\d{2}-/.test(f) && f.endsWith(".md")).sort();
+        const stepFiles = files.filter(f => /^\d+-/.test(f) && f.endsWith(".md")).sort();
         
         for (const file of stepFiles) {
-            const stepNum = parseInt(file.slice(0, 2));
+            const stepNum = parseInt(file.match(/^(\d+)-/)![1], 10);
             const content = await readFile(join(planDir, file), "utf-8");
             
             const result = analyzeStep(stepNum, content, statusMap.get(stepNum) || "⬜ Pending");
@@ -196,6 +196,11 @@ function determineCompletionStatus(
     }
     
     if (isMarkedInProgress) {
+        return "partial";
+    }
+    
+    // If some criteria are checked but status is still pending, report partial progress
+    if (!noneChecked) {
         return "partial";
     }
     

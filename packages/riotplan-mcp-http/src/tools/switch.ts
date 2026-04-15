@@ -514,6 +514,14 @@ async function executeDeletePlan(args: any, context: ToolExecutionContext): Prom
 
         let planId = validated.planId;
         let planName: string | undefined;
+
+        if (!validated.confirm) {
+            return {
+                success: false,
+                error: 'Plan deletion requires confirm: true to prevent accidental deletion.',
+            };
+        }
+
         try {
             const provider = createSqliteProvider(sourcePath);
             const metaResult = await provider.getMetadata();

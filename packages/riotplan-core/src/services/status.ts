@@ -66,6 +66,7 @@ export async function readSqliteStatusSnapshot(
         } else if (steps.some((s) => s.status === "pending")) {
             status = "pending";
         } else {
+            // All steps are completed or skipped
             status = "completed";
         }
 

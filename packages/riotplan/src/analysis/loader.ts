@@ -11,9 +11,9 @@ export async function loadAnalysis(planPath: string): Promise<Analysis | null> {
     const philDoc = await readPlanDoc(planPath, "other", "analysis/PHILOSOPHY.md");
 
     const metadata: AnalysisMetadata = {
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        elaborationCount: 0,
+        createdAt: parseAnalysisDate(reqDoc.content, "Created") ?? new Date(),
+        updatedAt: parseAnalysisDate(reqDoc.content, "Last Updated") ?? new Date(),
+        elaborationCount: parseElaborationCount(reqDoc.content),
         status: parseAnalysisStatus(reqDoc.content),
     };
 
