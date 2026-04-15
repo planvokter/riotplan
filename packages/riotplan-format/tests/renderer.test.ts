@@ -105,7 +105,7 @@ describe('Markdown Renderer', () => {
             const evidence = result.evidence.get('evidence-1.md')!;
             expect(evidence).toContain('Research findings');
             expect(evidence).toContain('source: web search');
-            expect(evidence).toContain('url: https://example.com');
+            expect(evidence).toContain('url: "https://example.com"');
             expect(evidence).toContain('The research shows...');
         });
 
