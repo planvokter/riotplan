@@ -125,6 +125,8 @@ fi
 # --- Bump versions ---
 echo "📝 Bumping versions to $RELEASE_VER..."
 run npm version "$RELEASE_VER" -ws --no-git-tag-version
+# Also bump root package.json (npm version -ws skips it)
+run node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); p.version='$RELEASE_VER'; fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n')"
 run node scripts/sync-internal-deps.mjs
 run npm install
 

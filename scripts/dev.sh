@@ -73,6 +73,8 @@ echo "🔧 Dev cycle: $ROOT_VER → $DEV_VER"
 
 # --- Bump ---
 run npm version "$DEV_VER" -ws --no-git-tag-version
+# Also bump root package.json (npm version -ws skips it)
+run node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); p.version='$DEV_VER'; fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n')"
 run node scripts/sync-internal-deps.mjs
 run npm install
 
