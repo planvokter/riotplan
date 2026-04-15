@@ -133,19 +133,58 @@ echo "💾 Committing version bump..."
 run git add -A
 run git commit -m "release: v$RELEASE_VER"
 
-# --- Merge to main ---
-echo "🔀 Merging working into main..."
-run git checkout main
-run git pull --ff-only origin main
-run git merge working --no-edit
+# --- Merge to main via PR (main branch is protected) ---
+echo "🔀 Creating PR to merge working into main..."
+run git push origin working
+
+if [ "$DRY_RUN" = false ]; then
+  if command -v gh &>/dev/null; then
+    # Create PR from working to main
+    PR_URL=$(gh pr create \
+      --base main \
+      --head working \
+      --title "release: v$RELEASE_VER" \
+      --body "Release v$RELEASE_VER — version bump from $ROOT_VER" \
+      --json url -q '.url' 2>/dev/null || true)
+
+    if [ -n "$PR_URL" ]; then
+      echo "📋 PR created: $PR_URL"
+      # Merge the PR
+      gh pr merge "$PR_URL" --merge --delete-branch=false
+      echo "✅ PR merged"
+    else
+      echo "⚠️  Could not create PR (may already exist). Merge manually."
+    fi
+
+    # Fetch the merged main and tag it
+    git fetch origin main
+    git checkout main
+    git pull --ff-only origin main
+  else
+    echo "⚠️  gh CLI not found. Create and merge PR manually:"
+    echo "   https://github.com/planvokter/riotplan/compare/main...working"
+    echo ""
+    echo "   After merging, run:"
+    echo "     git checkout main && git pull origin main"
+    echo "     git tag v$RELEASE_VER"
+    echo "     git push origin v$RELEASE_VER"
+    echo "     git checkout working"
+    echo ""
+    echo "   Stopping here. Complete the release manually."
+    exit 0
+  fi
+else
+  echo "  [DRY RUN] gh pr create --base main --head working --title release: v$RELEASE_VER"
+  echo "  [DRY RUN] gh pr merge --merge"
+  echo "  [DRY RUN] git fetch origin main && git checkout main && git pull --ff-only origin main"
+fi
 
 # --- Tag ---
 echo "🏷️  Tagging v$RELEASE_VER..."
 run git tag "v$RELEASE_VER"
 
-# --- Push ---
-echo "🚀 Pushing to origin..."
-run git push origin main
+# --- Push tag ---
+echo "🚀 Pushing tag to origin..."
 run git push origin "v$RELEASE_VER"
 
 # --- Switch back to working ---
