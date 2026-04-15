@@ -1,6 +1,6 @@
 {
   "name": "@planvokter/riotplan",
-  "version": "1.1.4-dev.0",
+  "version": "1.1.4",
   "description": "Framework for long-lived, stateful AI workflows (plans)",
   "type": "module",
   "main": "./dist/index.js",
