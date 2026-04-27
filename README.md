@@ -1,6 +1,6 @@
 # RiotPlan monorepo
 
-This repository is an **npm workspaces** monorepo for the `@planvokter/*` RiotPlan packages — a framework for long-lived, stateful AI workflows (plans). All 9 packages share a single version and are built, tested, and released together.
+This repository is an **npm workspaces** monorepo for the `@planvokter/*` RiotPlan packages — a framework for long-lived, stateful AI workflows (plans). All 11 packages share a single version and are built, tested, and released together.
 
 ## Requirements
 
@@ -18,6 +18,8 @@ riotplan/
 │   ├── riotplan-catalyst/    # Composable guidance packages for plan creation
 │   ├── riotplan-cloud/       # Cloud runtime and GCS sync
 │   ├── riotplan-templates/   # Starter templates for common plan types
+│   ├── riotplan-db/          # Abstract interfaces and types for the data access layer
+│   ├── riotplan-storage/     # Abstract interfaces and types for the object storage layer
 │   ├── riotplan-core/        # Core domain services
 │   ├── riotplan-ai/          # AI plan generation engine
 │   ├── riotplan/             # CLI framework (main package)
@@ -63,7 +65,8 @@ Packages are built in four layers, respecting the dependency graph:
 
 ```
 Layer 1 (leaves — no internal deps):
-  riotplan-verify, riotplan-format, riotplan-catalyst, riotplan-cloud, riotplan-templates
+  riotplan-verify, riotplan-format, riotplan-catalyst, riotplan-cloud, riotplan-templates,
+  riotplan-db, riotplan-storage
 
 Layer 2 (mid — depend on leaves):
   riotplan-core, riotplan-ai
@@ -164,7 +167,7 @@ working  ──── develop here ──── PR to main ──── merge �
 
 ## Version Management
 
-All 9 packages + the root `package.json` share the **same version number**. After any version bump, `sync-internal-deps.mjs` updates all `@planvokter/*` dependency ranges to match.
+All 11 packages + the root `package.json` share the **same version number**. After any version bump, `sync-internal-deps.mjs` updates all `@planvokter/*` dependency ranges to match.
 
 **Important:** `npm version -ws` only bumps workspace packages, NOT the root `package.json`. Both `release.sh` and `dev.sh` include an explicit step to bump the root version.
 
@@ -173,7 +176,7 @@ All 9 packages + the root `package.json` share the **same version number**. Afte
 | Workflow | Trigger | What it does |
 |----------|---------|-------------|
 | `ci.yml` | Push to `main`/`working`; PRs to `main` | Build, lint, test + MCP token measurement |
-| `release.yml` | Push `v*` tag | Verify versions, build, test, publish all 9 packages to npm with OIDC provenance |
+| `release.yml` | Push `v*` tag | Verify versions, build, test, publish all 11 packages to npm with OIDC provenance |
 | `deploy-docs.yml` | Manual (`workflow_dispatch`) | Build and deploy docs to GitHub Pages |
 
 ### npm Publishing
@@ -222,6 +225,9 @@ These repos live outside this monorepo under the `planvokter/` org:
 - `riotplan-vscode` — VS Code extension
 - `riotplan-osx` — Native macOS integration
 - `riotplan-e2e` — End-to-end tests
+- `riotplan-web` — Web application
+- `riotplan-db-firestore` — Firestore implementation of the `riotplan-db` interfaces
+- `riotplan-storage-gcs` — Google Cloud Storage implementation of the `riotplan-storage` interfaces
 
 ## License
 
