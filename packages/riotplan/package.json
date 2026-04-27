@@ -68,7 +68,6 @@
   },
   "dependencies": {
     "@fjell/logging": "^4.4.69",
-    "@google-cloud/storage": "5.18.3",
     "@planvokter/riotplan-catalyst": "^1.1.5-dev.0",
     "@planvokter/riotplan-core": "^1.1.5-dev.0",
     "@planvokter/riotplan-format": "^1.1.5-dev.0",
