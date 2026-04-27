@@ -7,12 +7,20 @@ export type {
 } from './types/token.js';
 export type { Note } from './types/note.js';
 export type { PlanRef } from './types/plan.js';
+export type {
+  Document,
+  DocumentType,
+  DocumentVisibility,
+  DocumentCreate,
+} from './types/document.js';
+export type { AccessContext } from './types/access-context.js';
 
 // Repositories
 export type { IUserRepository } from './repositories/user-repository.js';
 export type { ITokenRepository } from './repositories/token-repository.js';
 export type { INoteRepository } from './repositories/note-repository.js';
 export type { IPlanRepository } from './repositories/plan-repository.js';
+export type { IDocumentRepository } from './repositories/document-repository.js';
 
 // Factory
 export type { IDbFactory } from './factory.js';
