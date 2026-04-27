@@ -16,3 +16,6 @@ package-lock.json
 # deploy: local runtime dirs
 deploy/local/plans/
 deploy/local/context/
+
+# local deps (build artifacts)
+local-deps/

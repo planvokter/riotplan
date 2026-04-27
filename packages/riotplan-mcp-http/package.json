@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@fjell/logging": "^4.4.72",
+    "@google-cloud/firestore": "^8.5.0",
     "@google-cloud/storage": "5.18.3",
     "@hono/mcp": "^0.2.4",
     "@hono/node-server": "^1.19.11",
@@ -69,7 +70,9 @@
     "vite": "8.0.3",
     "vitest": "4.1.2",
     "yaml": "^2.8.2",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@planvokter/riotplan-db": "file:./local-deps/planvokter-riotplan-db-1.1.5-dev.0.tgz",
+    "@planvokter/riotplan-db-firestore": "file:./local-deps/planvokter-riotplan-db-firestore-1.1.5-dev.0.tgz"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

@@ -36,6 +36,7 @@ import { getPrompts, getPrompt } from './prompts/index.js';
 import { resolveDirectory } from './tools/shared.js';
 import { bindProjectToPlan, getProjectMatchKeys, readProjectBinding } from './tools/project-binding-shared.js';
 import { extractApiKeyFromHeaders, type AuthContext, RbacEngine, type RouteRequirement } from './rbac.js';
+import { verifyFirestoreToken, type FirestoreAuthConfig } from './firestore-auth.js';
 import Logging from '@fjell/logging';
 
 /**
@@ -75,6 +76,11 @@ export interface ServerConfig {
         rbacKeysPath?: string;
         rbacPolicyPath?: string;
         rbacReloadSeconds?: number;
+    };
+    /** Firestore token verification (alternative to RBAC YAML keys) */
+    firestoreAuth?: {
+        projectId: string;
+        databaseId: string;
     };
 }
 
@@ -1645,8 +1651,13 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
             return null;
         }
         if (!localConfig.security.rbacUsersPath || !localConfig.security.rbacKeysPath) {
+            // Allow missing RBAC files when Firestore auth is configured
+            if (localConfig.firestoreAuth) {
+                startupLogger.info('rbac.skipped', { reason: 'Firestore auth configured, RBAC files not required' });
+                return null;
+            }
             throw new Error(
-                'RBAC is enabled (secured=true), but rbacUsersPath or rbacKeysPath is not configured. Set RBAC_USERS_PATH and RBAC_KEYS_PATH.'
+                'RBAC is enabled (secured=true), but rbacUsersPath or rbacKeysPath is not configured. Set RBAC_USERS_PATH and RBAC_KEYS_PATH, or configure Firestore auth (FIRESTORE_DATABASE_ID + GOOGLE_CLOUD_PROJECT).'
             );
         }
         return new RbacEngine(
@@ -1740,8 +1751,34 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
             }
 
             const apiKey = extractApiKeyFromHeaders(c.req.raw.headers);
-            const auth = await rbacEngine.authenticate(apiKey);
-            if (!auth.allowed || !auth.authContext) {
+            let auth = await rbacEngine.authenticate(apiKey);
+            let authContext: AuthContext | null = auth.authContext ?? null;
+
+            // Fallback: try Firestore token verification for rpat_ tokens
+            if (!auth.allowed && apiKey && apiKey.startsWith('rpat_') && config.firestoreAuth) {
+                try {
+                    const fsContext = await verifyFirestoreToken(apiKey, config.firestoreAuth);
+                    if (fsContext) {
+                        authContext = fsContext;
+                        auth = { allowed: true, authContext: fsContext, reason: 'ALLOW', status: 200 };
+                    }
+                } catch (err) {
+                    authLogger.warning('audit', {
+                        timestamp: new Date().toISOString(),
+                        route: routePattern,
+                        method,
+                        request_id: requestId,
+                        user_id: null,
+                        key_id: null,
+                        decision: 'deny',
+                        reason: 'FIRESTORE_ERROR',
+                        error: String(err),
+                        elapsedMs: Date.now() - start,
+                    });
+                }
+            }
+
+            if (!auth.allowed || !authContext) {
                 authLogger.warning('audit', {
                     timestamp: new Date().toISOString(),
                     route: routePattern,
@@ -1760,15 +1797,15 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
                 return jsonError(c, 401, 'UNAUTHORIZED', 'Missing or invalid API key');
             }
 
-            const authorization = rbacEngine.authorize(auth.authContext, requirement.anyRoles);
+            const authorization = rbacEngine.authorize(authContext, requirement.anyRoles);
             if (!authorization.allowed) {
                 authLogger.warning('audit', {
                     timestamp: new Date().toISOString(),
                     route: routePattern,
                     method,
                     request_id: requestId,
-                    user_id: auth.authContext.user_id,
-                    key_id: auth.authContext.key_id,
+                    user_id: authContext.user_id,
+                    key_id: authContext.key_id,
                     decision: 'deny',
                     reason: authorization.reason,
                     policy_source: requirement.source,
@@ -1778,14 +1815,14 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
                 return jsonError(c, 403, 'FORBIDDEN', 'Authenticated, but missing required role');
             }
 
-            c.set('authContext', auth.authContext);
+            c.set('authContext', authContext);
             authLogger.info('audit', {
                 timestamp: new Date().toISOString(),
                 route: routePattern,
                 method,
                 request_id: requestId,
-                user_id: auth.authContext.user_id,
-                key_id: auth.authContext.key_id,
+                user_id: authContext.user_id,
+                key_id: authContext.key_id,
                 decision: 'allow',
                 reason: 'ALLOW',
                 policy_source: requirement.source,

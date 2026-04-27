@@ -140,6 +140,15 @@ function firstNonEmpty(...values: Array<string | undefined>): string | undefined
 }
 
 async function main() {
+    // Decode base64 SA credentials if provided (Cloud Run workaround for missing Secret Manager access)
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS_B64) {
+        const decoded = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_B64, 'base64').toString('utf8');
+        const saPath = '/tmp/service-account.json';
+        require('fs').writeFileSync(saPath, decoded);
+        process.env.GOOGLE_APPLICATION_CREDENTIALS = saPath;
+        console.log(`Decoded SA credentials to ${saPath}`);
+    }
+
     const program = new Command();
 
     program
@@ -342,20 +351,22 @@ async function main() {
         process.exit(1);
     }
 
+    const hasFirestoreAuth = !!(process.env.FIRESTORE_DATABASE_ID && process.env.GOOGLE_CLOUD_PROJECT);
+
     if (secured) {
-        if (!rbacUsersPath) {
-            console.error('Error: secured=true requires rbacUsersPath (or RBAC_USERS_PATH).');
+        if (!rbacUsersPath && !hasFirestoreAuth) {
+            console.error('Error: secured=true requires rbacUsersPath (or RBAC_USERS_PATH) or Firestore auth (FIRESTORE_DATABASE_ID + GOOGLE_CLOUD_PROJECT).');
             process.exit(1);
         }
-        if (!rbacKeysPath) {
-            console.error('Error: secured=true requires rbacKeysPath (or RBAC_KEYS_PATH).');
+        if (!rbacKeysPath && !hasFirestoreAuth) {
+            console.error('Error: secured=true requires rbacKeysPath (or RBAC_KEYS_PATH) or Firestore auth (FIRESTORE_DATABASE_ID + GOOGLE_CLOUD_PROJECT).');
             process.exit(1);
         }
-        if (!existsSync(rbacUsersPath)) {
+        if (rbacUsersPath && !existsSync(rbacUsersPath)) {
             console.error(`Error: RBAC users file does not exist: ${rbacUsersPath}`);
             process.exit(1);
         }
-        if (!existsSync(rbacKeysPath)) {
+        if (rbacKeysPath && !existsSync(rbacKeysPath)) {
             console.error(`Error: RBAC keys file does not exist: ${rbacKeysPath}`);
             process.exit(1);
         }
@@ -388,6 +399,12 @@ async function main() {
                 rbacPolicyPath,
                 rbacReloadSeconds,
             },
+            ...(process.env.FIRESTORE_DATABASE_ID && process.env.GOOGLE_CLOUD_PROJECT ? {
+                firestoreAuth: {
+                    projectId: process.env.GOOGLE_CLOUD_PROJECT,
+                    databaseId: process.env.FIRESTORE_DATABASE_ID,
+                },
+            } : {}),
         });
     } catch (error) {
         console.error('Error starting server:', error);
