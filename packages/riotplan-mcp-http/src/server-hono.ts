@@ -36,7 +36,8 @@ import { getPrompts, getPrompt } from './prompts/index.js';
 import { resolveDirectory } from './tools/shared.js';
 import { bindProjectToPlan, getProjectMatchKeys, readProjectBinding } from './tools/project-binding-shared.js';
 import { extractApiKeyFromHeaders, type AuthContext, RbacEngine, type RouteRequirement } from './rbac.js';
-import { verifyFirestoreToken, type FirestoreAuthConfig } from './firestore-auth.js';
+import { verifyTokenAuth, type TokenAuthConfig } from './token-auth.js';
+import type { ITokenRepository } from '@planvokter/riotplan-db';
 import Logging from '@fjell/logging';
 
 /**
@@ -77,10 +78,9 @@ export interface ServerConfig {
         rbacPolicyPath?: string;
         rbacReloadSeconds?: number;
     };
-    /** Firestore token verification (alternative to RBAC YAML keys) */
-    firestoreAuth?: {
-        projectId: string;
-        databaseId: string;
+    /** Token verification via injected ITokenRepository (alternative to RBAC YAML keys) */
+    tokenAuth?: {
+        tokenRepository: ITokenRepository;
     };
 }
 
@@ -1651,13 +1651,13 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
             return null;
         }
         if (!localConfig.security.rbacUsersPath || !localConfig.security.rbacKeysPath) {
-            // Allow missing RBAC files when Firestore auth is configured
-            if (localConfig.firestoreAuth) {
-                startupLogger.info('rbac.skipped', { reason: 'Firestore auth configured, RBAC files not required' });
+            // Allow missing RBAC files when token auth is configured
+            if (localConfig.tokenAuth) {
+                startupLogger.info('rbac.skipped', { reason: 'Token auth configured, RBAC files not required' });
                 return null;
             }
             throw new Error(
-                'RBAC is enabled (secured=true), but rbacUsersPath or rbacKeysPath is not configured. Set RBAC_USERS_PATH and RBAC_KEYS_PATH, or configure Firestore auth (FIRESTORE_DATABASE_ID + GOOGLE_CLOUD_PROJECT).'
+                'RBAC is enabled (secured=true), but rbacUsersPath or rbacKeysPath is not configured. Set RBAC_USERS_PATH and RBAC_KEYS_PATH, or provide tokenAuth config with an ITokenRepository.'
             );
         }
         return new RbacEngine(
@@ -1754,13 +1754,13 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
             let auth = await rbacEngine.authenticate(apiKey);
             let authContext: AuthContext | null = auth.authContext ?? null;
 
-            // Fallback: try Firestore token verification for rpat_ tokens
-            if (!auth.allowed && apiKey && apiKey.startsWith('rpat_') && config.firestoreAuth) {
+            // Fallback: try token auth verification for rpat_ tokens
+            if (!auth.allowed && apiKey && apiKey.startsWith('rpat_') && config.tokenAuth) {
                 try {
-                    const fsContext = await verifyFirestoreToken(apiKey, config.firestoreAuth);
-                    if (fsContext) {
-                        authContext = fsContext;
-                        auth = { allowed: true, authContext: fsContext, reason: 'ALLOW', status: 200 };
+                    const tokenContext = await verifyTokenAuth(apiKey, config.tokenAuth);
+                    if (tokenContext) {
+                        authContext = tokenContext;
+                        auth = { allowed: true, authContext: tokenContext, reason: 'ALLOW', status: 200 };
                     }
                 } catch (err) {
                     authLogger.warning('audit', {
@@ -1771,7 +1771,7 @@ export function createApp(config: ServerConfig): Hono<{ Variables: AppVariables 
                         user_id: null,
                         key_id: null,
                         decision: 'deny',
-                        reason: 'FIRESTORE_ERROR',
+                        reason: 'TOKEN_AUTH_ERROR',
                         error: String(err),
                         elapsedMs: Date.now() - start,
                     });

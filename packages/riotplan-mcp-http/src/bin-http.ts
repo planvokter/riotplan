@@ -141,12 +141,14 @@ function firstNonEmpty(...values: Array<string | undefined>): string | undefined
 
 async function main() {
     // Decode base64 SA credentials if provided (Cloud Run workaround for missing Secret Manager access)
+    // NOTE: This is kept for backward compatibility. Deployment-specific entry points
+    // (e.g. riotplan-tobrien) should handle SA credential decoding before importing the server.
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS_B64) {
         const decoded = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_B64, 'base64').toString('utf8');
         const saPath = '/tmp/service-account.json';
-        require('fs').writeFileSync(saPath, decoded);
+        require('node:fs').writeFileSync(saPath, decoded, 'utf8');
         process.env.GOOGLE_APPLICATION_CREDENTIALS = saPath;
-        console.log(`Decoded SA credentials to ${saPath}`);
+        console.log('Decoded SA credentials from GOOGLE_APPLICATION_CREDENTIALS_B64');
     }
 
     const program = new Command();
@@ -351,15 +353,19 @@ async function main() {
         process.exit(1);
     }
 
-    const hasFirestoreAuth = !!(process.env.FIRESTORE_DATABASE_ID && process.env.GOOGLE_CLOUD_PROJECT);
+    // Token auth is configured externally via the tokenAuth config option.
+    // The CLI entry point does NOT construct a tokenRepository — that is the
+    // responsibility of deployment-specific entry points (e.g. riotplan-tobrien).
+    // When using this CLI directly, secured mode requires RBAC files.
+    const hasTokenAuth = false; // CLI mode: no injected token repository
 
     if (secured) {
-        if (!rbacUsersPath && !hasFirestoreAuth) {
-            console.error('Error: secured=true requires rbacUsersPath (or RBAC_USERS_PATH) or Firestore auth (FIRESTORE_DATABASE_ID + GOOGLE_CLOUD_PROJECT).');
+        if (!rbacUsersPath && !hasTokenAuth) {
+            console.error('Error: secured=true requires rbacUsersPath (or RBAC_USERS_PATH). For token auth, use a deployment-specific entry point that injects an ITokenRepository.');
             process.exit(1);
         }
-        if (!rbacKeysPath && !hasFirestoreAuth) {
-            console.error('Error: secured=true requires rbacKeysPath (or RBAC_KEYS_PATH) or Firestore auth (FIRESTORE_DATABASE_ID + GOOGLE_CLOUD_PROJECT).');
+        if (!rbacKeysPath && !hasTokenAuth) {
+            console.error('Error: secured=true requires rbacKeysPath (or RBAC_KEYS_PATH). For token auth, use a deployment-specific entry point that injects an ITokenRepository.');
             process.exit(1);
         }
         if (rbacUsersPath && !existsSync(rbacUsersPath)) {
@@ -399,12 +405,6 @@ async function main() {
                 rbacPolicyPath,
                 rbacReloadSeconds,
             },
-            ...(process.env.FIRESTORE_DATABASE_ID && process.env.GOOGLE_CLOUD_PROJECT ? {
-                firestoreAuth: {
-                    projectId: process.env.GOOGLE_CLOUD_PROJECT,
-                    databaseId: process.env.FIRESTORE_DATABASE_ID,
-                },
-            } : {}),
         });
     } catch (error) {
         console.error('Error starting server:', error);
